@@ -19,6 +19,7 @@ subject matter, not a local dependency.
 ```
 PolyOrch/
 ├── README.md      # repository front door
+├── README_zh.md   # Chinese mirror of the front door — the only Chinese-prose artifact (C4 rule 3)
 ├── SKILL.md       # skills registry (plugin layer + project layer)
 ├── LICENSE        # Apache-2.0
 ├── AGENTS.md      # agent knowledge base — loaded every turn

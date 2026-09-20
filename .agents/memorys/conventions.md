@@ -84,14 +84,15 @@ sys.exit(1 if bad else 0)
 PY
 ```
 
-## C4: "English for every artifact; Chinese only for chat and plan documents"
+## C4: "English for the machine-consumed surface; Chinese only where nothing loads it"
 
-All project artifacts are written in **English**: documentation, code comments, `.agents/memorys/*`, `.agents/rules/*`, `.agents/skills/*`, configuration comments, and git commit messages.
+Every artifact an agent loads or a tool parses is written in **English**: documentation under `docs/`, `.agents/memorys/*`, `.agents/rules/*`, `.agents/skills/*`, configuration comments, and git commit messages. The reason is the one stated below -- a single language removes a translation layer for agents and tooling, and the memory and instruction files are loaded on every turn, so their cost is paid continuously.
 
-Chinese is permitted in exactly two places:
+Chinese is permitted in three places:
 
 1. **AI chat interaction** — conversation with the user, and prompts/messages to sub-agents.
 2. **Plan documents under `.omo/`** — git-excluded working plans (`.gitignore` ignores `.omo/*`, with `.omo/omo.jsonc` re-included as config, which itself is English).
+3. **`README_zh.md`** — a Chinese mirror of the repository front door, for human readers. It is deliberately *not* in `instructions[]` and nothing parses it, so it does not pay the cost this convention exists to avoid. `README.md` stays the authoritative version where the two differ, and the mirror covers the same sections.
 
 **Exception — canonical brand strings.** The three canonical descriptions are brand assets rather than prose, and stay byte-exact, including the Chinese one:
 
@@ -111,7 +112,9 @@ CJK = re.compile(r"[\u4e00-\u9fff]")
 ALLOWED = "面向多语言 monorepo 的可扩展构建编排器。"
 EXTS = {".md", ".mjs", ".js", ".json", ".jsonc", ".toml", ".sh", ".txt", ".py", ".yaml", ".yml"}
 SKIP = {".git", "node_modules", ".omo", "target", ".pixi", "book-to-skill"}
-skip_files = {"package-lock.json"}
+# A single named file, not a pattern: the Chinese mirror of the front door (see rule 3 above).
+ALLOW_FILES = {"README_zh.md"}
+skip_files = {"package-lock.json"} | ALLOW_FILES
 bad = []
 for p in pathlib.Path(".").rglob("*"):
     if not p.is_file() or p.suffix not in EXTS or p.name in skip_files:

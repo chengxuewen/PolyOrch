@@ -1,5 +1,7 @@
 # PolyOrch
 
+**English** | [Chinese](./README_zh.md)
+
 > **A scalable build orchestrator for polyglot monorepos.**
 >
 > *Adapter-based integration for heterogeneous build systems, environments, and package managers.*
