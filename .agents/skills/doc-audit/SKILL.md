@@ -127,9 +127,11 @@ Check the declared phase against the real state of the repository.
 - Are the dated entries in the `status.md` Verification table still true when re-run today?
 - Are the `Open Items` accurate — is anything still listed as open that has been resolved, or
   marked resolved that is not?
-- Is the git state consistent with how the memory files describe it? (This repository has
-  never been committed — a "revert to HEAD" reflex is a no-op, and memory that assumes
-  otherwise is wrong.)
+- Does the memory's description of the git state match reality? Run `git log --oneline -3` and
+  `git status --short` and compare against what `AGENTS.md` and `status.md` claim. This repository
+  has already carried a false git claim once (`AGENTS.md` said the tree was "everything untracked"
+  while 219 of 223 entries were staged, which would have made `git clean -fd` look safe), so treat
+  the git state as something to verify, never to infer from memory.
 - Does a document claim a completion state that contradicts another document?
 
 ---

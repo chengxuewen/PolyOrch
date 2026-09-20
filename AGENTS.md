@@ -1,7 +1,7 @@
 # PROJECT KNOWLEDGE BASE
 
 **Generated:** 2026-09-18
-**Commit:** none — this repository has 0 commits
+**Commit:** `53daae9` — initial commit (2026-09-20)
 **Branch:** main
 
 ## OVERVIEW
@@ -110,11 +110,12 @@ python3 -m json.tool .opencode/opencode.json > /dev/null && echo "config valid"
 - **macOS case-insensitive filesystem gotcha:** `.agents/rules/common/agents.md` is loaded by
   opencode as `AGENTS.md` for that directory. Renaming or moving it silently changes the
   instructions agents receive.
-- **The repository has never been committed.** 0 commits on `main` and no HEAD, so a "revert to
-  HEAD" reflex is a no-op. The tree is **not** untracked, though: 219 of 223 entries are already
-  staged in the index, and only four are untracked -- `README.md`, `LICENSE`, `SKILL.md` and
-  `.agents/skills/doc-audit/`. `git restore` would restore from that index and `git clean -fd`
-  would delete those four files; neither is a no-op.
+- **The git state has been misdescribed before — verify it, do not trust memory.** The repository
+  now has an initial commit (`53daae9`, 2026-09-20), so `HEAD` exists and `git restore`/`git checkout
+  work normally. Before that commit the index was already populated while `HEAD` did not exist, and
+  the memory claimed the tree was "everything untracked" while 219 of 223 entries were staged — a
+  claim that would have made `git clean -fd` look safe when it would have deleted the four
+  genuinely-untracked files. Check `git log` and `git status` before any git recovery action.
 - **Both former design blockers are resolved.** (1) PolyOrch's implementation language is
   **Lua**, shipped as an Xmake addon (D3). (2) Xmake is the **engine**, not an adapter — its dual
   role is settled in `docs/architecture.md` under `Superseded From The Whitepaper`.

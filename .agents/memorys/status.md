@@ -14,7 +14,7 @@
 | Stack | PolyOrch itself: **Lua**, shipped as an Xmake addon (D3). Integration: Xmake (engine) / Pixi (environment) / vcpkg · Conan via Xrepo (package sources, not bridges) |
 | Vendored deps | `.agents/skills/xmake-*` / `xrepo-*` -- 58 Xmake agent skills (Apache-2.0, pinned commit `ef67caa`). See `XMAKE-ATTRIBUTION.md` |
 | Language policy | **English for all artifacts.** Chinese only for AI chat and plan docs under `.omo/` — see C4 |
-| Git | `main`, no commits yet |
+| Git | `main`, 1 commit (`53daae9`, 2026-09-20); clean tree |
 
 ## Phase
 
