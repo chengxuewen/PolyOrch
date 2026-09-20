@@ -1,0 +1,90 @@
+# PolyOrch — Decisions
+
+> Format: `## D{N}: Title` + rationale + alternatives + references.
+
+## D1: Toolchain ported from MediaServo, generic parts only
+
+- **Date**: 2026-09-18
+- **Decision**: PolyOrch is a **new project**. Keep `.agents/rules/` (the generic parts), the generic skills, and the `.opencode/` / `.omo/` configuration. MediaServo domain memory and domain skills are **moved out of PolyOrch** — no in-repo copy is kept.
+- **Rationale**: the original `.agents/memorys/*` (430 KB of MediaServo WebRTC/mediasoup history) was loaded **every turn** via `instructions[]` in `.opencode/opencode.json`, which is context pollution for a new project; the same applies to the domain skills.
+- **Alternatives**:
+  - Keep and rewrite each file — high cost, and domain residue tends to survive.
+  - Delete everything — loses reusable methodology.
+- **Domain test**: a rule that only holds for the MediaServo/mediasoup architecture counts as a domain file even when it sits in `rules/common/` (for example `platform.md`, `docker.md`).
+- **References**: `.opencode/opencode.json` `instructions[]`; source repository `DEVSYS/MediaServo`
+- **Revision (2026-09-18)**: changed from "archive in-repo" to "move out of PolyOrch". Verification: 4 memorys + 2 rules + 14 skills (34 files total) were `diff`-identical to the `DEVSYS/MediaServo` originals (**0 differences**), so the in-repo copy was merely a second source of truth. The copy was moved to Trash and can be emptied.
+
+## D2: English for every artifact; Chinese only for chat and plan documents
+
+- **Date**: 2026-09-18
+- **Source**: user directive.
+- **Decision**: all project artifacts are written in English — documentation, code comments, `.agents/memorys/*`, `.agents/rules/*`, `.agents/skills/*`, configuration comments, and git commit messages. Chinese is permitted only in (1) AI chat interaction and (2) plan documents under `.omo/`, which is git-excluded. Canonical brand strings are the one exception inside documents: they stay byte-exact, including the Chinese one.
+- **Rationale**: one language for machine-consumed artifacts removes a translation layer for agents and tooling, and the memory/instruction files are loaded on every turn so their cost is paid continuously. Chinese is retained where it is a human-collaboration surface (chat) and where a document is deliberately kept out of git (working plans).
+- **Alternatives**:
+  - Keep the previous Chinese-primary policy for docs — rejected; it contradicted the single-language goal.
+  - Go English-only including the canonical Chinese description — rejected for now: that description is a mandated brand asset. Revisit if the brand direction changes.
+- **Scope note**: this reverses the earlier Chinese-primary documentation policy, so all pre-existing Chinese content was converted (32 files, 1311 lines).
+- **References**: `conventions.md` C4
+
+
+## D3: PolyOrch is implemented in Lua and ships as an Xmake addon
+
+- **Date**: 2026-09-20
+- **Decision**: PolyOrch v0.1 is written in Lua and packaged as an Xmake addon: **plugins** for CLI commands, **rules** for the bridge library, **project templates** for `init`. This closes the long-standing `TBD` on PolyOrch's own implementation language.
+- **Rationale**: the bridges are already `xmake.lua`. Keeping the CLI in the same language means the contract has exactly **one** expression, and `doctor` / `graph` can introspect real target objects instead of re-parsing manifests. A Python CLI would require the scan and naming rules to be implemented a second time, which is the two-sources-of-truth failure this project already recorded (D1, PIT-1). Verified on 2026-09-20 against `xmake v3.1.1` -- both the local `v3.1.1+20260827` build and, decisively, the conda-forge package that D4 pins, which reports `v3.1.1+master.3ba37a0d4`: the binary bundles a Lua runtime, exposes `xmake lua <script>`, provides `xmake addon`, and addons can register commands (`doxygen-plugin` provides `xmake doxygen`, `format-plugin` provides `xmake format`).
+- **Alternatives**: a Python CLI via Pixi (better ergonomics, but duplicates the contract in a second language); shell (breaks cross-platform).
+- **Accepted cost**: Lua's CLI ergonomics are weaker than Python's, and PolyOrch is bound to the Lua version Xmake bundles. The addon subsystem is newer than v3.1.0 and **landed in v3.1.1**, so D4's conda-forge `xmake-3.1.1` pin is sufficient -- verified 2026-09-20 by installing that package and running `xmake addon --list` (exit 0, full catalogue). Version-string form matters here: `+<yyyymmdd>` is a **build date** and `+master.<sha>` marks a master-branch build; neither implies the release lacks addons. The vendored `xmake-addons` skill still warns that addons "need xmake from the dev branch" -- written before v3.1.1 shipped, so stale for the release, but the file stays byte-identical (C5). The older `xmake plugin --install` path handles plugins only and is explicitly not used.
+- **Precedent**: `esp32-devel`, `stm32-devel`, and `avr-devel` are addons of the same shape (toolchain + build rules + project templates).
+- **References**: `docs/modules/00-overview.md` (payload layout and addon mapping)
+
+## D4: Anything that affects the build result is pinned in the repository
+
+- **Date**: 2026-09-20
+- **Decision**: no build-affecting configuration may live in a user's global state.
+- **Rationale**: **three** violations were found in the prototype. (1) The Xmake binary came from Homebrew and appeared **0 times** in `pixi.lock`, so `bootstrap.sh` plus `pixi install` does not reproduce the toolchain. (2) `xmake-vscode` resolved the engine from `PATH`, escaping the pin. (3) The vcpkg root and the conan program path lived in `xmake g` global configuration.
+- **Consequence**: Xmake moves into `pixi.toml` (available on conda-forge as `xmake-3.1.1`); the PolyOrch addon version is declared by the repository (see D6); the vcpkg/conan pinning rule is still open (`docs/architecture.md` O4).
+- **References**: `docs/architecture.md` (invariants, and section ④ The Reproducibility Boundary)
+
+## D5: Bridges discover, derive, and forward; Xmake is the single build authority
+
+- **Date**: 2026-09-20
+- **Decision**: a bridge never transcribes a native manifest and never persists a copy. Generated CMake / VS / Xcode projects are **insight projections** for IDEs, never a second build path.
+- **Rationale**: verified that the Xmake-generated CMake contains **no `add_custom_command` at all**, and that bridged targets appear as inert `add_custom_target` nodes paired with an empty `add_executable(<name>_bin "")`. Building through that projection would create a second, divergent build path.
+- **References**: `docs/architecture.md` (invariants 2 to 4); `docs/modules/01-contract.md`
+
+## D6: The addon is declared in the repository and pinned by a committed lock file
+
+- **Date**: 2026-09-20, revised the same day after reading the official addon docs
+- **Decision**: a project declares PolyOrch in its `xmake.lua` with `add_addons("polyorch <range>")`. Xmake **auto-installs missing addons when the project is loaded**, and writes the resolved versions to `xmake-addons.lock` beside `xmake.lua`. **That lock file is committed and is the pin.** `~/.xmake/addons/<name>/<version>/` is a per-user, per-version cache, not a source of truth. Development uses `xmake addon --install .` against a working copy.
+- **Rationale**: this is the native mechanism, so the steady state needs **no per-repository bootstrap script and no command to remember**: a fresh clone runs `pixi run xmake` and everything resolves. It mirrors the environment layer exactly (`pixi.toml` + `pixi.lock` for toolchains, `xmake.lua` + `xmake-addons.lock` for addons), so D4 is satisfied by two symmetric locks rather than by a global install.
+- **Alternatives rejected**: a per-repository `bootstrap.sh` reintroduces one duplicated file per repository, which is the disease being cured; cloning a template repository drifts, whereas addon project templates ship with the pinned version.
+- **Development mode**: `xmake addon --install .` from the working copy is the documented standard shape, and the official docs note it is the same thing a user does, so `tests/test.lua` runs unchanged in CI. A locally installed working copy can silently shadow the pinned version, so `doctor` must answer whether the effective addon is the locked one or a local development build. **The detection mechanism is not yet decided**; candidates are the published archive sha256 recorded in the xmake-repo recipe, or `xmake-addons.lock` showing as modified in git.
+- **Gotchas from the official docs**: the version comes from the xmake-repo package recipe, **not** from `addon.lua` (bump the tag, not the manifest); command names and template ids are **global**, and `polyorch` was chosen to be collision-safe.
+- **References**: `docs/modules/00-overview.md`; `docs/architecture.md` section ④; `xmake-docs` `guide/extensions/addons/installation.md` and `development.md`
+
+## D7: IDE strategy -- VS Code first-class, three IDE-agnostic contract facts
+
+- **Date**: 2026-09-20
+- **Decision**: v0.1 makes VS Code first-class; every other IDE gets the universal floor (`compile_commands.json` plus a documented manual debug recipe). The contract owns three IDE-independent facts -- a uniform debuggable binary path, a materialized debug environment, and a target inventory -- and each IDE is only a projection of them.
+- **Rationale**: `xmake-vscode` exposes 33 settings, including `xmake.executable` (pin the engine to the locked instance) and `xmake.customDebugConfig` (inject the generated debug surface); both verified on 2026-09-20. No equivalent verification exists for CLion: the `xmake-idea` plugin exists (`github.com/xmake-io/xmake-idea`, 26,303 downloads) but the whitepaper's DAP claim is unverified.
+- **Mechanism**: M1 (`pixi run code .`, zero config but habit-dependent) plus M2 (`xmake.executable`, survives any launch method). `doctor` asserts the IDE-visible toolchain is the pinned one, so M1's silent failure becomes a loud check.
+- **References**: `docs/architecture.md` section ③ Debug Surface, O2, O5
+- **Revision (2026-09-20, same day)**: the M2 mechanism above (`xmake.executable`) is **not settled**. `status.md` O5 found that `xmake.executable` / `${workspaceFolder}` is documented nowhere, and that the documented knob for pinning a project-local binary is `XMAKE_PROGRAM_FILE` (plus `XMAKE_PROGRAM_DIR`). M1 (`pixi run code .`) is unaffected. Re-verify `xmake-vscode` itself before fixing the M2 mechanism.
+
+## D8: v0.1 scope -- four bridges and two package sources
+
+- **Date**: 2026-09-20
+- **Decision**: v0.1 ships four bridges (cargo, cmake, pixi, npm). vcpkg and conan are **package sources, not bridges**: they are declared with `add_packages("vcpkg::...")` / `add_packages("conan::...")` and resolved by Xrepo. meson and ros/colcon are deferred; Windows and Linux are out of scope.
+- **Rationale**: vcpkg/conan have no project body, are never scanned, and produce no `_bin` target -- verified: no `vcpkg.json` or `conanfile.*` occurs anywhere under `third_party/`, and both appear only as `add_requires` in the root `xmake.lua`. **npm is the one genuinely new bridge**: today it is only an inline `rule("web_build")` in `src/ui_web/xmake.lua` with no `third_party/` sample, while the largest candidate repositories need it. The prototype's most-refined bridges (cmake, ros) are the least needed by those repositories.
+- **References**: `docs/architecture.md` section ⑤ Bridge Status, `docs/modules/01-contract.md`
+
+## D9: Sibling repositories are not a skill source
+
+- **Date**: 2026-09-20
+- **Decision**: PolyOrch adopts **no skills** from the sibling `DEVSYS/` repositories. Their `.agents/skills/` trees are a shared-toolchain family, not an ecosystem to mine.
+- **Rationale**: all eight siblings holding `.agents/skills/` were scanned -- 34 unique skill names, of which PolyOrch already had 8, and **every overlap was a drift-fork of one shared base rather than independent work**. Of the 26 candidates, four filters (the domain gate, the English-only rule C4, self-reference, and a qualitative fit review) left two arguably adoptable -- and both are artifacts whose canonical author is the **openspec CLI** (`author: openspec`). Vendoring a fork of a CLI-generated skill would create the two-sources-of-truth failure this project already records (D1, PIT-1).
+- **Alternatives rejected**: vendoring the cleanest available copies, for the reason above. **Not rejected but deferred**: `doc-audit`, `source-driven-development`, and `incremental-implementation` -- all three need a full English rewrite plus rebinding, and all three assume a source tree that does not exist yet.
+- **Finding worth keeping**: `doc-audit` is the highest-value sibling candidate. It audits a `docs/` + `.agents/` corpus for decision liveness, self-consistency and gap coverage -- precisely this project's shape. Revisit at P3.
+- **Scan shape, for a future re-run**: 26 candidates -> 23 free of the removed domain -> **5** that are also English-only and free of self-references. The extra filters are what make the number small; the first one alone over-reports by more than 4x (PIT-4).
+- **References**: `status.md` open items; `.agents/skills/ecosystem-scan/` (the scanning procedure)
+- **Revision (2026-09-20, same day)**: `doc-audit` was **ported** — the one deliberate exception. The source was the VisiaEngine copy, the clean twin of the same 214-line generation; the MediaServo copy carries `mediaservo` / `mediasoup` literals and cannot pass the domain gate. It was translated to English and rebound to this repository's documents and `C` / `D` / `PIT` numbering, so it is **re-authored, not copied**. The other two deferred candidates stay deferred.
