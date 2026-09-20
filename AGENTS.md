@@ -27,10 +27,10 @@ PolyOrch/
 │   ├── modules/   # internals reference
 │   └── reference/ # externally sourced profiles of 12 related projects
 ├── .agents/
-│   ├── memorys/   # status / conventions / decisions / pitfalls — loaded every turn
+│   ├── memorys/   # status / conventions / decisions / pitfalls (only status + conventions load every turn — see instructions[])
 │   ├── rules/     # common + 12 languages + web; ported, generic-only
 │   └── skills/    # 9 generic + 58 vendored xmake-*/xrepo-* (book-to-skill is vendored Python)
-├── .opencode/     # opencode config + 5 MCP launcher scripts (.mjs)
+├── .opencode/     # opencode config + 3 wrappers (.mjs: 2 MCP launchers, 1 LSP wrapper)
 ├── .omo/          # OMO agent config
 └── package.json   # single devDependency: @colbymchenry/codegraph
 ```
