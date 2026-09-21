@@ -19,6 +19,11 @@
 # polyorch_rust_set_features / set_env_vars / add_cargo_flags / add_rustflags
 # setters mutate them after polyorch_rust_build() took effect, keyed by the
 # declared TARGET name (set_ functions replace, add_ functions append).
+# polyorch_rust_import() batch-imports a whole cargo workspace from
+# `cargo metadata` (one build wrapper per importable target, plus the
+# IMPORTED_TARGETS registry). Naming: lib handles carry underscores, bin
+# handles the suffix "-exe", a staticlib+cdylib target the pair
+# "-static"/"-shared" -- rules + gen: citations in the import section below.
 #
 # All cargo invocations share one isolated target directory,
 # ${CMAKE_BINARY_DIR}/.cargo-target, so polyorch_rust_clean() is a plain
@@ -29,8 +34,8 @@
 # cache knobs are PolyOrch_RUST_*; public functions are polyorch_rust_*.
 #
 # Out of scope by design (add a `ponytail:` note at the seam when needed):
-# --target cross-compilation triples, workspace member discovery,
-# rust-version enforcement, cargo bench/fmt/clippy wrappers, and the
+# --target cross-compilation triples, rust-version enforcement, cargo
+# bench/fmt/clippy wrappers, and the
 # multi-config per-<CONFIG> artifact staging/copy strategy (multi-config
 # generators resolve to the debug profile today).
 #
@@ -829,6 +834,238 @@ function(polyorch_rust_build)
         set_target_properties("${B_TARGET}" "${_med}" "${B_TARGET}-cargo"
             PROPERTIES FOLDER "${B_FOLDER}")
     endif()
+endfunction()
+
+# ------------------------------------------------------------------ import ---
+
+# Internal: pure parser for `cargo metadata --format-version 1` JSON. Walks
+# packages[] x targets[] with string(JSON) (the reference walks the same
+# shape, gen:88-119) and emits one record per IMPORTABLE kind --
+#   <package>|<cmake_handle>|<cargo_selector>|<kind>   kind in {bin,static,shared}
+# -- ready for polyorch_rust_import to replay through polyorch_rust_build.
+# staticlib -> static, cdylib -> shared, bin -> bin; every other kind
+# (lib, rlib, proc-macro, custom-build, test, ...) yields nothing but a
+# STATUS line. A target carrying BOTH staticlib and cdylib emits the pair
+# "<h>-static" + "<h>-shared" (the reference registers one sub-target per
+# lib kind too, gen:136-190).
+#
+# Naming rules -- gen:137-142 is the dash->underscore rationale:
+#   * lib handles AND selectors: dashes replaced by underscores. Cargo names
+#     the lib ARTIFACT after the crate name: explicit lib targets never had
+#     dashes, and Rust >= 1.79 replaces inherited dashes too -- normalising
+#     the metadata target name gives one version-proof handle + artifact name.
+#     The raw metadata name is NEVER trusted for the crate identity (no
+#     crate_name dependency); the normalization from target.name IS the
+#     contract.
+#   * bin handle: "<target>-exe" UNCONDITIONALLY, selector = raw target name
+#     (cargo bin artifacts keep dashes). The suffix is not platform-
+#     conditional: a bin's artifact base equals its raw target name, so a bare
+#     handle would trip the PIT-13 collision guard in polyorch_rust_build on
+#     every unix host. Predictable beats clever.
+function(_polyorch_rust_metadata_targets JSON OUT_SPECS)
+    set(_specs "")
+    string(JSON _np LENGTH "${JSON}" "packages")
+    if(_np GREATER 0)
+        math(EXPR _plast "${_np} - 1")
+        foreach(_pi RANGE 0 ${_plast})
+            string(JSON _pkg GET "${JSON}" "packages" ${_pi})
+            string(JSON _pname GET "${_pkg}" "name")
+            string(JSON _tgts GET "${_pkg}" "targets")
+            string(JSON _nt LENGTH "${_tgts}")
+            if(_nt GREATER 0)
+                math(EXPR _tlast "${_nt} - 1")
+                foreach(_ti RANGE 0 ${_tlast})
+                    string(JSON _tgt GET "${_tgts}" ${_ti})
+                    string(JSON _tname GET "${_tgt}" "name")
+                    string(JSON _kinds GET "${_tgt}" "kind")
+                    string(JSON _nk LENGTH "${_kinds}")
+                    set(_static OFF)
+                    set(_shared OFF)
+                    set(_bin OFF)
+                    if(_nk GREATER 0)
+                        math(EXPR _klast "${_nk} - 1")
+                        foreach(_ki RANGE 0 ${_klast})
+                            string(JSON _k GET "${_kinds}" ${_ki})
+                            if(_k STREQUAL "staticlib")
+                                set(_static ON)
+                            elseif(_k STREQUAL "cdylib")
+                                set(_shared ON)
+                            elseif(_k STREQUAL "bin")
+                                set(_bin ON)
+                            endif()
+                        endforeach()
+                    endif()
+                    set(_emitted OFF)
+                    if(_bin)
+                        list(APPEND _specs "${_pname}|${_tname}-exe|${_tname}|bin")
+                        set(_emitted ON)
+                    endif()
+                    if(_static OR _shared)
+                        string(REPLACE "-" "_" _lib "${_tname}")
+                        if(_static AND _shared)
+                            list(APPEND _specs "${_pname}|${_lib}-static|${_lib}|static")
+                            list(APPEND _specs "${_pname}|${_lib}-shared|${_lib}|shared")
+                        elseif(_static)
+                            list(APPEND _specs "${_pname}|${_lib}|${_lib}|static")
+                        else()
+                            list(APPEND _specs "${_pname}|${_lib}|${_lib}|shared")
+                        endif()
+                        set(_emitted ON)
+                    endif()
+                    if(NOT _emitted)
+                        message(STATUS
+                            "polyorch_rust_import: skipping target '${_tname}' of package "
+                            "'${_pname}' (kind ${_kinds} carries no importable artifact)")
+                    endif()
+                endforeach()
+            endif()
+        endforeach()
+    endif()
+    set(${OUT_SPECS} "${_specs}" PARENT_SCOPE)
+endfunction()
+
+# polyorch_rust_import(MANIFEST <path> [CRATES a;b] [LOCKED|FROZEN]
+#                      [FOLDER <ide>] IMPORTED_TARGETS <var>
+#                      [SKIPPED_TARGETS <var>])
+# Batch-import every importable target of a cargo workspace (or single
+# package): runs `cargo metadata --no-deps --format-version 1` through the
+# same isolation wrapper as every build (call shape gen:27-45;
+# WORKING_DIRECTORY is the manifest's dir so cargo's upward .cargo/config
+# walk applies, gen:39-42), parses the JSON with
+# _polyorch_rust_metadata_targets and replays each record through
+# polyorch_rust_build -- build stays the single registration point; import is
+# sugar plus an exact registry. The cargo rc != 0 case FATALs with the last
+# lines of cargo's stderr.
+#   IMPORTED_TARGETS <var>  receives the SORTED list of created handles.
+#   SKIPPED_TARGETS <var>   receives the sorted handles skipped for name
+#                           collision (optional keyword).
+#   CRATES <a;b>            restricts the import to these cargo PACKAGE names;
+#                           an entry matching no package FATALs naming the
+#                           available packages (measured from this same
+#                           metadata, no second cargo call).
+#   LOCKED / FROZEN         ride both the metadata call and every build rule.
+# A handle colliding with an existing CMake target warns and skips
+# (gen:121-133 precedent) instead of hard-failing the configure. Each created
+# handle carries POLYORCH_RUST_PACKAGE = its cargo package name (gen:190).
+function(polyorch_rust_import)
+    set(_opts LOCKED FROZEN)
+    set(_one MANIFEST FOLDER IMPORTED_TARGETS SKIPPED_TARGETS)
+    set(_multi CRATES)
+    cmake_parse_arguments(PARSE_ARGV 0 A "${_opts}" "${_one}" "${_multi}")
+    if(A_UNPARSED_ARGUMENTS)
+        message(FATAL_ERROR "polyorch_rust_import: unknown args: ${A_UNPARSED_ARGUMENTS}")
+    endif()
+    _polyorch_rust_must(A_MANIFEST A_IMPORTED_TARGETS)
+    if(A_LOCKED AND A_FROZEN)
+        message(FATAL_ERROR
+            "polyorch_rust_import: LOCKED and FROZEN are mutually exclusive")
+    endif()
+    _polyorch_rust_require_setup(polyorch_rust_import)
+
+    set(_lock "")
+    if(A_LOCKED)
+        set(_lock --locked)
+    elseif(A_FROZEN)
+        set(_lock --frozen)
+    endif()
+    _polyorch_rust_command(_cmd SUBCOMMAND
+        metadata --no-deps --format-version 1
+        --manifest-path "${A_MANIFEST}" ${_lock})
+    get_filename_component(_mdir "${A_MANIFEST}" DIRECTORY)
+    execute_process(COMMAND ${_cmd} WORKING_DIRECTORY "${_mdir}"
+        RESULT_VARIABLE _rc OUTPUT_VARIABLE _out ERROR_VARIABLE _err)
+    if(NOT _rc EQUAL 0)
+        string(REPLACE "\n" ";" _elines "${_err}")
+        list(LENGTH _elines _en)
+        if(_en GREATER 5)
+            math(EXPR _estart "${_en} - 5")
+            list(SUBLIST _elines ${_estart} 5 _elines)
+        endif()
+        string(JOIN "\n" _etail ${_elines})
+        message(FATAL_ERROR
+            "polyorch_rust_import: cargo metadata failed (rc=${_rc}) for "
+            "'${A_MANIFEST}':\n${_etail}")
+    endif()
+
+    # CRATES entries are cargo PACKAGE names; availability is checked against
+    # this same metadata document (one parse, no second cargo invocation).
+    if(A_CRATES)
+        string(JSON _np LENGTH "${_out}" "packages")
+        set(_avail "")
+        if(_np GREATER 0)
+            math(EXPR _plast "${_np} - 1")
+            foreach(_pi RANGE 0 ${_plast})
+                string(JSON _pn GET "${_out}" "packages" ${_pi} "name")
+                list(APPEND _avail "${_pn}")
+            endforeach()
+        endif()
+        list(SORT _avail)
+        foreach(_c IN LISTS A_CRATES)
+            if(NOT _c IN_LIST _avail)
+                string(REPLACE ";" ", " _avail_s "${_avail}")
+                message(FATAL_ERROR
+                    "polyorch_rust_import: no package '${_c}' in the cargo metadata "
+                    "(available: ${_avail_s})")
+            endif()
+        endforeach()
+    endif()
+
+    _polyorch_rust_metadata_targets("${_out}" _specs)
+
+    set(_lockb "")
+    if(A_LOCKED)
+        set(_lockb LOCKED)
+    elseif(A_FROZEN)
+        set(_lockb FROZEN)
+    endif()
+    set(_foldkw "")
+    if(A_FOLDER)
+        set(_foldkw FOLDER "${A_FOLDER}")
+    endif()
+
+    set(_imps "")
+    set(_skips "")
+    foreach(_spec IN LISTS _specs)
+        string(REPLACE "|" ";" _rec "${_spec}")
+        list(GET _rec 0 _pkg)
+        list(GET _rec 1 _handle)
+        list(GET _rec 2 _crate)
+        list(GET _rec 3 _kind)
+        if(A_CRATES AND NOT _pkg IN_LIST A_CRATES)
+            continue()
+        endif()
+        if(TARGET "${_handle}")
+            message(WARNING
+                "polyorch_rust_import: target '${_handle}' already exists -- skipping "
+                "this cargo target (rename it in Cargo.toml or narrow CRATES)")
+            list(APPEND _skips "${_handle}")
+            continue()
+        endif()
+        set(_kws "")
+        if(_kind STREQUAL "bin")
+            set(_kws BINARY)
+        elseif(_kind STREQUAL "static")
+            set(_kws STATIC)
+        else()
+            set(_kws SHARED)
+        endif()
+        polyorch_rust_build(TARGET "${_handle}" PACKAGE "${_pkg}" CRATE "${_crate}"
+            ${_kws} MANIFEST "${A_MANIFEST}" ${_lockb} ${_foldkw})
+        # Registry marker on the consumer-facing handle (gen:190 precedent);
+        # the mediator already carries POLYORCH_RUST_PACKAGE from the build.
+        set_property(TARGET "${_handle}" PROPERTY POLYORCH_RUST_PACKAGE "${_pkg}")
+        list(APPEND _imps "${_handle}")
+    endforeach()
+    list(SORT _imps)
+    list(SORT _skips)
+    set(${A_IMPORTED_TARGETS} "${_imps}" PARENT_SCOPE)
+    if(A_SKIPPED_TARGETS)
+        set(${A_SKIPPED_TARGETS} "${_skips}" PARENT_SCOPE)
+    endif()
+    list(LENGTH _imps _ni)
+    list(LENGTH _skips _ns)
+    message(STATUS
+        "polyorch_rust_import: ${_ni} target(s) imported [${_imps}] (${_ns} skipped)")
 endfunction()
 
 # ---------------------------------------------------------------- setters ---
