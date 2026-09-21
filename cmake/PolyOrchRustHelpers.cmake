@@ -162,9 +162,180 @@ function(_polyorch_rust_artifact_names)
     endif()
 endfunction()
 
+# Internal: parse a `rustc --print=native-static-libs` transcript into the two
+# link-interface lists a C consumer needs. Pure: TEXT in (the combined stdout
+# + stderr of the probe), OUT_LIBS / OUT_DIRS out; it NEVER raises FATAL -- text
+# without the marker simply yields empty lists.
+#
+# Mechanism ported from the reference's battle-tested probe parser
+# (find:166-205): locate the `native-static-libs:` marker line, split it on
+# whitespace, and normalise each token --
+#   -l<name> / -l=<name>          -> bare <name> (CMake re-adds the -l)
+#   <name>.lib (msvc)             -> suffix stripped
+#   msvcrt / msvcrtd              -> dropped (the C runtime is the consumer's
+#                                    choice; matches the reference filter)
+#   -framework <Name>             -> merged into one '-framework <Name>' item
+#                                    (kept for future darwin; NOT exercised on
+#                                    this linux host -- no over-claim)
+#   -L<dir> / -L <dir> / -L native=<dir> -> collected into OUT_DIRS
+# Every other token (a raw linker flag, /defaultlib:, ...) is ignored: v0 only
+# propagates plain system libs and search dirs. Both lists keep first-occurrence
+# order and are de-duplicated.
+function(_polyorch_rust_parse_native_libs TEXT OUT_LIBS OUT_DIRS)
+    set(_libs "")
+    set(_dirs "")
+    set(_marker "")
+    # CMake regex has no \r \n escapes and `foreach IN LISTS` splits on ';' not
+    # newlines, so normalise line breaks to ';' and scan line by line with a
+    # substring-anchored capture of everything after the marker (the whole
+    # transcript carries cargo noise lines around it).
+    string(REPLACE "\r" "" _txt "${TEXT}")
+    string(REPLACE "\n" ";" _lines "${_txt}")
+    foreach(_line IN LISTS _lines)
+        if(_line MATCHES "native-static-libs:[ \t]*(.*)$")
+            set(_marker "${CMAKE_MATCH_1}")
+            break()
+        endif()
+    endforeach()
+    if(_marker STREQUAL "")
+        set(${OUT_LIBS} "" PARENT_SCOPE)
+        set(${OUT_DIRS} "" PARENT_SCOPE)
+        return()
+    endif()
+    string(REGEX REPLACE "[ \t]+" ";" _toks "${_marker}")
+    set(_was_framework OFF)
+    set(_want_dir OFF)
+    foreach(_tok IN LISTS _toks)
+        if(_tok STREQUAL "")
+            continue()
+        endif()
+        if(_want_dir)
+            set(_d "${_tok}")
+            if(_d MATCHES "^native=(.*)$")
+                set(_d "${CMAKE_MATCH_1}")
+            endif()
+            list(APPEND _dirs "${_d}")
+            set(_want_dir OFF)
+            continue()
+        endif()
+        if(_was_framework)
+            list(APPEND _libs "-framework ${_tok}")
+            set(_was_framework OFF)
+            continue()
+        endif()
+        if(_tok STREQUAL "-framework")
+            set(_was_framework ON)
+            continue()
+        endif()
+        if(_tok STREQUAL "-L")
+            set(_want_dir ON)
+            continue()
+        endif()
+        if(_tok MATCHES "^-l=?(.+)$")
+            set(_lib "${CMAKE_MATCH_1}")
+            string(REGEX REPLACE "\\.lib$" "" _lib "${_lib}")
+            if(NOT _lib MATCHES "^msvcrtd?$")
+                list(APPEND _libs "${_lib}")
+            endif()
+            continue()
+        endif()
+        # Windows rustc emits bare '<name>.lib' (no -l): strip the suffix.
+        if(_tok MATCHES "^(.+)\\.lib$")
+            set(_lib "${CMAKE_MATCH_1}")
+            if(NOT _lib MATCHES "^msvcrtd?$")
+                list(APPEND _libs "${_lib}")
+            endif()
+            continue()
+        endif()
+        if(_tok MATCHES "^-L(.+)$")
+            set(_d "${CMAKE_MATCH_1}")
+            if(_d MATCHES "^native=(.*)$")
+                set(_d "${CMAKE_MATCH_1}")
+            endif()
+            list(APPEND _dirs "${_d}")
+            continue()
+        endif()
+    endforeach()
+    list(REMOVE_DUPLICATES _libs)
+    if(_dirs)
+        list(REMOVE_DUPLICATES _dirs)
+    endif()
+    set(${OUT_LIBS} "${_libs}" PARENT_SCOPE)
+    set(${OUT_DIRS} "${_dirs}" PARENT_SCOPE)
+endfunction()
+
+# Internal: one-shot probe of the system libraries a Rust staticlib needs when
+# it is finally linked into a C host. Builds a throwaway zero-dependency
+# staticlib in a scratch build-tree directory and asks rustc which native libs
+# it pulls -- the same probe the reference ships (find:141-159). The answer is
+# a property of the toolchain + target triple, not the crate, so setup runs it
+# ONCE and every STATIC import shares the cached result.
+#
+# Failure is a WARNING with an empty result, never a FATAL (R-7): a host with
+# no working cc, a no_std-only toolchain, or an exotic triple must not break
+# the configure. polyorch_rust_setup(NO_NATIVE_PROBE) skips it entirely.
+#
+# ponytail(per-crate): the std native-static-libs set is identical for any
+# crate compiled against std, so a global probe covers the common case. A crate
+# whose build script links extra native libs (ring / openssl-sys style) is NOT
+# captured here -- the seam is a per-target re-probe, deferred until one is
+# actually needed.
+function(_polyorch_rust_probe_native_libs)
+    # Script mode (`cmake -P`) has no build tree: there CMAKE_BINARY_DIR is the
+    # CURRENT WORKING DIRECTORY (measured on 4.4.3), so scratching the probe crate
+    # there would litter the source tree. The reliable script-mode signal is
+    # CMAKE_SCRIPT_MODE_FILE (the same one _polyorch_pixi_scratch keys on). A
+    # script-mode configure never links artifacts, so an empty interface is correct.
+    if(CMAKE_SCRIPT_MODE_FILE)
+        set(POLYORCH_RUST_NATIVE_LIBS "" CACHE INTERNAL "PolyOrch rust staticlib link libs (probe)")
+        set(POLYORCH_RUST_NATIVE_LIB_DIRS "" CACHE INTERNAL "PolyOrch rust staticlib link dirs (probe)")
+        return()
+    endif()
+    set(_dir "${CMAKE_BINARY_DIR}/.polyorch-rust-probe")
+    file(REMOVE_RECURSE "${_dir}")
+    file(MAKE_DIRECTORY "${_dir}/src")
+    file(WRITE "${_dir}/Cargo.toml" [==[
+[package]
+name = "polyorch_native_probe"
+version = "0.0.0"
+edition = "2021"
+
+[workspace]
+
+[lib]
+crate-type = ["staticlib"]
+path = "src/lib.rs"
+]==])
+    file(WRITE "${_dir}/src/lib.rs" [==[
+pub fn add(left: usize, right: usize) -> usize { left + right }
+]==])
+    # --print=native-static-libs stops after codegen (no link, so no cc needed
+    # for the probe itself); --target pins the host triple so the reported set
+    # matches the artifacts polyorch_rust_build names. The wrapper sheds the
+    # inherited compiler env exactly like every other cargo call.
+    _polyorch_rust_command(_cmd SUBCOMMAND
+        rustc --lib --color never --target "${POLYORCH_RUST_HOST_TARGET}"
+        -- --print=native-static-libs)
+    execute_process(COMMAND ${_cmd} WORKING_DIRECTORY "${_dir}"
+        RESULT_VARIABLE _rc OUTPUT_VARIABLE _out ERROR_VARIABLE _err)
+    if(NOT _rc EQUAL 0)
+        message(WARNING
+            "polyorch_rust: native-static-libs probe failed (cargo rustc rc=${_rc}); "
+            "STATIC imports get no system-lib link interface. Re-run with "
+            "polyorch_rust_setup(NO_NATIVE_PROBE) to silence this warning.")
+        set(POLYORCH_RUST_NATIVE_LIBS "" CACHE INTERNAL "PolyOrch rust staticlib link libs (probe)")
+        set(POLYORCH_RUST_NATIVE_LIB_DIRS "" CACHE INTERNAL "PolyOrch rust staticlib link dirs (probe)")
+        return()
+    endif()
+    _polyorch_rust_parse_native_libs("${_out}${_err}" _libs _dirs)
+    set(POLYORCH_RUST_NATIVE_LIBS "${_libs}" CACHE INTERNAL "PolyOrch rust staticlib link libs (probe)")
+    set(POLYORCH_RUST_NATIVE_LIB_DIRS "${_dirs}" CACHE INTERNAL "PolyOrch rust staticlib link dirs (probe)")
+    message(STATUS "polyorch_rust: staticlib native libs [${_libs}] (dirs [${_dirs}])")
+endfunction()
+
 # ------------------------------------------------------------------- setup ---
 
-# polyorch_rust_setup([FROM <system|pixi>] [REQUIRED])
+# polyorch_rust_setup([FROM <system|pixi>] [REQUIRED] [NO_NATIVE_PROBE])
 # Locate cargo + rustc and record the result in the POLYORCH_RUST_* variables:
 #   POLYORCH_RUST_FOUND        TRUE/FALSE
 #   POLYORCH_RUST_CARGO        absolute path to cargo
@@ -176,13 +347,20 @@ endfunction()
 #   POLYORCH_RUST_HOST_TARGET  `rustc -vV` host triple (artifact naming key)
 #   POLYORCH_RUST_ROUTE        system | pixi (drives the PATH wrapper)
 #   POLYORCH_RUST_BIN_DIR      directory holding the cargo binary
+# When the toolchain is found, setup also runs a one-shot native-static-libs
+# probe (a throwaway staticlib + `rustc --print=native-static-libs`) that fills
+#   POLYORCH_RUST_NATIVE_LIBS  system libs a Rust staticlib needs at final link
+#   POLYORCH_RUST_NATIVE_LIB_DIRS  -L search dirs from the same probe
+# which polyorch_rust_build(STATIC) attaches as the import's link interface. The
+# probe is a WARNING with empty lists on failure (never a FATAL); skip it with
+# NO_NATIVE_PROBE.
 # FROM defaults to the PolyOrch_RUST_FROM cache value, then to "system".
 # A miss without REQUIRED sets FOUND=FALSE and reports by STATUS only;
 # with REQUIRED it fails with the fix for that route. The pixi route first
 # requires the pixi side to be set up -- its error message names
 # polyorch_pixi_setup() (raised inside polyorch_pixi_env_paths()).
 function(polyorch_rust_setup)
-    set(_opts REQUIRED)
+    set(_opts REQUIRED NO_NATIVE_PROBE)
     set(_one FROM)
     cmake_parse_arguments(PARSE_ARGV 0 S "${_opts}" "${_one}" "")
     if(S_UNPARSED_ARGUMENTS)
@@ -277,6 +455,11 @@ function(polyorch_rust_setup)
                POLYORCH_RUST_ROUTE POLYORCH_RUST_BIN_DIR)
         unset(${_v} CACHE)
     endforeach()
+    # Probe results are cleared here so a configure that never reaches the probe
+    # (opt-out, or a miss after a hit) can never leave a stale list behind for
+    # polyorch_rust_build to attach.
+    unset(POLYORCH_RUST_NATIVE_LIBS CACHE)
+    unset(POLYORCH_RUST_NATIVE_LIB_DIRS CACHE)
     set(POLYORCH_RUST_FOUND ${_found} CACHE INTERNAL "PolyOrch rust toolchain (polyorch_rust_setup)")
     if(_found)
         get_filename_component(_bindir "${_cargo}" DIRECTORY)
@@ -288,6 +471,11 @@ function(polyorch_rust_setup)
         set(POLYORCH_RUST_ROUTE "${_from}" CACHE INTERNAL "PolyOrch rust toolchain (polyorch_rust_setup)")
         set(POLYORCH_RUST_BIN_DIR "${_bindir}" CACHE INTERNAL "PolyOrch rust toolchain (polyorch_rust_setup)")
         message(STATUS "polyorch_rust: cargo ${_version} (host ${_host}, from ${_from})")
+        if(S_NO_NATIVE_PROBE)
+            message(STATUS "polyorch_rust: native-static-libs probe skipped (NO_NATIVE_PROBE)")
+        else()
+            _polyorch_rust_probe_native_libs()
+        endif()
     else()
         if(S_REQUIRED)
             message(FATAL_ERROR
@@ -605,6 +793,23 @@ function(polyorch_rust_build)
     set_target_properties("${B_TARGET}" PROPERTIES IMPORTED_LOCATION "${_artifact}")
     if(_implib)
         set_target_properties("${B_TARGET}" PROPERTIES IMPORTED_IMPLIB "${_implib_path}")
+    endif()
+    # System libraries a Rust staticlib needs at final link, from the setup-time
+    # native-static-libs probe (_polyorch_rust_probe_native_libs). STATIC only:
+    # a shared cdylib has already resolved these against its own link, and a
+    # binary links them directly -- neither needs an interface. When the probe
+    # produced nothing (opt-out, no cc, no_std) the properties stay UNSET and a
+    # C consumer must supply its own system libs; pure-Rust consumers are
+    # unaffected because they never re-enter the system linker.
+    if(_kind STREQUAL "static")
+        if(POLYORCH_RUST_NATIVE_LIBS)
+            set_target_properties("${B_TARGET}" PROPERTIES
+                INTERFACE_LINK_LIBRARIES "${POLYORCH_RUST_NATIVE_LIBS}")
+        endif()
+        if(POLYORCH_RUST_NATIVE_LIB_DIRS)
+            set_target_properties("${B_TARGET}" PROPERTIES
+                INTERFACE_LINK_DIRECTORIES "${POLYORCH_RUST_NATIVE_LIB_DIRS}")
+        endif()
     endif()
     # Auto-build edge: a dependency added to an IMPORTED target propagates
     # to every target that links it (Makefile2 gains the mediator as a
