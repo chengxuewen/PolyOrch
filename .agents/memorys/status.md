@@ -47,7 +47,7 @@
 | vendored Xmake skills unmodified | see `conventions.md` C5 | pass (2026-09-20) |
 | design-doc separation (no cross-naming) | see `conventions.md` C6 | pass (2026-09-20) |
 | cmake unit suite | `bash tests/run.sh` | pass 13/13 offline; 14/14 with `POLYORCH_TEST_E2E=1` (2026-09-21) |
-| CTest registration | `cmake -B <b> -DPolyOrch_BUILD_TESTS=ON && ctest --test-dir <b>` | pass 13/13 (2026-09-21); **currently blocked** by an in-flight external root-CMakeLists refactor (undefined `polyorch_option`) -- re-run after it lands |
+| CTest registration | `cmake -B <b> -DPolyOrch_BUILD_TESTS=ON && ctest --test-dir <b>` | pass 13/13 (2026-09-21); **blocked standalone** -- root configure FATALs at PlatformSupport mkspec detection without host context (c79c4bf known state) -- re-run under the host or after mkspec fallback lands |
 | rust offline suite | `bash tests/run.sh` | pass 21/21 + 2 skip (2026-09-21) |
 | rust e2e (real cargo via pixi) | `POLYORCH_TEST_E2E=1 bash tests/run.sh` | pass 23/23, 4.5MB ELF artifact built+verified (2026-09-21) |
 | rust-basic umbrella chain | `cmake --build <host> --target PolyOrchExampleRustBasic` | configure(bootstrap env) -> greet-cargo -> run-greet prints `hello, world!` (2026-09-21, clean shell; see PIT-14) |
