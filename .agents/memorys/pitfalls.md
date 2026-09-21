@@ -126,3 +126,35 @@
 - **Solution**: run example chains from a normal shell, or add the planned per-crate env/rustflags control hooks (status.md Open Items, corrosion `set_env_vars` equivalent) before embedding under hostile hosts.
 - **Verification**: clean-shell umbrella run green; a "fails under my terminal, passes under CI" report on rust cases should check `env | grep -E 'RUSTFLAGS|CFLAGS|CC='` first.
 - **Forbidden**: treating env-leak failures as module bugs; also blanket-stripping CFLAGS inside the wrapper without an explicit opt (breaks legitimate cross toolchains).
+
+## PIT-15: add_custom_target(x ALIAS y) configures clean but generates a literal ALIAS command (2026-09-21)
+
+- **Symptom**: cmake 4.4.3 accepted the ALIAS signature at configure (rc=0) yet `make` failed at generate/build time with the localized 'ALIAS: command not found'.
+- **Root cause**: ALIAS is only supported for non-custom target kinds; the Makefile generator silently treats `ALIAS` as the command word.
+- **Solution**: DEPENDS-shim target (`add_custom_target(x DEPENDS y)`); used for the `<T>-cargo` back-compat name.
+- **Verification**: never ALIAS a custom target; suite green with shim; `grep -n 'ALIAS' cmake/*.cmake` stays empty by convention.
+- **Forbidden**: trusting configure-success as proof a generator expression/target form works -- build the target once.
+
+## PIT-16: cmake 4.4.3 expression traps: space-delimited $<JOIN> leaks, no JSON GET_PATH, RANGE(neg) iterates (2026-09-21)
+
+- **Symptom**: (a) `$<JOIN:list, >` (space sep) emitted the raw genex into build.make where ` ` became a stray `>` redirection; (b) `string(JSON GET_PATH ...)` errors as unknown mode; (c) `foreach(... RANGE -1)` loops garbage instead of zero times.
+- **Root cause**: unsupported/undocumented forms accepted at parse time; RANGE bounds are not length-minus-one guarded.
+- **Solution**: RUSTFLAGS consumed as a space-JOINED STRING property (setters join in cmake, not genex); JSON walked with nested `GET` + `LENGTH`; every `RANGE len-1` guarded by `if(len GREATER 0)`.
+- **Verification**: parse unit rows + generated-rule `cat -A` assertions in t-rust-* lock all three behaviors.
+- **Forbidden**: space-delimited `$<JOIN>` anywhere; unguarded RANGE over JSON lengths.
+
+## PIT-17: CMAKE_BINARY_DIR is the cwd under cmake -P -- configure-time writers pollute the source tree (2026-09-21)
+
+- **Symptom**: the native-libs probe (fires in configure mode) wrote `.polyorch-rust-probe/` into `tests/` during `cmake -P` test runs -- guard passed because "CMAKE_BINARY_DIR empty in script mode" was assumed; measured: it equals the cwd there (PIT-8's exact trap, third instance).
+- **Root cause**: script mode defines CMAKE_BINARY_DIR (= cwd), so emptiness checks never fire.
+- **Solution**: gate configure-time side effects on `CMAKE_SCRIPT_MODE_FILE` (same signal `_polyorch_pixi_scratch` uses).
+- **Verification**: `git status --short` / stray-dir sweep after full suite; zero untracked dirs under tests/ or examples/.
+- **Forbidden**: any `if(NOT CMAKE_BINARY_DIR)`-style "are we in script mode" test.
+
+## PIT-18: a negative test that the compiler can optimize away is a false green (2026-09-21)
+
+- **Symptom**: the install-stub negative (strip native-lib interface => link must fail) passed the build with the probe symbols gone -- a constant-folded `pow(2.0, 8.0)` call was optimized into a literal, so `-lm` was never actually needed on glibc 2.31.
+- **Root cause**: asserting necessity with a statically-foldable expression; the toolchain removes the dependency the test claims to prove.
+- **Solution**: the crate takes the base as a function argument (`extern C fn take(base) -> pow(base, 2.0)` style) so the symbol survives into the link line; negative leg then fails exactly with `undefined reference to pow`.
+- **Verification**: negative control must fail with the SPECIFIC symbol message, not just nonzero rc.
+- **Forbidden**: constant expressions as proof of link necessity.

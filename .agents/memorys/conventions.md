@@ -169,6 +169,10 @@ design record.
 
 ```bash
 # The pattern is bracketed so this file does not self-match (PIT-1).
+# Scope = version-controlled formal documents ONLY. Never widen the scan to /tmp
+# scratch, build trees, or git-ignored local corpora (.refinfo/ analysis checkouts,
+# installed .pixi stores): absolute paths there legitimately embed the host name,
+# and probing them from inside the repo produced three false FAILs on 2026-09-21.
 if grep -rilE '[Vv]isia[E]ngine' docs/ .agents/ AGENTS.md README.md README_zh.md SKILL.md; then
   echo "FAIL: cross-project name leaked into a formal document"; exit 1
 else echo "PASS"; fi

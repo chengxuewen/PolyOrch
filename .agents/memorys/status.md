@@ -28,7 +28,7 @@
 |---|---|
 | `cmake/PolyOrchPixiHelpers.cmake` | single pixi module (~1500 lines, D12): find / tool_ensure / tool_install / install / env_target / env_paths / activate_script / scripts_install / setup / report / bootstrap + manifest-mutating actions |
 | `cmake/PolyOrchOptionHelpers.cmake` | `polyorch_option` + expression helpers |
-| `cmake/PolyOrchRustHelpers.cmake` | rust module (D13): setup(FROM system\|pixi) / build / test / run / clean, triple-family artifact naming, isolated cargo target dir, FOLDER on all four, TARGET-vs-artifact-name guard (PIT-13) |
+| `cmake/PolyOrchRustHelpers.cmake` | rust module (D13+D14, ~1490 lines): setup(+native-libs probe) / build / import(metadata) / set_features / set_env_vars / add_cargo_flags / add_rustflags / test / run / clean / install(+export stub), generate-time property carrier on the `cargo-build-<T>` mediator, triple-family naming, FOLDER, collision guard (PIT-13) |
 | `scripts/` | activation trio `pixi.sh` / `pixi.bat` / `pixi.ps1`; installed beside `.pixi/` via `COPY_SCRIPTS` |
 | `examples/` | pixi-bootstrap (`cmake -P`), pixi-configure, pixi-workspace; each also a `PolyOrchExample*` target |
 | `tests/` | `run.sh` driver + CTest registration; 14 `cmake -P` cases (markers shared) |
@@ -38,7 +38,7 @@
 | Check | Command | Result |
 |---|---|---|
 | opencode config parses | `python3 -m json.tool .opencode/opencode.json > /dev/null` | pass (2026-09-18) |
-| no domain leakage into toolchain | `grep -rliE -e mediaservo -e mediasoup -e webrtc -e 'sfu-' -e msrtc .agents/rules .agents/skills .opencode .omo .gitignore` | empty (2026-09-20; scope now includes the 58 vendored skills) |
+| no domain leakage into toolchain | `grep -rliE ... .agents/rules .agents/skills .opencode .gitignore` (drop `.omo` -- it is the git-excluded Chinese plan zone; a 2026-09-20 verdict doc legitimately mentions the old domain there) | empty on the committed surface (2026-09-21) |
 | brand / naming layering | see `conventions.md` C1 | pass (2026-09-18) |
 | canonical taglines byte-exact | see `conventions.md` C2 | pass (2026-09-18) |
 | docs cross-links resolve | see `conventions.md` C3 | pass (2026-09-18) |
@@ -49,7 +49,8 @@
 | cmake unit suite | `bash tests/run.sh` | pass 13/13 offline; 14/14 with `POLYORCH_TEST_E2E=1` (2026-09-21) |
 | CTest registration | `cmake -B <b> -DPolyOrch_BUILD_TESTS=ON && ctest --test-dir <b>` | pass 13/13 (2026-09-21); **blocked standalone** -- root configure FATALs at PlatformSupport mkspec detection without host context (c79c4bf known state) -- re-run under the host or after mkspec fallback lands |
 | rust offline suite | `bash tests/run.sh` | pass 21/21 + 2 skip (2026-09-21) |
-| rust e2e (real cargo via pixi) | `POLYORCH_TEST_E2E=1 bash tests/run.sh` | pass 23/23, 4.5MB ELF artifact built+verified (2026-09-21) |
+| rust e2e (real cargo via pixi) | `POLYORCH_TEST_E2E=1 bash tests/run.sh` | pass 37/37 incl. link-c + install-e2e + import-ws (2026-09-21) |
+| generator matrix | `bash tests/matrix.sh` | 4/4 cells {Makefiles,Ninja}x{Debug,Release}, right-reason greps (2026-09-21) |
 | rust-basic umbrella chain | `cmake --build <host> --target PolyOrchExampleRustBasic` | configure(bootstrap env) -> greet-cargo -> run-greet prints `hello, world!` (2026-09-21, clean shell; see PIT-14) |
 
 ## Open Items
@@ -70,7 +71,8 @@
 - [x] Source surface landed: single pixi CMake module + scripts + tests + examples (D12)
 - [ ] Resolve the D3 vs reality gap: the in-tree surface is CMake; D3 records the implementation as Lua-in-an-Xmake-addon -- amend the decision or fold the CMake modules into the addon plan (doc-audit question)
 - [x] Rust helpers landed: dual-route toolchain + build/test/run/clean wrappers (D13); example `rust-basic` lands with the squad's commits; cross-`--target` routing deliberately out of v0 scope
-- [ ] **Corrosion capability-gap backlog** (measured against the reference's current code, 2026-09-21): P0 profile<->CMAKE_BUILD_TYPE genex mapping -- `Release` currently still builds cargo `debug` artifacts silently; P0 cross-`--target` routing (deferred by D13; the triple-family naming table is the reserved seam); P1 `NO_DEFAULT_FEATURES`/`ALL_FEATURES` + per-crate RUSTFLAGS/env pass-through hooks (the `-mcet` host-leak of PIT-14 wants this explicit outlet); P1 multi-crate batch import via `cargo metadata`; P2 `polyorch_rust_install()` export rules; P2 Windows cdylib runtime-dll staging next to consumer exes; small: cargo/rustc minimum-version check, package-version exposure. Ahead of the reference: pixi environment routing, IDE FOLDER grouping, configure-time name-collision guard
+- [x] **Corrosion gap backlog CLOSED via D14 execution** (`602273f..7ac0c71`): profile<->CMAKE_BUILD_TYPE, ALL/NO_DEFAULT features + RUSTFLAGS/env/cargo-flags setters, --unset host-leak isolation, native-static-libs link interface (+ C-consumer proof), metadata batch import, install+export stubs, PREBUILD seam, three-tier testing (identity pins, rule-wiring, matrix).
+- [ ] **Rust deferred register** (post-D14, explicit non-gaps): cross-`--target` routing + hostbuild (naming table is the seam); multi-config output staging / `IMPORTED_LOCATION_<CFG>` cluster; macOS install_name rewrites at install; local (crate-scoped, `cargo rustc`) rustflags; INHERITABLE feature propagation; cargo/rustc minimum-version ENFORCEMENT (vars exposed, no gate yet); package-version exposure as a variable; per-crate native-libs variance; ctest-vs-run.sh SKIP asymmetry (G2 finding, drivers left as-is).
 - [ ] Gate runner in `scripts/` (canonical C1-C6 + suite one-shot)
 - [ ] Root README/AGENTS still describe the repo as having no source code -- stale against `cmake/`/`scripts/`/`tests/`/`examples/`
 

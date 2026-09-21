@@ -97,7 +97,9 @@ grep -qF 'A scalable build orchestrator for polyglot monorepos.' docs/whitepaper
 python3 -c "import re,pathlib,sys;bad=[f'{m}:{l}' for m in pathlib.Path('docs').glob('*.md') for l in re.findall(r'\]\((\./[^)]+\.md)\)',m.read_text()) if not (m.parent/l).resolve().exists()];print(bad or 'none');sys.exit(1 if bad else 0)"
 
 # no domain leakage into the toolchain
-grep -rliE -e mediaservo -e mediasoup -e webrtc -e 'sfu-' -e msrtc .agents/rules .agents/skills .opencode .omo .gitignore
+# (.omo excluded: git-excluded Chinese plan zone; a verdict doc there may name the
+# historical domain. Committed-surface scans below are the binding ones.)
+grep -rliE -e mediaservo -e mediasoup -e webrtc -e 'sfu-' -e msrtc .agents/rules .agents/skills .opencode .gitignore
 
 # English-only artifacts (the canonical Chinese brand string is the sole exception)
 python3 -c "import re,pathlib,sys;C=re.compile(r'[\u4e00-\u9fff]');A='面向多语言 monorepo 的可扩展构建编排器。';bad=[f'{p}:{i}' for p in list(pathlib.Path('docs').rglob('*'))+list(pathlib.Path('.agents').rglob('*'))+[pathlib.Path('AGENTS.md')] if p.is_file() and p.suffix in {'.md','.json','.jsonc'} for i,l in enumerate(p.read_text(errors='ignore').splitlines(),1) if C.search(l) and A not in l];print(bad or 'none');sys.exit(1 if bad else 0)"
