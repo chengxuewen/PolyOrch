@@ -15,7 +15,10 @@
 # makes every consumer order the mediator before linking.
 # The legacy <TARGET>-cargo name survives as a compatibility shim target.
 # Build inputs (profile, features, flags, env) live in POLYORCH_RUST_*
-# properties of the mediator and expand in the rule at generate time.
+# properties of the mediator and expand in the rule at generate time; the
+# polyorch_rust_set_features / set_env_vars / add_cargo_flags / add_rustflags
+# setters mutate them after polyorch_rust_build() took effect, keyed by the
+# declared TARGET name (set_ functions replace, add_ functions append).
 #
 # All cargo invocations share one isolated target directory,
 # ${CMAKE_BINARY_DIR}/.cargo-target, so polyorch_rust_clean() is a plain
@@ -167,6 +170,9 @@ endfunction()
 #   POLYORCH_RUST_CARGO        absolute path to cargo
 #   POLYORCH_RUST_RUSTC        absolute path to rustc
 #   POLYORCH_RUST_VERSION      "cargo --version" version token
+#   POLYORCH_RUST_RUSTC_VERSION "rustc -vV" release: token (rustc's own
+#                               version; may differ from cargo's in mixed
+#                               toolchains)
 #   POLYORCH_RUST_HOST_TARGET  `rustc -vV` host triple (artifact naming key)
 #   POLYORCH_RUST_ROUTE        system | pixi (drives the PATH wrapper)
 #   POLYORCH_RUST_BIN_DIR      directory holding the cargo binary
@@ -221,6 +227,7 @@ function(polyorch_rust_setup)
     endif()
 
     set(_version "")
+    set(_rustc_version "")
     set(_host "")
     set(_probe_ok FALSE)
     if(_cargo AND _rustc)
@@ -238,6 +245,8 @@ function(polyorch_rust_setup)
             foreach(_vline IN LISTS _vlines)
                 if(_vline MATCHES "^host: *([^ ]+)$")
                     set(_host "${CMAKE_MATCH_1}")
+                elseif(_vline MATCHES "^release: *([^ ]+)$")
+                    set(_rustc_version "${CMAKE_MATCH_1}")
                 endif()
             endforeach()
         endif()
@@ -263,7 +272,8 @@ function(polyorch_rust_setup)
     # does not overwrite, so clear first -- a miss after a hit must not leave
     # stale paths behind.
     foreach(_v POLYORCH_RUST_FOUND POLYORCH_RUST_CARGO POLYORCH_RUST_RUSTC
-               POLYORCH_RUST_VERSION POLYORCH_RUST_HOST_TARGET
+               POLYORCH_RUST_VERSION POLYORCH_RUST_RUSTC_VERSION
+               POLYORCH_RUST_HOST_TARGET
                POLYORCH_RUST_ROUTE POLYORCH_RUST_BIN_DIR)
         unset(${_v} CACHE)
     endforeach()
@@ -273,6 +283,7 @@ function(polyorch_rust_setup)
         set(POLYORCH_RUST_CARGO "${_cargo}" CACHE INTERNAL "PolyOrch rust toolchain (polyorch_rust_setup)")
         set(POLYORCH_RUST_RUSTC "${_rustc}" CACHE INTERNAL "PolyOrch rust toolchain (polyorch_rust_setup)")
         set(POLYORCH_RUST_VERSION "${_version}" CACHE INTERNAL "PolyOrch rust toolchain (polyorch_rust_setup)")
+        set(POLYORCH_RUST_RUSTC_VERSION "${_rustc_version}" CACHE INTERNAL "PolyOrch rust toolchain (polyorch_rust_setup)")
         set(POLYORCH_RUST_HOST_TARGET "${_host}" CACHE INTERNAL "PolyOrch rust toolchain (polyorch_rust_setup)")
         set(POLYORCH_RUST_ROUTE "${_from}" CACHE INTERNAL "PolyOrch rust toolchain (polyorch_rust_setup)")
         set(POLYORCH_RUST_BIN_DIR "${_bindir}" CACHE INTERNAL "PolyOrch rust toolchain (polyorch_rust_setup)")
@@ -355,13 +366,30 @@ function(_polyorch_rust_require_setup CALLER)
     endif()
 endfunction()
 
-# Internal: the one command line every wrapper shells out to. With the pixi
-# route cargo is prefixed by `cmake -E env PATH=<bin_dir>;<host PATH>` so the
-# toolchain resolves its siblings; semicolons are escaped because a custom
-# command re-splits list elements on them at generate time. ENV entries
-# (KEY=VAL elements; generator-expression strings welcome) ride the same
-# `cmake -E env` prefix. On the system route the bare cargo binary is
-# invoked unless ENV is non-empty (cmake -E env accepts zero assignments).
+# Internal: the one command line every wrapper shells out to. EVERY cargo
+# invocation is prefixed by `cmake -E env` with the host-leak strip below --
+# including the plain system route, so the former bare-cargo fast path is
+# gone (the strip is the point; a raw invocation inherits the caller's
+# compiler environment). With the pixi route PATH=<bin_dir>;<host PATH>
+# rides the same prefix so the toolchain resolves its siblings; semicolons
+# are escaped because a custom command re-splits list elements on them at
+# generate time. ENV entries (KEY=VAL elements; generator-expression strings
+# welcome) ride the prefix too.
+#
+# PIT-14 host-leak isolation. A conda/pixi-activated or gcc-wrapping shell
+# leaks compiler-shaping variables into CMAKE's environment, and an
+# unwrapped cargo inherits them: RUSTFLAGS / CARGO_ENCODED_RUSTFLAGS reach
+# rustc for every crate (the measured -mcet host leak of PIT-14), and
+# CFLAGS / CXXFLAGS / CC / CXX reach the cc-rs build scripts of any C
+# dependency (ring, openssl-sys style), silently compiling C code with the
+# host activation's flags or picking the host's chosen compilers. AR,
+# RANLIB and PKG_CONFIG_* are deliberately NOT stripped: no measured leak,
+# and an over-wide strip silently drops deliberate host choices -- widen
+# only on evidence.
+# Every variable in the strip can still be set explicitly: an assignment
+# placed AFTER --unset wins (cmake 4.4.3 measured; unsetting an absent
+# variable is a no-op), so PATH, the ENV entries and the RUSTFLAGS= entry
+# below all trail the strip block.
 function(_polyorch_rust_command CMD_OUT)
     cmake_parse_arguments(PARSE_ARGV 1 R "" "" "SUBCOMMAND;ENV")
     if(R_SUBCOMMAND)
@@ -369,6 +397,13 @@ function(_polyorch_rust_command CMD_OUT)
     else()
         set(_tail "")
     endif()
+    set(_strip
+        --unset=RUSTFLAGS
+        --unset=CARGO_ENCODED_RUSTFLAGS
+        --unset=CFLAGS
+        --unset=CXXFLAGS
+        --unset=CC
+        --unset=CXX)
     if(POLYORCH_RUST_ROUTE STREQUAL "pixi")
         if(WIN32)
             set(_sep ";")
@@ -377,11 +412,9 @@ function(_polyorch_rust_command CMD_OUT)
         endif()
         set(_path "PATH=${POLYORCH_RUST_BIN_DIR}${_sep}$ENV{PATH}")
         string(REPLACE ";" "\\;" _path "${_path}")
-        set(_cmd ${CMAKE_COMMAND} -E env "${_path}" ${R_ENV} "${POLYORCH_RUST_CARGO}" ${_tail})
-    elseif(R_ENV)
-        set(_cmd ${CMAKE_COMMAND} -E env ${R_ENV} "${POLYORCH_RUST_CARGO}" ${_tail})
+        set(_cmd ${CMAKE_COMMAND} -E env ${_strip} "${_path}" ${R_ENV} "${POLYORCH_RUST_CARGO}" ${_tail})
     else()
-        set(_cmd "${POLYORCH_RUST_CARGO}" ${_tail})
+        set(_cmd ${CMAKE_COMMAND} -E env ${_strip} ${R_ENV} "${POLYORCH_RUST_CARGO}" ${_tail})
     endif()
     set(${CMD_OUT} "${_cmd}" PARENT_SCOPE)
 endfunction()
@@ -479,18 +512,19 @@ function(polyorch_rust_build)
     endif()
 
     # --- deferred build inputs (corr:702-735 pattern) ----------------------
-    # The variable argv parts ride the mediator's properties and expand at
-    # generate time, so post-configure property changes take effect on the
-    # next build without a reconfigure (the setter family lands in Task 3;
-    # everything is initialised from this call's keywords and empty unless
-    # given). FEATURES uses the equals form -- one argument, immune to ';'
-    # re-splitting. CARGO_FLAGS and ENV_VARS are bare list-property
-    # arguments: under COMMAND_EXPAND_LISTS each element becomes its own
-    # argv entry and an EMPTY property emits NOTHING (probed on cmake
-    # 4.4.3: no stray '' argument under VERBATIM; the escaped `\;` pixi
-    # PATH prefix survives expansion unsplit). RUSTFLAGS keeps the equals
-    # form as one KEY=VAL argument, so its property is a plain STRING (a
-    # ';' list would split mid-value; the Task 3 setter joins with spaces).
+    # The variable argv parts ride the mediator's POLYORCH_RUST_* properties
+    # and expand at generate time, so a property change made AFTER this call
+    # -- by the setter family below or a raw set_property -- still lands in
+    # the rule. Everything is initialised from this call's keywords and is
+    # empty unless given. FEATURES uses the equals form -- one argument,
+    # immune to ';' re-splitting. CARGO_FLAGS and ENV_VARS are bare
+    # list-property arguments: under COMMAND_EXPAND_LISTS each element
+    # becomes its own argv entry and an EMPTY property emits NOTHING
+    # (probed on cmake 4.4.3: no stray '' argument under VERBATIM; the
+    # escaped `\;` pixi PATH prefix survives expansion unsplit). RUSTFLAGS
+    # keeps the equals form as one KEY=VAL argument, so its property is a
+    # plain STRING (a ';' list would split mid-value;
+    # polyorch_rust_add_rustflags joins with spaces).
     set(_med "cargo-build-${B_TARGET}")
     set(_features_gx "$<$<BOOL:$<TARGET_PROPERTY:${_med},POLYORCH_RUST_FEATURES>>:--features=$<JOIN:$<TARGET_PROPERTY:${_med},POLYORCH_RUST_FEATURES>,,>>")
     set(_allf_gx "$<$<BOOL:$<TARGET_PROPERTY:${_med},POLYORCH_RUST_ALL_FEATURES>>:--all-features>")
@@ -546,19 +580,22 @@ function(polyorch_rust_build)
 
     # Property carrier (corr:2313 init convention): every build input the
     # rule reads is a mediator target property, initialised from this call
-    # and written by the Task 3 setters.
-    set_property(TARGET "${_med}" PROPERTY
-        POLYORCH_RUST_KIND "${_kind}"
-        POLYORCH_RUST_CRATE "${B_CRATE}"
-        POLYORCH_RUST_PACKAGE "${B_PACKAGE}"
-        POLYORCH_RUST_PROFILE "${_prof}"
-        POLYORCH_RUST_BASE_DIR "${_td}"
-        POLYORCH_RUST_FEATURES "${B_FEATURES}"
-        POLYORCH_RUST_ALL_FEATURES ""
-        POLYORCH_RUST_NO_DEFAULT_FEATURES ""
-        POLYORCH_RUST_CARGO_FLAGS ""
-        POLYORCH_RUST_RUSTFLAGS ""
-        POLYORCH_RUST_ENV_VARS "")
+    # and written by the setter family below.
+    # One property per call: set_property's value list is GREEDY (a second
+    # name after the values joins the first property's list -- measured on
+    # 4.4.3), so multi-pair PROPERTY clauses silently fold everything into
+    # the first name.
+    set_property(TARGET "${_med}" PROPERTY POLYORCH_RUST_KIND "${_kind}")
+    set_property(TARGET "${_med}" PROPERTY POLYORCH_RUST_CRATE "${B_CRATE}")
+    set_property(TARGET "${_med}" PROPERTY POLYORCH_RUST_PACKAGE "${B_PACKAGE}")
+    set_property(TARGET "${_med}" PROPERTY POLYORCH_RUST_PROFILE "${_prof}")
+    set_property(TARGET "${_med}" PROPERTY POLYORCH_RUST_BASE_DIR "${_td}")
+    set_property(TARGET "${_med}" PROPERTY POLYORCH_RUST_FEATURES "${B_FEATURES}")
+    set_property(TARGET "${_med}" PROPERTY POLYORCH_RUST_ALL_FEATURES "")
+    set_property(TARGET "${_med}" PROPERTY POLYORCH_RUST_NO_DEFAULT_FEATURES "")
+    set_property(TARGET "${_med}" PROPERTY POLYORCH_RUST_CARGO_FLAGS "")
+    set_property(TARGET "${_med}" PROPERTY POLYORCH_RUST_RUSTFLAGS "")
+    set_property(TARGET "${_med}" PROPERTY POLYORCH_RUST_ENV_VARS "")
 
     if(_kind STREQUAL "bin")
         add_executable("${B_TARGET}" IMPORTED GLOBAL)
@@ -587,6 +624,126 @@ function(polyorch_rust_build)
         set_target_properties("${B_TARGET}" "${_med}" "${B_TARGET}-cargo"
             PROPERTIES FOLDER "${B_FOLDER}")
     endif()
+endfunction()
+
+# ---------------------------------------------------------------- setters ---
+
+# Internal: resolve the user-facing declared target name to its mediator.
+# The setters key on the name given in polyorch_rust_build(TARGET ..); the
+# build inputs live on the cargo-build-<TARGET> mediator, which is a
+# directory-scoped target -- so every setter must be called from the scope
+# that declared it (or a child scope), like the build call itself.
+function(_polyorch_rust_mediator CALLER T OUT)
+    if(NOT TARGET "${T}")
+        message(FATAL_ERROR
+            "${CALLER}: no target '${T}' (declare it with polyorch_rust_build first)")
+    endif()
+    set(_med "cargo-build-${T}")
+    if(NOT TARGET "${_med}")
+        message(FATAL_ERROR
+            "${CALLER}: target '${T}' was not declared by polyorch_rust_build "
+            "(no mediator '${_med}' carries its build inputs; setters take the "
+            "declared TARGET name, not the mediator or the <-cargo shim)")
+    endif()
+    set(${OUT} "${_med}" PARENT_SCOPE)
+endfunction()
+
+# polyorch_rust_set_features(TARGET <n> [FEATURES a;b] [ALL_FEATURES]
+#                            [NO_DEFAULT_FEATURES])
+# Write-through replacement of the rule's three feature inputs: each call
+# sets FEATURES, ALL_FEATURES and NO_DEFAULT_FEATURES to exactly what this
+# call carries -- a call without FEATURES CLEARS the previous list. cargo
+# refuses --all-features together with --features, so the pair is rejected
+# here too; NO_DEFAULT_FEATURES composes with both. At least one selector
+# is required: a bare call is ambiguous between "clear everything" and typo.
+# FEATURES without NO_DEFAULT_FEATURES only ADDS to the default set (cargo
+# semantics), so clearing defaults needs the explicit selector.
+# ponytail(INHERITABLE): corrosion propagates feature choices along the
+# link interface; cargo features are not a link-interface property and the
+# transitive set is fixed at each cargo invocation -- a propagation half
+# belongs with the Task 5 batch-import rework, not here. Not implemented.
+function(polyorch_rust_set_features)
+    cmake_parse_arguments(PARSE_ARGV 0 A "ALL_FEATURES;NO_DEFAULT_FEATURES"
+        "TARGET" "FEATURES")
+    if(A_UNPARSED_ARGUMENTS)
+        message(FATAL_ERROR
+            "polyorch_rust_set_features: unknown args: ${A_UNPARSED_ARGUMENTS}")
+    endif()
+    _polyorch_rust_must(A_TARGET)
+    if(A_ALL_FEATURES AND A_FEATURES)
+        message(FATAL_ERROR
+            "polyorch_rust_set_features: FEATURES and ALL_FEATURES are mutually exclusive")
+    endif()
+    if(NOT A_FEATURES AND NOT A_ALL_FEATURES AND NOT A_NO_DEFAULT_FEATURES)
+        message(FATAL_ERROR
+            "polyorch_rust_set_features: at least one selector "
+            "(FEATURES / ALL_FEATURES / NO_DEFAULT_FEATURES) is required")
+    endif()
+    _polyorch_rust_mediator("polyorch_rust_set_features" "${A_TARGET}" _med)
+    # One property per call (greedy value list, see polyorch_rust_build).
+    set_property(TARGET "${_med}" PROPERTY POLYORCH_RUST_FEATURES "${A_FEATURES}")
+    set_property(TARGET "${_med}" PROPERTY POLYORCH_RUST_ALL_FEATURES "${A_ALL_FEATURES}")
+    set_property(TARGET "${_med}" PROPERTY POLYORCH_RUST_NO_DEFAULT_FEATURES "${A_NO_DEFAULT_FEATURES}")
+endfunction()
+
+# polyorch_rust_set_env_vars(TARGET <n> [VAR=VALUE ...])
+# Write-through replacement of the KEY=VAL entries the rule exports through
+# `cmake -E env` (see the pitfall note in _polyorch_rust_command): each call
+# sets the complete set, a call with no entries clears it. Every entry must
+# spell VAR=VALUE with a shell-identifier name -- anything else is a typo
+# that would silently mis-shape the command, so it fails the configure.
+function(polyorch_rust_set_env_vars)
+    cmake_parse_arguments(PARSE_ARGV 0 A "" "TARGET" "")
+    _polyorch_rust_must(A_TARGET)
+    foreach(_e IN LISTS A_UNPARSED_ARGUMENTS)
+        if(NOT _e MATCHES "^[A-Za-z_][A-Za-z0-9_]*=")
+            message(FATAL_ERROR
+                "polyorch_rust_set_env_vars: entries must be VAR=VALUE, got '${_e}'")
+        endif()
+    endforeach()
+    _polyorch_rust_mediator("polyorch_rust_set_env_vars" "${A_TARGET}" _med)
+    set_property(TARGET "${_med}" PROPERTY
+        POLYORCH_RUST_ENV_VARS "${A_UNPARSED_ARGUMENTS}")
+endfunction()
+
+# polyorch_rust_add_cargo_flags(TARGET <n> [FLAGS <flag>...])
+# APPENDS extra arguments to the cargo build argv (e.g. --offline --timings).
+# Unlike the set_* functions this is additive: repeated calls accumulate; the
+# flags ride the rule as separate argv entries (COMMAND_EXPAND_LISTS).
+function(polyorch_rust_add_cargo_flags)
+    cmake_parse_arguments(PARSE_ARGV 0 A "" "TARGET" "FLAGS")
+    if(A_UNPARSED_ARGUMENTS)
+        message(FATAL_ERROR
+            "polyorch_rust_add_cargo_flags: unknown args: ${A_UNPARSED_ARGUMENTS}")
+    endif()
+    _polyorch_rust_must(A_TARGET)
+    _polyorch_rust_mediator("polyorch_rust_add_cargo_flags" "${A_TARGET}" _med)
+    get_property(_cur TARGET "${_med}" PROPERTY POLYORCH_RUST_CARGO_FLAGS)
+    set_property(TARGET "${_med}" PROPERTY
+        POLYORCH_RUST_CARGO_FLAGS ${_cur} ${A_FLAGS})
+endfunction()
+
+# polyorch_rust_add_rustflags(TARGET <n> [FLAGS <flag>...])
+# APPENDS to the RUSTFLAGS the rule exports. This is the GLOBAL variant: the
+# env var reaches every crate cargo compiles for this rule (dependencies
+# included), matching cargo's own RUSTFLAGS semantics. The property is a
+# plain string joined with spaces -- per-crate local flags would need the
+# `cargo rustc` subcommand.
+# ponytail(local-rustflags): corrosion's local variant (last crate only) is
+# the cargo-rustc rework; it lands with a future crate-scoped design, not
+# half-implemented beside the global one.
+function(polyorch_rust_add_rustflags)
+    cmake_parse_arguments(PARSE_ARGV 0 A "" "TARGET" "FLAGS")
+    if(A_UNPARSED_ARGUMENTS)
+        message(FATAL_ERROR
+            "polyorch_rust_add_rustflags: unknown args: ${A_UNPARSED_ARGUMENTS}")
+    endif()
+    _polyorch_rust_must(A_TARGET)
+    _polyorch_rust_mediator("polyorch_rust_add_rustflags" "${A_TARGET}" _med)
+    get_property(_cur TARGET "${_med}" PROPERTY POLYORCH_RUST_RUSTFLAGS)
+    string(REPLACE ";" " " _add "${A_FLAGS}")
+    string(STRIP "${_cur} ${_add}" _new)
+    set_property(TARGET "${_med}" PROPERTY POLYORCH_RUST_RUSTFLAGS "${_new}")
 endfunction()
 
 # ------------------------------------------------------- test / run / clean ---
