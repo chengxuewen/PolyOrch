@@ -102,3 +102,27 @@
 - **Solution**: for operators, `cmake --help-command if` is one subprocess away -- check before inventing; executability is proven by launching and asserting the absence of "Permission denied" (`ck_fail_rc`/launch-probe helpers); gates are executed verbatim from `conventions.md`.
 - **Verification**: `grep -rn 'NOT_EQUAL\|cmake -E test' tests/` returns nothing; suite 13/13 + 14/14.
 - **Forbidden**: inventing if() operators; `cmake -E test` for any purpose; paraphrasing a gate command instead of copying it verbatim.
+
+## PIT-12: find_program(..., NO_CACHE) skips the search when the result var was pre-set empty (2026-09-21)
+
+- **Symptom**: `polyorch_rust_setup(FROM pixi REQUIRED)` reported "pixi environment has no cargo/rustc" in the e2e case while `.pixi/envs/rust/bin/cargo` demonstrably existed (env_paths probe: YES). Deterministic, two runs.
+- **Root cause**: `find_program(_x ... NO_CACHE)` treats a DEFINED result variable -- including an empty-string `set(_x "")` -- as already resolved and returns without searching. The cache-mode intuition ("empty is not a valid found value, it re-searches") does not carry over to NO_CACHE.
+- **Solution**: do not pre-set lookup variables to ""; leave them undefined (`unset(_x)` if a previous branch may have set them). Probe: `set(_x ""); find_program(_x NAMES cmake NO_DEFAULT_PATH PATHS /usr/bin NO_CACHE)` => stays empty; without the pre-set => /usr/bin/cmake.
+- **Verification**: `grep -n 'set(_cargo "")\|set(_rustc "")' cmake/PolyOrchRustHelpers.cmake` returns nothing; `POLYORCH_TEST_E2E=1 bash tests/run.sh` t-rust-e2e green.
+- **Forbidden**: initializing a variable to empty immediately before any `find_program/find_path/find_package(... NO_CACHE)` call in this codebase.
+
+## PIT-13: an IMPORTED target named like its artifact base name silently swallows the Makefile rule (2026-09-21)
+
+- **Symptom**: `polyorch_rust_build(TARGET greet-cli ... CRATE greet-cli BINARY)` configured with zero errors, but `make greet-cli-cargo` said "no rule to make `.cargo-target/debug/greet-cli`" -- the `cargo build` command had vanished from every build.make. Three suspects were chased and cleared (run-wrapper command string, test+run combo, empty pixi env) before isolation found the real one.
+- **Root cause**: with `add_custom_command(OUTPUT <dir>/foo)` + a custom target depending on it, adding `add_executable(foo IMPORTED GLOBAL)` whose name equals the output's base name makes the Unix Makefiles generator drop the producing rule. Proven by minimal repro: imported name `foo` + file `foo` -> rule count 0; renamed to `bar` -> rule 1, build clean. CMake bug-class behavior, no diagnostic.
+- **Solution**: keep the three namespaces distinct (CMake TARGET != artifact base name). Now enforced: `polyorch_rust_build` FATALs at configure time on collision with a rename suggestion. The example uses TARGET `greet` vs binary `greet-cli`.
+- **Verification**: `cmake -P` scratch injecting TARGET==CRATE hits the guard; `examples/rust-basic` umbrella chain builds + `run-greet` prints `hello, world!`.
+- **Forbidden**: assuming an imported/produced-name coincidence is harmless; trusting "it configured fine" as buildability evidence -- always run the mediator target once.
+
+## PIT-14: host-activated compiler flags leak into cargo children and break the example link (2026-09-21)
+
+- **Symptom**: under an embedding host's build env, rust-basic's `cargo build` compiled but failed linking: `cc: error: unrecognized command-line option '-mcet'`. The same chain passed in a clean shell -- non-reproducible-by-source.
+- **Root cause**: `_polyorch_rust_command` wraps PATH (pixi route) but passes the rest of the ambient environment through; a conda-activated shell contributes CC/CFLAGS-family flags aimed at a different toolchain, and rustc forwards them to `cc`. No repo file contained `-mcet` (grep: only conda binaries).
+- **Solution**: run example chains from a normal shell, or add the planned per-crate env/rustflags control hooks (status.md Open Items, corrosion `set_env_vars` equivalent) before embedding under hostile hosts.
+- **Verification**: clean-shell umbrella run green; a "fails under my terminal, passes under CI" report on rust cases should check `env | grep -E 'RUSTFLAGS|CFLAGS|CC='` first.
+- **Forbidden**: treating env-leak failures as module bugs; also blanket-stripping CFLAGS inside the wrapper without an explicit opt (breaks legitimate cross toolchains).

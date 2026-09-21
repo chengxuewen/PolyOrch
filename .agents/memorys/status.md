@@ -28,7 +28,7 @@
 |---|---|
 | `cmake/PolyOrchPixiHelpers.cmake` | single pixi module (~1500 lines, D12): find / tool_ensure / tool_install / install / env_target / env_paths / activate_script / scripts_install / setup / report / bootstrap + manifest-mutating actions |
 | `cmake/PolyOrchOptionHelpers.cmake` | `polyorch_option` + expression helpers |
-| `cmake/PolyOrchRustHelpers.cmake` | 0-line placeholder -- Open Items |
+| `cmake/PolyOrchRustHelpers.cmake` | rust module (D13): setup(FROM system\|pixi) / build / test / run / clean, triple-family artifact naming, isolated cargo target dir, FOLDER on all four, TARGET-vs-artifact-name guard (PIT-13) |
 | `scripts/` | activation trio `pixi.sh` / `pixi.bat` / `pixi.ps1`; installed beside `.pixi/` via `COPY_SCRIPTS` |
 | `examples/` | pixi-bootstrap (`cmake -P`), pixi-configure, pixi-workspace; each also a `PolyOrchExample*` target |
 | `tests/` | `run.sh` driver + CTest registration; 14 `cmake -P` cases (markers shared) |
@@ -47,7 +47,10 @@
 | vendored Xmake skills unmodified | see `conventions.md` C5 | pass (2026-09-20) |
 | design-doc separation (no cross-naming) | see `conventions.md` C6 | pass (2026-09-20) |
 | cmake unit suite | `bash tests/run.sh` | pass 13/13 offline; 14/14 with `POLYORCH_TEST_E2E=1` (2026-09-21) |
-| CTest registration | `cmake -B <b> -DPolyOrch_BUILD_TESTS=ON && ctest --test-dir <b>` | pass 13/13 (2026-09-21) |
+| CTest registration | `cmake -B <b> -DPolyOrch_BUILD_TESTS=ON && ctest --test-dir <b>` | pass 13/13 (2026-09-21); **currently blocked** by an in-flight external root-CMakeLists refactor (undefined `polyorch_option`) -- re-run after it lands |
+| rust offline suite | `bash tests/run.sh` | pass 21/21 + 2 skip (2026-09-21) |
+| rust e2e (real cargo via pixi) | `POLYORCH_TEST_E2E=1 bash tests/run.sh` | pass 23/23, 4.5MB ELF artifact built+verified (2026-09-21) |
+| rust-basic umbrella chain | `cmake --build <host> --target PolyOrchExampleRustBasic` | configure(bootstrap env) -> greet-cargo -> run-greet prints `hello, world!` (2026-09-21, clean shell; see PIT-14) |
 
 ## Open Items
 
@@ -66,7 +69,8 @@
 - [x] **`doc-audit` PORTED** (2026-09-20) — re-authored in English from a sibling repository's copy and rebound to this repository's documents and `C` / `D` / `PIT` numbering; see D9
 - [x] Source surface landed: single pixi CMake module + scripts + tests + examples (D12)
 - [ ] Resolve the D3 vs reality gap: the in-tree surface is CMake; D3 records the implementation as Lua-in-an-Xmake-addon -- amend the decision or fold the CMake modules into the addon plan (doc-audit question)
-- [ ] Rust helpers: `PolyOrchRustHelpers.cmake` is a placeholder; design agreed = system|pixi toolchain selection + cargo build/test/run/clean wrappers, reference corrosion-rs/corrosion (mechanics survey done 2026-09-21)
+- [x] Rust helpers landed: dual-route toolchain + build/test/run/clean wrappers (D13); example `rust-basic` lands with the squad's commits; cross-`--target` routing deliberately out of v0 scope
+- [ ] **Corrosion capability-gap backlog** (measured against the reference's current code, 2026-09-21): P0 profile<->CMAKE_BUILD_TYPE genex mapping -- `Release` currently still builds cargo `debug` artifacts silently; P0 cross-`--target` routing (deferred by D13; the triple-family naming table is the reserved seam); P1 `NO_DEFAULT_FEATURES`/`ALL_FEATURES` + per-crate RUSTFLAGS/env pass-through hooks (the `-mcet` host-leak of PIT-14 wants this explicit outlet); P1 multi-crate batch import via `cargo metadata`; P2 `polyorch_rust_install()` export rules; P2 Windows cdylib runtime-dll staging next to consumer exes; small: cargo/rustc minimum-version check, package-version exposure. Ahead of the reference: pixi environment routing, IDE FOLDER grouping, configure-time name-collision guard
 - [ ] Gate runner in `scripts/` (canonical C1-C6 + suite one-shot)
 - [ ] Root README/AGENTS still describe the repo as having no source code -- stale against `cmake/`/`scripts/`/`tests/`/`examples/`
 
