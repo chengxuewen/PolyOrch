@@ -6,6 +6,7 @@
 # targets prove the plain `cmake -S`/`-P` entry points and are offline-safe.
 add_subdirectory(pixi-configure)
 add_subdirectory(pixi-workspace)
+add_subdirectory(rust-basic)
 
 # Script-mode cold start. Build-time only: it may install pixi and reach the
 # network, so it never runs during configure.
@@ -33,3 +34,17 @@ add_custom_target(PolyOrchExamplePixiWorkspace
         -B "${CMAKE_CURRENT_BINARY_DIR}/standalone/pixi-workspace"
     COMMENT "Configuring the pixi-workspace example standalone (writes its build dir; needs pixi)")
 set_target_properties(PolyOrchExamplePixiWorkspace PROPERTIES FOLDER ${PROJECT_NAME}/examples)
+
+# Standalone configure is the bootstrap: the example installs its own pixi
+# rust environment during configure (the only network step), then the two
+# build invocations compile and execute the artifact.
+add_custom_target(PolyOrchExampleRustBasic
+    COMMAND ${CMAKE_COMMAND}
+        -S "${CMAKE_CURRENT_SOURCE_DIR}/rust-basic"
+        -B "${CMAKE_CURRENT_BINARY_DIR}/standalone/rust-basic"
+    COMMAND ${CMAKE_COMMAND} --build
+        "${CMAKE_CURRENT_BINARY_DIR}/standalone/rust-basic" --target greet-cargo
+    COMMAND ${CMAKE_COMMAND} --build
+        "${CMAKE_CURRENT_BINARY_DIR}/standalone/rust-basic" --target run-greet
+    COMMENT "rust-basic: self-bootstrap configure -> cargo build -> run (network on first run)")
+set_target_properties(PolyOrchExampleRustBasic PROPERTIES FOLDER ${PROJECT_NAME}/examples/rust-basic)
