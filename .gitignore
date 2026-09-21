@@ -108,3 +108,12 @@ test-results
 /recordings/
 /identity.json
 data/
+
+# example run artifacts (the demo manifests are mechanism, their locks are not committed)
+examples/*/pixi.lock
+tests/.scratch
+
+# activation scripts installed by examples into workspaces (managed copies)
+examples/*/pixi.sh
+examples/*/pixi.bat
+examples/*/pixi.ps1
