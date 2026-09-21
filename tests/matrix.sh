@@ -5,10 +5,11 @@
 # PlatformSupport mkspec detection - known state c79c4bf); the host only
 # wires cmake/ + tests/.
 #   usage: bash tests/matrix.sh          # ~1 min warm, network on cold cache
-# NOTE(Task 2): the Release cells still build cargo `debug` artifacts (known
-# flaw, profile<->CMAKE_BUILD_TYPE genex mapping); when it lands, add a
-# per-cell profile-anchor assertion here: under CMAKE_BUILD_TYPE=Release the
-# rust e2e rule must produce .cargo-target/release/<bin>, not .../debug/.
+# Each cell exports POLYORCH_TEST_CONFIG=<cfg> into ctest (children inherit),
+# so t-rust-profile-release asserts the cargo profile dir the cell's
+# CMAKE_BUILD_TYPE demands. The per-cell verdict additionally greps the
+# verbose re-run of that case for "(<Cfg> -> .cargo-target/<cfg>/" -- a
+# Release cell may not pass via a debug artifact (right-reason gate).
 set -u
 cd "$(dirname "$0")"; here="$(pwd)"; repo="$(dirname "$here")"
 root="$(mktemp -d)"; trap 'rm -rf -- "$root"' EXIT
@@ -30,9 +31,12 @@ for g in "Unix Makefiles" Ninja; do
     for c in Debug Release; do
         b="$root/b-$(echo "$g$c" | tr -d ' ')"
         cells=$((cells+1))
+        cl="$(echo "$c" | tr 'A-Z' 'a-z')"
         if cmake -S "$root/host" -B "$b" -G "$g" -DCMAKE_BUILD_TYPE="$c" \
                 -DPolyOrch_TEST_E2E=ON > "$b.log" 2>&1 \
-           && POLYORCH_TEST_E2E=1 ctest --test-dir "$b" --output-on-failure >> "$b.log" 2>&1; then
+           && POLYORCH_TEST_E2E=1 POLYORCH_TEST_CONFIG="$c" ctest --test-dir "$b" --output-on-failure >> "$b.log" 2>&1 \
+           && POLYORCH_TEST_CONFIG="$c" ctest --test-dir "$b" -R '^t-rust-profile-release$' -V >> "$b.log" 2>&1 \
+           && grep -qE "\($c -> \.cargo-target/$cl/" "$b.log"; then
             echo "PASS [$g / $c]"
         else
             echo "FAIL [$g / $c] (log: $b.log)"; tail -n 15 "$b.log"; rc_all=1

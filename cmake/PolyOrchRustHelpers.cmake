@@ -10,8 +10,12 @@
 # Artifacts are named by the target triple's object family (msvc / gnu /
 # macho / elf), never by the host: the same table serves host builds and
 # (later) cross builds. Libraries enter the build tree as IMPORTED targets
-# with a non-imported `<TARGET>-cargo` mediator custom target, because
-# add_dependencies() refuses IMPORTED targets (the corrosion approach).
+# backed by the cargo-build-<TARGET> mediator custom target; an auto-build
+# edge (add_dependencies on the IMPORTED target, propagated to its linkers)
+# makes every consumer order the mediator before linking.
+# The legacy <TARGET>-cargo name survives as a compatibility shim target.
+# Build inputs (profile, features, flags, env) live in POLYORCH_RUST_*
+# properties of the mediator and expand in the rule at generate time.
 #
 # All cargo invocations share one isolated target directory,
 # ${CMAKE_BINARY_DIR}/.cargo-target, so polyorch_rust_clean() is a plain
@@ -23,7 +27,9 @@
 #
 # Out of scope by design (add a `ponytail:` note at the seam when needed):
 # --target cross-compilation triples, workspace member discovery,
-# rust-version enforcement, cargo bench/fmt/clippy wrappers.
+# rust-version enforcement, cargo bench/fmt/clippy wrappers, and the
+# multi-config per-<CONFIG> artifact staging/copy strategy (multi-config
+# generators resolve to the debug profile today).
 #
 # Include-time contract: zero side effects -- definitions and comments only.
 # Requires CMake >= 3.25 (PARSE_ARGV, NO_CACHE find_program, cmake_path).
@@ -352,9 +358,12 @@ endfunction()
 # Internal: the one command line every wrapper shells out to. With the pixi
 # route cargo is prefixed by `cmake -E env PATH=<bin_dir>;<host PATH>` so the
 # toolchain resolves its siblings; semicolons are escaped because a custom
-# command re-splits list elements on them at generate time.
+# command re-splits list elements on them at generate time. ENV entries
+# (KEY=VAL elements; generator-expression strings welcome) ride the same
+# `cmake -E env` prefix. On the system route the bare cargo binary is
+# invoked unless ENV is non-empty (cmake -E env accepts zero assignments).
 function(_polyorch_rust_command CMD_OUT)
-    cmake_parse_arguments(PARSE_ARGV 1 R "" "" "SUBCOMMAND")
+    cmake_parse_arguments(PARSE_ARGV 1 R "" "" "SUBCOMMAND;ENV")
     if(R_SUBCOMMAND)
         set(_tail "${R_SUBCOMMAND}")
     else()
@@ -368,7 +377,9 @@ function(_polyorch_rust_command CMD_OUT)
         endif()
         set(_path "PATH=${POLYORCH_RUST_BIN_DIR}${_sep}$ENV{PATH}")
         string(REPLACE ";" "\\;" _path "${_path}")
-        set(_cmd ${CMAKE_COMMAND} -E env "${_path}" "${POLYORCH_RUST_CARGO}" ${_tail})
+        set(_cmd ${CMAKE_COMMAND} -E env "${_path}" ${R_ENV} "${POLYORCH_RUST_CARGO}" ${_tail})
+    elseif(R_ENV)
+        set(_cmd ${CMAKE_COMMAND} -E env ${R_ENV} "${POLYORCH_RUST_CARGO}" ${_tail})
     else()
         set(_cmd "${POLYORCH_RUST_CARGO}" ${_tail})
     endif()
@@ -380,12 +391,16 @@ endfunction()
 #                     [LOCKED|FROZEN] [MANIFEST <path>] [DEPENDS <t>...]
 #                     [BASE_DIR <td>] [FOLDER <ide>])
 # Registers <TARGET> as an IMPORTED target pointing at the cargo artifact
-# built into ${CMAKE_BINARY_DIR}/.cargo-target/<profile>/, plus a non-imported
-# <TARGET>-cargo custom target that owns the rule (IMPORTED targets reject
-# add_dependencies, hence the mediator -- the corrosion trick). Build it, or
-# add_dependencies(<consumer> <TARGET>-cargo) from the consumer: the mediator
-# is deliberately NOT built by ALL.
-# install stamp). MANIFEST doubles as the rule's file dependency.
+# built into ${CMAKE_BINARY_DIR}/.cargo-target/<profile>/, plus the
+# cargo-build-<TARGET> custom mediator that owns the rule. Linking <TARGET>
+# suffices: the auto-build edge propagates the mediator ordering to every
+# consumer. The legacy <TARGET>-cargo name is a compatibility shim. A bare
+# cmake --build reaches the artifacts through the polyorch-rust-all
+# aggregate target; the mediators themselves are deliberately NOT ALL.
+# DEPENDS is deprecated -- superseded by the auto-build edge.
+# Without PROFILE the cargo profile follows CMAKE_BUILD_TYPE at configure
+# time: unset or Debug -> debug, any other value -> release (an explicit
+# PROFILE always wins). MANIFEST doubles as the rule's file dependency.
 # BASE_DIR relocates the cargo target dir (pixi ENVIRONMENTS_DIR-style
 # redirects); test and clean accept the same keyword, so the trio always agrees.
 function(polyorch_rust_build)
@@ -418,15 +433,35 @@ function(polyorch_rust_build)
     endif()
     _polyorch_rust_require_setup(polyorch_rust_build)
 
-    # Optional keywords are passed only when set: an empty quoted value
-    # trips policy CMP0174's author warning on every configure.
-    set(_optargs "")
+    # --- profile resolution (corr:762 semantics, single-config scope) ------
+    # No explicit PROFILE: cargo's debug profile follows an unset or Debug
+    # CMAKE_BUILD_TYPE, release follows any other value. The flag, the
+    # artifact directory and the rule stamp are all LITERAL and equal --
+    # generator expressions are banned from BYPRODUCTS and unreliable in
+    # OUTPUT (corr:905-909), and a genex flag paired with a literal stamp
+    # would desync on a multi-config generator, whose per-config copy
+    # strategy is a documented Non-goal. Stamp correctness beats partial
+    # multi-config hope.
+    # ponytail(MC): per-<CONFIG> resolution + copy-staging lands with the
+    # multi-config cluster; multi-config generators stay on debug until then.
+    # R-3 version floors: the resolved debug/release behaviour above is
+    # verified on this host's toolchain only -- cmake 4.4.3 and cargo
+    # 1.98.1 (pixi env, measured 2026-09-21, the exact binaries the e2e
+    # suite drives). Any lower cargo ceiling for --profile/--features
+    # equals-form handling is TBD (not probed here; do not cite a number).
     if(B_PROFILE)
-        list(APPEND _optargs PROFILE "${B_PROFILE}")
+        set(_prof "${B_PROFILE}")
+    else()
+        string(TOLOWER "${CMAKE_BUILD_TYPE}" _bt)
+        if(_bt STREQUAL "" OR _bt STREQUAL "debug")
+            set(_prof debug)
+        else()
+            set(_prof release)
+        endif()
     endif()
     _polyorch_rust_target_dir(_td "${B_BASE_DIR}")
     _polyorch_rust_artifact_names(TRIPLE "${POLYORCH_RUST_HOST_TARGET}"
-        KIND "${_kind}" CRATE "${B_CRATE}" ${_optargs} BASE_DIR "${_td}"
+        KIND "${_kind}" CRATE "${B_CRATE}" PROFILE "${_prof}" BASE_DIR "${_td}"
         FILE_OUT _file DIR_OUT _dir IMPLIB_OUT _implib)
     set(_artifact "${_dir}/${_file}")
     get_filename_component(_base "${_artifact}" NAME_WE)
@@ -442,20 +477,39 @@ function(polyorch_rust_build)
     if(B_FROZEN)
         list(APPEND _flags FROZEN)
     endif()
-    set(_csopts "")
-    if(B_PROFILE)
-        list(APPEND _csopts PROFILE "${B_PROFILE}")
-    endif()
-    if(B_FEATURES)
-        list(APPEND _csopts FEATURES "${B_FEATURES}")
-    endif()
+
+    # --- deferred build inputs (corr:702-735 pattern) ----------------------
+    # The variable argv parts ride the mediator's properties and expand at
+    # generate time, so post-configure property changes take effect on the
+    # next build without a reconfigure (the setter family lands in Task 3;
+    # everything is initialised from this call's keywords and empty unless
+    # given). FEATURES uses the equals form -- one argument, immune to ';'
+    # re-splitting. CARGO_FLAGS and ENV_VARS are bare list-property
+    # arguments: under COMMAND_EXPAND_LISTS each element becomes its own
+    # argv entry and an EMPTY property emits NOTHING (probed on cmake
+    # 4.4.3: no stray '' argument under VERBATIM; the escaped `\;` pixi
+    # PATH prefix survives expansion unsplit). RUSTFLAGS keeps the equals
+    # form as one KEY=VAL argument, so its property is a plain STRING (a
+    # ';' list would split mid-value; the Task 3 setter joins with spaces).
+    set(_med "cargo-build-${B_TARGET}")
+    set(_features_gx "$<$<BOOL:$<TARGET_PROPERTY:${_med},POLYORCH_RUST_FEATURES>>:--features=$<JOIN:$<TARGET_PROPERTY:${_med},POLYORCH_RUST_FEATURES>,,>>")
+    set(_allf_gx "$<$<BOOL:$<TARGET_PROPERTY:${_med},POLYORCH_RUST_ALL_FEATURES>>:--all-features>")
+    set(_nondf_gx "$<$<BOOL:$<TARGET_PROPERTY:${_med},POLYORCH_RUST_NO_DEFAULT_FEATURES>>:--no-default-features>")
+    set(_flags_gx "$<TARGET_PROPERTY:${_med},POLYORCH_RUST_CARGO_FLAGS>")
+    set(_env_gx "$<TARGET_PROPERTY:${_med},POLYORCH_RUST_ENV_VARS>")
+    set(_rustflags_gx "$<$<BOOL:$<TARGET_PROPERTY:${_med},POLYORCH_RUST_RUSTFLAGS>>:RUSTFLAGS=$<TARGET_PROPERTY:${_med},POLYORCH_RUST_RUSTFLAGS>>")
+
+    # Optional keywords are passed only when set: an empty quoted value
+    # trips policy CMP0174's author warning on every configure.
+    set(_mankw "")
     if(B_MANIFEST)
-        list(APPEND _csopts MANIFEST "${B_MANIFEST}")
+        set(_mankw MANIFEST "${B_MANIFEST}")
     endif()
     _polyorch_rust_cargo_args(PACKAGE "${B_PACKAGE}" KIND "${_kind}"
-        CRATE "${B_CRATE}" ${_csopts} ${_flags} ARGO_OUT _argv)
+        CRATE "${B_CRATE}" PROFILE "${_prof}" ${_mankw} ${_flags} ARGO_OUT _argv)
+    list(APPEND _argv "${_features_gx}" "${_allf_gx}" "${_nondf_gx}" "${_flags_gx}")
     list(APPEND _argv --target-dir "${_td}")
-    _polyorch_rust_command(_cmd SUBCOMMAND ${_argv})
+    _polyorch_rust_command(_cmd SUBCOMMAND ${_argv} ENV "${_env_gx}" "${_rustflags_gx}")
 
     set(_byproducts "")
     if(_implib)
@@ -473,11 +527,38 @@ function(polyorch_rust_build)
         WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
         ${_depfiles}
         COMMENT "cargo build ${B_PACKAGE} (${_kind})"
+        COMMAND_EXPAND_LISTS
         VERBATIM)
-    add_custom_target("${B_TARGET}-cargo" DEPENDS "${_artifact}")
+    # Primary mediator: owns the rule and carries the POLYORCH_RUST_* build
+    # inputs. Deliberately NOT ALL -- consumers reach it through the
+    # auto-build edge below or the polyorch-rust-all aggregate.
+    add_custom_target("${_med}" DEPENDS "${_artifact}")
+    # Compatibility shim for the pre-rename <TARGET>-cargo name (existing
+    # callers and IDE muscle memory keep working). A real target, not an
+    # ALIAS: add_custom_target(x ALIAS y) configures but generates a rule
+    # that runs the literal word ALIAS (rc=2, measured on cmake 4.4.3).
+    add_custom_target("${B_TARGET}-cargo" DEPENDS "${_med}")
+    # DEPRECATED: attaches extra prerequisites to the mediator; the
+    # auto-build edge below already orders it for every consumer.
     if(B_DEPENDS)
-        add_dependencies("${B_TARGET}-cargo" ${B_DEPENDS})
+        add_dependencies("${_med}" ${B_DEPENDS})
     endif()
+
+    # Property carrier (corr:2313 init convention): every build input the
+    # rule reads is a mediator target property, initialised from this call
+    # and written by the Task 3 setters.
+    set_property(TARGET "${_med}" PROPERTY
+        POLYORCH_RUST_KIND "${_kind}"
+        POLYORCH_RUST_CRATE "${B_CRATE}"
+        POLYORCH_RUST_PACKAGE "${B_PACKAGE}"
+        POLYORCH_RUST_PROFILE "${_prof}"
+        POLYORCH_RUST_BASE_DIR "${_td}"
+        POLYORCH_RUST_FEATURES "${B_FEATURES}"
+        POLYORCH_RUST_ALL_FEATURES ""
+        POLYORCH_RUST_NO_DEFAULT_FEATURES ""
+        POLYORCH_RUST_CARGO_FLAGS ""
+        POLYORCH_RUST_RUSTFLAGS ""
+        POLYORCH_RUST_ENV_VARS "")
 
     if(_kind STREQUAL "bin")
         add_executable("${B_TARGET}" IMPORTED GLOBAL)
@@ -488,10 +569,22 @@ function(polyorch_rust_build)
     if(_implib)
         set_target_properties("${B_TARGET}" PROPERTIES IMPORTED_IMPLIB "${_implib_path}")
     endif()
+    # Auto-build edge: a dependency added to an IMPORTED target propagates
+    # to every target that links it (Makefile2 gains the mediator as a
+    # prerequisite of the consumer; measured on cmake 4.4.3), replacing
+    # per-consumer manual wiring of the mediator.
+    add_dependencies("${B_TARGET}" "${_med}")
+    # Opt-in aggregate: `cmake --build . --target polyorch-rust-all` builds
+    # every rust artifact registered in the tree without putting cargo into
+    # a bare build's default target set.
+    if(NOT TARGET polyorch-rust-all)
+        add_custom_target(polyorch-rust-all)
+    endif()
+    add_dependencies(polyorch-rust-all "${_med}")
     if(B_FOLDER)
-        # both halves of the pair join the same IDE folder: the imported handle
-        # consumers link, and the <TARGET>-cargo mediator they build.
-        set_target_properties("${B_TARGET}" "${B_TARGET}-cargo"
+        # all three handles join the same IDE folder: the imported target
+        # consumers link, the mediator that owns the rule, and the shim.
+        set_target_properties("${B_TARGET}" "${_med}" "${B_TARGET}-cargo"
             PROPERTIES FOLDER "${B_FOLDER}")
     endif()
 endfunction()

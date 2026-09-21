@@ -30,6 +30,10 @@ for t in cases/t-*.cmake; do
     logre=""; nologre=""
     if [ "$want" -eq 0 ]; then
         logre="$(head -n1 "$t" | sed -n 's/^# expect-log //p')"
+        # Only a real marker line counts: an unconditional `p` would feed
+        # any line 2 (typically an include statement) back as a forbidden-
+        # log regex. Gate the print on the prefix matching.
+        nologre="$(sed -n '2{/^# expect-no-log /{s/^# expect-no-log //;p}}' "$t")"
         nologre="$(sed -n '2{s/^# expect-no-log //;p}' "$t")"
     fi
     if ! [ "${POLYORCH_TEST_E2E:-0}" = 1 ] && head -n2 "$t" | grep -qx '# e2e: required'; then
