@@ -1,0 +1,11 @@
+# Minimal pixi workspace used by the PolyOrch pixi examples and the offline
+# end-to-end test (tests/cases/t-bootstrap-e2e.cmake). Zero dependencies and
+# no channels: the solve is trivial and stays offline once pixi is installed.
+[workspace]
+name = "polyorch-example"
+version = "0.1.0"
+channels = []
+platforms = ["linux-64", "osx-64", "osx-arm64", "win-64"]
+
+[tasks]
+greet = "echo hello from a pixi environment"
