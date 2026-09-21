@@ -9,8 +9,12 @@ project(PolyOrch VERSION 0.1.1 LANGUAGES NONE)
 add_custom_target(${PROJECT_NAME})
 set_target_properties(${PROJECT_NAME} PROPERTIES FOLDER ${PROJECT_NAME}/tools)
 
+list(APPEND CMAKE_MODULE_PATH "${PROJECT_SOURCE_DIR}/cmake")
+include(${PROJECT_SOURCE_DIR}/cmake/PolyOrchCMakeHelpers.cmake)
 include(${PROJECT_SOURCE_DIR}/cmake/PolyOrchOptionHelpers.cmake)
+include(${PROJECT_SOURCE_DIR}/cmake/PolyOrchPlatformSupport.cmake)
 include(${PROJECT_SOURCE_DIR}/cmake/PolyOrchPixiHelpers.cmake)
+include(${PROJECT_SOURCE_DIR}/cmake/PolyOrchRustHelpers.cmake)
 
 polyorch_option(PolyOrch_BUILD_EXAMPLES "Add the examples/ subtree to the build" ${PROJECT_IS_TOP_LEVEL})
 if(PolyOrch_BUILD_EXAMPLES)
