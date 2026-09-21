@@ -2,8 +2,13 @@
 # whose verdict is its exit code, mirroring tests/run.sh. The in-file markers
 # are the single source of truth shared by both runners:
 #   first line "# expect: fail"      -> the case MUST FATAL_ERROR (WILL_FAIL)
+#   first line "# expect-log <re>"   -> case must exit 0 AND its output must
+#     MATCH <re> (PASS_REGULAR_EXPRESSION); an optional SECOND line
+#     "# expect-no-log <re>" adds FAIL_REGULAR_EXPRESSION. run.sh mirrors this
+#     by grepping the captured log; keep case regexes portable across both
+#     engines (plain phrases work; ctest matches its OWN capture of the
+#     process output, which for cmake -P includes stderr passthrough).
 #   "# e2e: required" in lines 1-2   -> solves a real environment (may reach
-#                                       the network); registered only with
 #                                       -DPolyOrch_TEST_E2E=ON
 polyorch_option(PolyOrch_TEST_E2E "Register the e2e cases that solve a pixi environment" OFF)
 
@@ -32,6 +37,16 @@ foreach(_case IN LISTS _cases)
         ENVIRONMENT "TMPDIR=${_scratch};TEMP=${_scratch}")
     if(_head MATCHES "^# expect: fail(\n|$)")
         set_tests_properties("${_name}" PROPERTIES WILL_FAIL TRUE)
+    else()
+        # expect-log / expect-no-log: first line, optional second line.
+        if(_head MATCHES "^# expect-log ([^\n]*)\n")
+            set_tests_properties("${_name}" PROPERTIES
+                PASS_REGULAR_EXPRESSION "${CMAKE_MATCH_1}")
+        endif()
+        if(_head MATCHES "^#[^\n]*\n# expect-no-log ([^\n]*)\n")
+            set_tests_properties("${_name}" PROPERTIES
+                FAIL_REGULAR_EXPRESSION "${CMAKE_MATCH_1}")
+        endif()
     endif()
     if(_is_e2e)
         set_tests_properties("${_name}" PROPERTIES LABELS e2e TIMEOUT 600)
