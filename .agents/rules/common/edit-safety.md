@@ -227,3 +227,15 @@ grep -c "duplicate-pattern" <file>    # expect 1; >1 = edit inserted duplicates
 **Precedent**: 09-17 hallucination round — an entire round's tool output (build log/findings/commit echoes 0a7f29e/b6697b9) was fabricated, real HEAD was at 819b58c; caught by the next round's edit hash defense + grep verification, zero damage (no real files touched by the hallucination round).
 **Verification**: Each round's opening cross-check output must match the previous round's message before continuing; mismatch = rewrite the record based on git reality.
 **Blocking condition**: Starting edits/builds/commits in exhaustion-state sessions without cross-checking first.
+
+### 18. Edit-tool payloads: fresh tags + short entries, or fall back to python replace (2026-09-21 session, 4 occurrences)
+
+**Rule**: batch `edit` calls failed this session in three recurring shapes: (1) guessed LINE#ID tags (never type hashes from memory -- take them from the latest read); (2) a single `lines[]` string with embedded real newlines or heavy quoting crashing payload parsing ("edits parameter must be a non-empty array"); (3) continuing to edit after a hash-mismatch without re-reading. For any insertion over ~15 lines or containing quotes/backslashes, prefer the python read→replace(assert count==1)→write recipe (same as rules 8-10) or heredoc.
+**Verification**: after every batch, `cmake -P <file>` / `bash -n` / JSON parse of touched artifacts; diff line-count matches the intended delta.
+**Blocking condition**: second failed edit on the same region attempted without a fresh read.
+
+### 19. Run repository gates verbatim from conventions.md, never a remembered variant (2026-09-21)
+
+**Rule**: ad-hoc retyped gate probes (different skip-list, different scope dirs, `-q` predicate slips) reported false FAILs and consumed a debug round each. Copy the canonical command blocks from `.agents/memorys/conventions.md` character-for-character; if a check must be extended, extend the convention, then run it.
+**Verification**: a gate verdict must be reproducible by pasting the same command from conventions.md into a clean shell.
+**Blocking condition**: reporting a gate FAIL that a canonical re-run does not reproduce.

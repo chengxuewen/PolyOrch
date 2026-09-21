@@ -153,3 +153,23 @@ CHK
 
 A `MODIFIED` entry means vendored content was edited. Either revert it, or record the change in
 `.agents/skills/XMAKE-ATTRIBUTION.md` and regenerate the manifest.
+
+
+## C6: "The two sibling projects' design documents never name each other"
+
+PolyOrch and its validation target are separate products whose architecture and design records
+evolve independently. No formal artifact (everything under `docs/` and `.agents/`, plus the
+root documents) may contain the other project's **name**. A formal document may describe the
+validation target by *criteria* (workspace-scale cargo build, multi-feature Pixi environment,
+the bootstrap trio) but never by name. The join — which repository was chosen, what the
+experiments found against it — is recorded only in git-excluded plan documents under
+`.omo/plans/`. Rationale: user directive, 2026-09-20 — a name-link in either direction
+couples two independent revision histories and leaks one project's status into the other's
+design record.
+
+```bash
+# The pattern is bracketed so this file does not self-match (PIT-1).
+if grep -rilE '[Vv]isia[E]ngine' docs/ .agents/ AGENTS.md README.md README_zh.md SKILL.md; then
+  echo "FAIL: cross-project name leaked into a formal document"; exit 1
+else echo "PASS"; fi
+```

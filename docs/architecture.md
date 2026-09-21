@@ -144,14 +144,15 @@ The risk this table exposes: the prototype's most-refined bridges (cmake, ros) a
 
 | # | Question | State |
 |---|---|---|
-| O1 | Which real repository is the validation target? | **recommended: MediaServo**, which carries exactly the `bootstrap.*` + `pixi.*` + launcher trio being replaced |
+| O1 | Which real repository is the validation target? | **decided 2026-09-20 (D10)**: the sibling polyglot monorepo whose working tree currently hosts this checkout — selected by the user. Its identity is recorded only in the git-excluded plan zone (C6), never named in formal documents. Selection criteria it meets: workspace-scale cargo build as the native authority, a multi-feature Pixi environment, and the `bootstrap.*` + `pixi.*` + launcher trio being replaced. Zero coverage there: the npm build surface, third-party CMake dependencies, and vcpkg/conan usage — the npm bridge and O4 stay unvalidated by this choice |
 | O2 | Does `xmake-idea` actually provide DAP native debugging, and from which CLion version? | **unverified**. The plugin's existence is confirmed; the whitepaper's debugging claim is not. The vendored corpus has zero matches for `xmake-idea` or DAP, so the claim should be removed or annotated |
 | O3 | ~~What is the exact syntax for a project to declare an addon?~~ | **resolved**: `add_addons("<name> [<range>]")` plus a committed `xmake-addons.lock`. Xmake auto-installs missing addons on project load |
 | O4 | Can vcpkg and conan themselves be brought inside Pixi? | **narrowed 2026-09-20**: consuming them **as Xrepo package sources is confirmed** (`xrepo install vcpkg::zlib`, `conan::zlib/1.2.11`). The open half is bringing them inside a **Pixi-managed environment**; Pixi appears nowhere in the vendored corpus. Still the last invariant-1 violation |
 | O5 | Does `xmake.executable` expand `${workspaceFolder}`? | **narrowed 2026-09-20**: neither is documented anywhere, and the documented knob for pinning a project-local binary is `XMAKE_PROGRAM_FILE` (plus `XMAKE_PROGRAM_DIR`). Re-verify against `xmake-vscode` itself, then pick D7's mechanism |
-| O6 | When do Windows and Linux enter scope? | **resolved for v0.1**: out of scope; the prototype is macOS-only. Revisit after v0.1 |
+| O6 | When do Windows and Linux enter scope? | **reopened 2026-09-20 (D10)**: the selected validation host is Linux/x86_64, so the prototype's macOS-only scope cannot hold; Linux enters scope at first experiment contact. Windows stays out of v0.1 |
 | O7 | What is the scope of the repository merge? | not defined |
 | O8 | What happens to the whitepaper's unsupported claims? | open; covers the Guild entry (PIT-2) and the CLion/DAP assertion, which is tracked as O2. See `status.md` |
+| O9 | Does the contract's uniform-binary-path fact survive a native ecosystem whose output directory cannot be relocated without transcribing? | **registered 2026-09-20 (D10)**: found against the validation target before any experiment ran — cargo binaries live under the project's own `target/` tree, while `modules/01-contract.md` demands `build/<plat>/<arch>/<mode>/<name>` and invariant 2 forbids copying. Candidate amendment: debug metadata carries the ecosystem-native path; the uniform path applies only to engine-built targets. Decide at the first experiment round |
 
 ## Superseded From The Whitepaper
 
