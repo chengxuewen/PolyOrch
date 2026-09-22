@@ -1,5 +1,7 @@
 # e2e: required
+# requires: pixi-rust
 include("${CMAKE_CURRENT_LIST_DIR}/_inc.cmake")
+include("${CMAKE_CURRENT_LIST_DIR}/_requires.cmake")
 
 # Task 5 acceptance: polyorch_rust_import over a REAL cargo workspace with a
 # real pixi rust toolchain -- `cargo metadata` runs for real (the offline
@@ -10,11 +12,11 @@ include("${CMAKE_CURRENT_LIST_DIR}/_inc.cmake")
 # IMPORTED_TARGETS is asserted as an EXACT set (P4: a stray or missing handle
 # fails). The negative leg re-enters cargo metadata with CRATES ghost-pkg and
 # pins the FATAL phrase naming the available packages.
-# Needs pixi; skips cleanly without it.
+# Needs pixi + a materialized pixi cargo env; skips honestly without it.
 
-polyorch_pixi_find(QUIET)
-if(NOT PolyOrch_PIXI_EXECUTABLE)
-    message(STATUS "rust-import-ws: SKIP (no pixi; batch import not exercised)")
+polyorch_requires(pixi-rust _req)
+if(NOT _req)
+    message(STATUS "t-rust-import-ws : SKIP (no pixi, or no pixi env materialized with a cargo)")
     return()
 endif()
 
@@ -33,7 +35,7 @@ elseif(CMAKE_HOST_SYSTEM_NAME STREQUAL "Darwin")
 elseif(CMAKE_HOST_SYSTEM_NAME STREQUAL "Windows")
     set(_plat win-64)
 else()
-    message(STATUS "rust-import-ws: SKIP (no pixi platform for ${CMAKE_HOST_SYSTEM_NAME})")
+    message(STATUS "t-rust-import-ws : SKIP (no pixi platform for ${CMAKE_HOST_SYSTEM_NAME})")
     return()
 endif()
 

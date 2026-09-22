@@ -1,13 +1,18 @@
+# requires: pixi
 include("${CMAKE_CURRENT_LIST_DIR}/_inc.cmake")
+include("${CMAKE_CURRENT_LIST_DIR}/_requires.cmake")
 
 # polyorch_pixi_find against a real pixi, when this machine has one.
 # SKIPs (exit 0) otherwise, so the suite stays portable.
-set(_real "")
-find_program(_real NAMES pixi PATHS "$ENV{HOME}/.pixi/bin" "$ENV{PIXI_HOME}/bin")
-if(NOT _real)
-    message(STATUS "find-real: SKIP (no pixi on this machine)")
+polyorch_requires(pixi _req)
+if(NOT _req)
+    message(STATUS "t-find-real : SKIP (no pixi on this machine)")
     return()
 endif()
+# No pre-set: an empty normal variable would shadow the find result on
+# cmake 4.4.3 (PIT -- the pre-D15 shape of this case silently skipped here).
+find_program(_real NAMES pixi PATHS "$ENV{HOME}/.pixi/bin" "$ENV{PIXI_HOME}/bin")
+ck(_real)
 
 polyorch_pixi_find(QUIET)
 ck(PolyOrch_PIXI_EXECUTABLE)

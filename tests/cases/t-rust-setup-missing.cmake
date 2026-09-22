@@ -1,4 +1,6 @@
+# requires: no-system-rust
 include("${CMAKE_CURRENT_LIST_DIR}/_inc.cmake")
+include("${CMAKE_CURRENT_LIST_DIR}/_requires.cmake")
 include("${CMAKE_CURRENT_LIST_DIR}/../../cmake/PolyOrchRustHelpers.cmake")
 
 # Child leg: REQUIRED setup must hard-fail when no system cargo exists.
@@ -11,9 +13,9 @@ endif()
 # POLYORCH_RUST_FOUND=FALSE and no FATAL_ERROR. Only meaningful where the
 # system PATH truly has no cargo (this project's validation host); elsewhere
 # the case skips rather than false-fails.
-find_program(_cargo NAMES cargo)
-if(_cargo)
-    message(STATUS "rust-setup-missing: SKIP (system cargo found: ${_cargo})")
+polyorch_requires(no-system-rust _req)
+if(NOT _req)
+    message(STATUS "t-rust-setup-missing : SKIP (a system cargo is on PATH)")
     return()
 endif()
 

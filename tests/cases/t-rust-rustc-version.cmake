@@ -1,4 +1,6 @@
+# requires: posix-shell
 include("${CMAKE_CURRENT_LIST_DIR}/_inc.cmake")
+include("${CMAKE_CURRENT_LIST_DIR}/_requires.cmake")
 include("${CMAKE_CURRENT_LIST_DIR}/../../cmake/PolyOrchRustHelpers.cmake")
 
 # polyorch_rust_setup info vars (Task 3C): the module already captures the
@@ -7,8 +9,9 @@ include("${CMAKE_CURRENT_LIST_DIR}/../../cmake/PolyOrchRustHelpers.cmake")
 # cargo version). Offline proof via stub rustc/cargo scripts at the front of
 # PATH (find_program NO_CACHE re-searches the env PATH per call, so the stubs
 # are what setup locates). Windows skipped: POSIX shell stubs.
-if(NOT UNIX)
-    message(STATUS "rust-rustc-version: SKIP (POSIX shell stubs)")
+polyorch_requires(posix-shell _req)
+if(NOT _req)
+    message(STATUS "t-rust-rustc-version : SKIP (fixture needs POSIX shell stubs)")
     return()
 endif()
 

@@ -1,5 +1,7 @@
 # e2e: required
+# requires: pixi-rust
 include("${CMAKE_CURRENT_LIST_DIR}/_inc.cmake")
+include("${CMAKE_CURRENT_LIST_DIR}/_requires.cmake")
 
 # Task 6 acceptance (P-4 install-consumer chain): polyorch_rust_install
 # stages a REAL cargo-built staticlib + bin, the EXPORT replay stub is
@@ -14,11 +16,12 @@ include("${CMAKE_CURRENT_LIST_DIR}/_inc.cmake")
 # say-hi bin, hookme staticlib. The hook leg is a direct polyorch_rust_build
 # with [PREBUILD prebuild-stamp]: after building the aggregate the stamp file
 # must exist -- nothing else produces it, so the ordering edge is the proof.
-# Needs pixi + a host C compiler; skips cleanly without pixi.
+# Needs pixi + a materialized pixi cargo env + a host C compiler; skips
+# honestly without pixi-rust.
 
-polyorch_pixi_find(QUIET)
-if(NOT PolyOrch_PIXI_EXECUTABLE)
-    message(STATUS "rust-install-e2e: SKIP (no pixi; install chain not exercised)")
+polyorch_requires(pixi-rust _req)
+if(NOT _req)
+    message(STATUS "t-rust-install-e2e : SKIP (no pixi env materialized with a cargo)")
     return()
 endif()
 
@@ -37,7 +40,7 @@ elseif(CMAKE_HOST_SYSTEM_NAME STREQUAL "Darwin")
 elseif(CMAKE_HOST_SYSTEM_NAME STREQUAL "Windows")
     set(_plat win-64)
 else()
-    message(STATUS "rust-install-e2e: SKIP (no pixi platform for ${CMAKE_HOST_SYSTEM_NAME})")
+    message(STATUS "t-rust-install-e2e : SKIP (no pixi platform for ${CMAKE_HOST_SYSTEM_NAME})")
     return()
 endif()
 

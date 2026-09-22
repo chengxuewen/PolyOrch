@@ -1,14 +1,15 @@
+# requires: pixi
 include("${CMAKE_CURRENT_LIST_DIR}/_inc.cmake")
+include("${CMAKE_CURRENT_LIST_DIR}/_requires.cmake")
 
 # Workspace creation entirely from CMake args (no external pixi.toml):
 # NAME/VERSION round-trip through `pixi workspace <..> get`, CHANNELS/PLATFORMS
 # land in pixi.toml, ENVIRONMENTS_DIR lands in .pixi/config.toml, and
 # IF_NOT_EXISTS keeps user content while refreshing properties.
 # Offline (init/set/config never download); needs pixi, else SKIP.
-set(_pixi "")
-find_program(_pixi NAMES pixi PATHS "$ENV{HOME}/.pixi/bin" "$ENV{PIXI_HOME}/bin")
-if(NOT _pixi)
-    message(STATUS "init-workspace: SKIP (no pixi on this machine)")
+polyorch_requires(pixi _req)
+if(NOT _req)
+    message(STATUS "t-init-workspace : SKIP (no pixi on this machine)")
     return()
 endif()
 

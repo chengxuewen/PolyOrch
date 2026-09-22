@@ -1,5 +1,7 @@
 # e2e: required
+# requires: pixi-rust
 include("${CMAKE_CURRENT_LIST_DIR}/_inc.cmake")
+include("${CMAKE_CURRENT_LIST_DIR}/_requires.cmake")
 include("${CMAKE_CURRENT_LIST_DIR}/../../cmake/PolyOrchRustHelpers.cmake")
 
 # The systemic PIT-13 net: the collision guard only protects against a name
@@ -15,20 +17,19 @@ include("${CMAKE_CURRENT_LIST_DIR}/../../cmake/PolyOrchRustHelpers.cmake")
 # -DPolyOrch_PIXI_EXECUTABLE=/nonexistent does NOT yield a graceful skip --
 # the value is honored as cache and polyorch_pixi_find then HARD-FATALs on
 # the failed version probe ("pixi at /nonexistent/pixi does not run"), it
-# does not re-search and come back empty. The working lever is the one the
-# existing e2e cases use: pre-check with polyorch_pixi_find(QUIET) IN THE
-# PARENT (clean empty when pixi is simply absent) and return() before ever
-# spawning the child.
+# does not re-search and come back empty. The working lever is the requires
+# gate below: probe the capability (polyorch_requires, filesystem only --
+# no solve) IN THE PARENT and return() before ever spawning the child.
 
-polyorch_pixi_find(QUIET)
-if(NOT PolyOrch_PIXI_EXECUTABLE)
-    message(STATUS "rust-rule-wiring: SKIP (no pixi; buildsystem rule path not exercised)")
+polyorch_requires(pixi-rust _req)
+if(NOT _req)
+    message(STATUS "t-rust-rule-wiring : SKIP (no pixi env materialized with a cargo)")
     return()
 endif()
 
 # examples/rust-basic's pixi workspace declares these platforms only.
 if(NOT CMAKE_HOST_SYSTEM_NAME MATCHES "^(Linux|Darwin|Windows)$")
-    message(STATUS "rust-rule-wiring: SKIP (no pixi platform for ${CMAKE_HOST_SYSTEM_NAME})")
+    message(STATUS "t-rust-rule-wiring : SKIP (no pixi platform for ${CMAKE_HOST_SYSTEM_NAME})")
     return()
 endif()
 

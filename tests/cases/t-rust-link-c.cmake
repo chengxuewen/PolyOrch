@@ -1,5 +1,7 @@
 # e2e: required
+# requires: pixi-rust
 include("${CMAKE_CURRENT_LIST_DIR}/_inc.cmake")
+include("${CMAKE_CURRENT_LIST_DIR}/_requires.cmake")
 
 # P-2 acceptance for the whole rust gap-close epic (Task 4): a Rust STATIC
 # artifact linked by a real C consumer, end to end. This is the first piece of
@@ -14,11 +16,12 @@ include("${CMAKE_CURRENT_LIST_DIR}/_inc.cmake")
 #   the staticlib and, crucially, the C link would FAIL without that interface:
 #   the crate calls libm's pow(), which the C compiler does not link implicitly.
 #
-# Needs pixi + a host C compiler; skips cleanly without pixi.
+# Needs pixi + a materialized pixi cargo env + a host C compiler; skips
+# honestly without pixi-rust.
 
-polyorch_pixi_find(QUIET)
-if(NOT PolyOrch_PIXI_EXECUTABLE)
-    message(STATUS "rust-link-c: SKIP (no pixi; staticlib link chain not exercised)")
+polyorch_requires(pixi-rust _req)
+if(NOT _req)
+    message(STATUS "t-rust-link-c : SKIP (no pixi env materialized with a cargo)")
     return()
 endif()
 
@@ -37,7 +40,7 @@ elseif(CMAKE_HOST_SYSTEM_NAME STREQUAL "Darwin")
 elseif(CMAKE_HOST_SYSTEM_NAME STREQUAL "Windows")
     set(_plat win-64)
 else()
-    message(STATUS "rust-link-c: SKIP (no pixi platform for ${CMAKE_HOST_SYSTEM_NAME})")
+    message(STATUS "t-rust-link-c : SKIP (no pixi platform for ${CMAKE_HOST_SYSTEM_NAME})")
     return()
 endif()
 

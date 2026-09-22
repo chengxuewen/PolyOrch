@@ -8,6 +8,19 @@
 #   ck_file(<path>)               existence assertion, safe for paths w/ spaces
 #   ck_str("actual" "expected")   exact equality, safe for embedded quotes
 # FATAL_ERROR -> non-zero exit; run.sh / ctest compare against the verdict.
+#
+# Marker contract (full text in _requires.cmake; mirrored in the run.sh and
+# CMakeLists.txt driver headers): line 1 carries the verdict marker
+# (# expect: fail | # expect-log <re> | # e2e: required), line 2 the optional
+# # expect-no-log <re> or # e2e: required, and by line 3 at the latest the
+# optional # requires: <cap>. A requires-marked case probes
+# polyorch_requires(<cap> _ok); on a miss it prints EXACTLY
+#   <file stem> : SKIP (<reason>)
+# and returns 0 -- an honest, counted SKIP. A case WITHOUT that marker must
+# never print the contract skip substring -- both drivers veto it as a FAIL.
+# Driver-level skip wording (SKIP <path> (...)) can never collide with the
+# contract shape. Cases run through the drivers (TMPDIR exported), never a
+# bare cmake -P, whenever a probe may touch the network.
 include("${CMAKE_CURRENT_LIST_DIR}/../../cmake/PolyOrchPixiHelpers.cmake")
 
 macro(ck)

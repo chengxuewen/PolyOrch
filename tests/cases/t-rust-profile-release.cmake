@@ -1,5 +1,7 @@
 # e2e: required
+# requires: pixi-rust
 include("${CMAKE_CURRENT_LIST_DIR}/_inc.cmake")
+include("${CMAKE_CURRENT_LIST_DIR}/_requires.cmake")
 include("${CMAKE_CURRENT_LIST_DIR}/../../cmake/PolyOrchRustHelpers.cmake")
 
 # Profile <-> CMAKE_BUILD_TYPE binding (Task 2 acceptance, plan R-1 row):
@@ -12,14 +14,14 @@ include("${CMAKE_CURRENT_LIST_DIR}/../../cmake/PolyOrchRustHelpers.cmake")
 #   anything else  -> .cargo-target/release/<bin>   (corr:762 semantics)
 # and, on the release leg, that NO debug artifact was produced -- the guard
 # against a Release cell passing via a debug artifact (matrix acceptance
-# criterion "right reason"). Same pixi skip levers as t-rust-rule-wiring.
-polyorch_pixi_find(QUIET)
-if(NOT PolyOrch_PIXI_EXECUTABLE)
-    message(STATUS "rust-profile-release: SKIP (no pixi)")
+# criterion "right reason"). Same pixi-rust requires gate as t-rust-rule-wiring.
+polyorch_requires(pixi-rust _req)
+if(NOT _req)
+    message(STATUS "t-rust-profile-release : SKIP (no pixi env materialized with a cargo)")
     return()
 endif()
 if(NOT CMAKE_HOST_SYSTEM_NAME MATCHES "^(Linux|Darwin|Windows)$")
-    message(STATUS "rust-profile-release: SKIP (no pixi platform for ${CMAKE_HOST_SYSTEM_NAME})")
+    message(STATUS "t-rust-profile-release : SKIP (no pixi platform for ${CMAKE_HOST_SYSTEM_NAME})")
     return()
 endif()
 

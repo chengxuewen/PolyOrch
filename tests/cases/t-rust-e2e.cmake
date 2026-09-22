@@ -1,5 +1,7 @@
 # e2e: required
+# requires: pixi-rust
 include("${CMAKE_CURRENT_LIST_DIR}/_inc.cmake")
+include("${CMAKE_CURRENT_LIST_DIR}/_requires.cmake")
 
 # Full rust path on a real toolchain: pixi-provided rust -> polyorch_rust_setup
 # (FROM pixi) -> polyorch_rust_build of a scratch crate -> the built binary
@@ -7,11 +9,12 @@ include("${CMAKE_CURRENT_LIST_DIR}/_inc.cmake")
 # (custom commands never run in `cmake -P`), so the contract anchor
 # ${CMAKE_BINARY_DIR}/.cargo-target/<profile>/<file> is exercised as specified.
 # polyorch_rust_test is only asserted as a registered target, never executed.
-# Needs pixi (solves rust from conda-forge, minutes on a cold cache); skips
+# Needs pixi + a materialized pixi env containing cargo (cheap probe, no
+# solve); skips honestly without it.
 # cleanly without it.
-polyorch_pixi_find(QUIET)
-if(NOT PolyOrch_PIXI_EXECUTABLE)
-    message(STATUS "rust-e2e: SKIP (no pixi; rust toolchain route not exercised)")
+polyorch_requires(pixi-rust _req)
+if(NOT _req)
+    message(STATUS "t-rust-e2e : SKIP (no pixi, or no pixi env materialized with cargo)")
     return()
 endif()
 
@@ -30,7 +33,7 @@ elseif(CMAKE_HOST_SYSTEM_NAME STREQUAL "Darwin")
 elseif(CMAKE_HOST_SYSTEM_NAME STREQUAL "Windows")
     set(_plat win-64)
 else()
-    message(STATUS "rust-e2e: SKIP (no pixi platform for ${CMAKE_HOST_SYSTEM_NAME})")
+    message(STATUS "t-rust-e2e : SKIP (no pixi platform for ${CMAKE_HOST_SYSTEM_NAME})")
     return()
 endif()
 

@@ -10,6 +10,14 @@
 #     process output, which for cmake -P includes stderr passthrough).
 #   "# e2e: required" in lines 1-2   -> solves a real environment (may reach
 #                                       -DPolyOrch_TEST_E2E=ON
+#   "# requires: <cap>" by line 3     -> AFTER the expect/e2e markers. The
+#     capability probe runs IN THE CASE (cases/_requires.cmake); the drivers
+#     read the marker only to decide the SKIP contract below, never to
+#     pre-gate -- so ctest and run.sh behave identically for free. A marked
+#     case may print the contract skip line "<stem> : SKIP (<reason>)" and
+#     exit 0 -> ctest reports Skipped (SKIP_REGULAR_EXPRESSION). An UNMARKED
+#     want-pass case printing ": SKIP (" is a silent skip -> vetoed via
+#     FAIL_REGULAR_EXPRESSION. Full contract: cases/_requires.cmake.
 polyorch_option(PolyOrch_TEST_E2E "Register the e2e cases that solve a pixi environment" OFF)
 
 # Script-mode scratch falls back to the environment temp; pin it into the
@@ -21,7 +29,7 @@ file(GLOB _cases CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/cases/t-*.cmake"
 list(SORT _cases)
 foreach(_case IN LISTS _cases)
     get_filename_component(_name "${_case}" NAME_WE)
-    file(READ "${_case}" _head LIMIT 200)
+    file(READ "${_case}" _head LIMIT 400)
 
     if(_head MATCHES "^# e2e: required(\n|$)|^#[^\n]*\n# e2e: required(\n|$)")
         set(_is_e2e ON)
@@ -39,13 +47,32 @@ foreach(_case IN LISTS _cases)
         set_tests_properties("${_name}" PROPERTIES WILL_FAIL TRUE)
     else()
         # expect-log / expect-no-log: first line, optional second line.
+        set(_fail_rx "")
         if(_head MATCHES "^# expect-log ([^\n]*)\n")
             set_tests_properties("${_name}" PROPERTIES
                 PASS_REGULAR_EXPRESSION "${CMAKE_MATCH_1}")
         endif()
         if(_head MATCHES "^#[^\n]*\n# expect-no-log ([^\n]*)\n")
+            list(APPEND _fail_rx "${CMAKE_MATCH_1}")
+        endif()
+        # SKIP contract (see header): marked cases skip honestly (Skipped);
+        # unmarked ones get the ": SKIP (" veto folded into the FAIL regex.
+        # (CMake regex cannot quantify a group with {0,2} -- measured; the
+        # three explicit line-position alternatives are the portable form.)
+        if(_head MATCHES "^# requires: " OR _head MATCHES "^#[^\n]*\n# requires: " OR _head MATCHES "^#[^\n]*\n#[^\n]*\n# requires: ")
+            set(_has_req ON)
+        else()
+            set(_has_req OFF)
+        endif()
+        if(_has_req)
             set_tests_properties("${_name}" PROPERTIES
-                FAIL_REGULAR_EXPRESSION "${CMAKE_MATCH_1}")
+                SKIP_REGULAR_EXPRESSION ": SKIP \\(")
+        else()
+            list(APPEND _fail_rx ": SKIP \\(")
+        endif()
+        if(_fail_rx)
+            set_tests_properties("${_name}" PROPERTIES
+                FAIL_REGULAR_EXPRESSION "${_fail_rx}")
         endif()
     endif()
     if(_is_e2e)
