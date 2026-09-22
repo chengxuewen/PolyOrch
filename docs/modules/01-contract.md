@@ -10,7 +10,7 @@
 |---|---|
 | Scan | `<repo>/third_party/*/<native manifest>`; one recognized manifest per bridged project |
 | Derive | `<name>` = build target driving the native tool; `<name>_bin` = debuggable binary target |
-| Artifacts | intermediates to `build/.<tool>/<name>/`; final debuggable binaries to `build/<plat>/<arch>/<mode>/<name>` |
+| Artifacts | intermediates to `build/.<tool>/<name>/`; final debuggable binaries to `build/<plat>/<arch>/<mode>/<name>`. Bridged-native outputs may reach those paths by **staged copy** (D17): the uniform path is the engine's layout convention, and a bridge may additionally expose the ecosystem-native location as debug metadata |
 | Debug metadata | each bridge exposes what a debugger needs: program, cwd, environment |
 | Zero intrusion | no xmake file may be written inside `third_party/<name>/` |
 | Uniqueness | derived names must not collide with names the project generator emits |
@@ -34,7 +34,7 @@ The seven seams the contract has to cover, carried over from the v1.0 record (§
 | IDE debugging | the debug surface points `program` at the uniform binary path above, **not** at `install/` |
 
 Note the last row. The v1.0 record said the debugger should point at an executable *under `install/`*, which
-contradicts the uniform artifact path in the bridge contract above. **The contract wins.** This is exactly the
+contradicts the uniform artifact path in the bridge contract above. **The contract wins** -- as amended by D17 (2026-09-22), which scopes the uniform path as a layout convention reached by staged copy, not an anti-copy taboo on build outputs. This is exactly the
 kind of supersession the archive framing on `../whitepaper.md` makes explicit.
 
 ## Derivation rules
@@ -53,7 +53,7 @@ How a bridged project becomes targets:
 │     |  artifacts                                                           │
 │     v                                                                      │
 │ build/.<tool>/<name>/                                                      │  intermediates
-│ build/<plat>/<arch>/<mode>/<name>                                          │  final, uniform
+│ build/<plat>/<arch>/<mode>/<name>                                          │  final, uniform (staged copy ok, D17)
 └────────────────────────────────────────────────────────────────────────────┘
 ```
 
