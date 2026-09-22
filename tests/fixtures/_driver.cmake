@@ -14,6 +14,8 @@
 #   cmake -DFIXTURE=<abs dir> -DBUILD=<abs dir>
 #         [-DGENERATOR=<gen>]            empty = default generator
 #         [-DCONFIG=<Debug|Release>]     default Debug; -> -DCMAKE_BUILD_TYPE
+#                                         (and -> --build --config <cfg> when
+#                                          GENERATOR is a Multi-Config one)
 #         [-DPASSTHROUGH=<a;b;c>]        ;-joined extra -D configure args
 #         [-DTARGETS=<t1;t2>]            ;-joined build targets; empty = all
 #        -P tests/fixtures/_driver.cmake
@@ -120,6 +122,10 @@ endif()
 
 # --- build ---------------------------------------------------------------------
 set(_b_args "${CMAKE_COMMAND}" "--build" "${BUILD}")
+if(GENERATOR MATCHES "Multi-Config")
+    # MC children select the built config at build time, not configure time.
+    list(APPEND _b_args "--config" "${CONFIG}")
+endif()
 if(TARGETS)
     list(APPEND _b_args "--target" ${TARGETS})
 endif()

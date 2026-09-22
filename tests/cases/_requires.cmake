@@ -107,6 +107,16 @@ function(polyorch_requires cap out)
             set(_ok TRUE)
         endif()
 
+    elseif(cap STREQUAL "generator-mc")
+        # Ninja Multi-Config leg availability: MC fixture children are configured
+        # with -G "Ninja Multi-Config", which needs the ninja binary on PATH
+        # (the same gate tests/matrix.sh applies to its Ninja cells). Added for
+        # WP4 -- the t-rust-output-dir MC legs are its only consumer.
+        find_program(_pr_ninja NAMES ninja)
+        if(_pr_ninja)
+            set(_ok TRUE)
+        endif()
+
     elseif(cap STREQUAL "nightly")
         find_program(_pr_rustc NAMES rustc)
         if(_pr_rustc)

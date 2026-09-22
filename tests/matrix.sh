@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Local generator matrix (stand-in for the absent CI): throwaway host project
-# x {Unix Makefiles, Ninja} x {Debug, Release}, full suite with e2e on.
+# x {Unix Makefiles, Ninja} x {Debug, Release} (4 classic cells), full suite
+# with e2e on, PLUS one Ninja Multi-Config cell (WP4) -- see the MC note below.
 # The repo ROOT is deliberately not configured (standalone it FATALs at the
 # PlatformSupport mkspec detection - known state c79c4bf); the host only
 # wires cmake/ + tests/.
@@ -13,6 +14,20 @@
 # generator and config. The per-cell verdict additionally greps the
 # verbose re-run of that case for "(<Cfg> -> .cargo-target/<cfg>/" -- a
 # Release cell may not pass via a debug artifact (right-reason gate).
+#
+# MC cell (WP4): runs the suite under -G "Ninja Multi-Config" twice,
+# ctest -C Debug then -C Release (POLYORCH_TEST_CONFIG follows), EXCLUDING
+# the four pre-WP4 fixture-driver cases (rule-wiring/import-ws/link-c/
+# install-e2e): their artifact contracts are written in single-config shape
+# (capp=<b>/capp; import-ws pins file(GENERATE) without a $<CONFIG> slot,
+# which an MC tree collapses to last-config-wins) -- a property of the
+# harnesses, not of the product. Those four stay fully covered by the
+# classic cells. The MC proof itself lives in t-rust-output-dir, which
+# re-aims its single-config legs at Unix Makefiles under an MC parent and
+# drives its own -G "Ninja Multi-Config" children with --config Debug AND
+# Release (per-CFG IMPORTED_LOCATION + staging); the cell's right-reason
+# gate greps its verbose re-run for the MC-Debug/.cargo-target/debug and
+# MC-Release/.cargo-target/release markers.
 set -u
 cd "$(dirname "$0")"; here="$(pwd)"; repo="$(dirname "$here")"
 root="$(mktemp -d)"; trap 'rm -rf -- "$root"' EXIT
@@ -46,5 +61,31 @@ for g in "Unix Makefiles" Ninja; do
         fi
     done
 done
+
+# --- Ninja Multi-Config cell (WP4) ------------------------------------------
+# See the header MC note. Skips the four single-config-shaped fixture cases;
+# the MC proof is t-rust-output-dir's own MC legs (--config Debug AND Release
+# inside the case), so the cell's right-reason gate re-runs it verbose and
+# greps both config markers.
+if command -v ninja >/dev/null 2>&1; then
+    cells=$((cells+1))
+    b="$root/b-mc"
+    excl='^t-rust-(rule-wiring|import-ws|link-c|install-e2e)$'
+    if cmake -S "$root/host" -B "$b" -G "Ninja Multi-Config" \
+            -DPolyOrch_TEST_E2E=ON > "$b.log" 2>&1 \
+       && POLYORCH_TEST_E2E=1 POLYORCH_TEST_CONFIG=Debug POLYORCH_TEST_GENERATOR="Ninja Multi-Config" \
+              ctest --test-dir "$b" -C Debug -E "$excl" --output-on-failure >> "$b.log" 2>&1 \
+       && POLYORCH_TEST_E2E=1 POLYORCH_TEST_CONFIG=Release POLYORCH_TEST_GENERATOR="Ninja Multi-Config" \
+              ctest --test-dir "$b" -C Release -E "$excl" --output-on-failure >> "$b.log" 2>&1 \
+       && POLYORCH_TEST_CONFIG=Release ctest --test-dir "$b" -C Release -R '^t-rust-output-dir$' -V >> "$b.log" 2>&1 \
+       && grep -qE "MC-Debug cargo=.*\.cargo-target/debug/" "$b.log" \
+       && grep -qE "MC-Release cargo=.*\.cargo-target/release/" "$b.log"; then
+        echo "PASS [Ninja Multi-Config]"
+    else
+        echo "FAIL [Ninja Multi-Config] (log: $b.log)"; tail -n 15 "$b.log"; rc_all=1
+    fi
+else
+    echo "NOTE Ninja Multi-Config cell skipped: ninja not on PATH"
+fi
 echo "matrix: $cells cell(s), rc=$rc_all"
 exit $rc_all

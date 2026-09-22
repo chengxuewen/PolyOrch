@@ -1,0 +1,9 @@
+[package]
+name = "sh-greet"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+name = "sh_greet"
+path = "src/lib.rs"
+crate-type = ["cdylib"]

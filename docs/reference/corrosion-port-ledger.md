@@ -34,10 +34,17 @@ Every ledger row is exactly one of:
 | `Rust_CARGO_VERSION` (+`_MAJOR/_MINOR/_PATCH`, corr:FindRust.cmake:591-607) | `POLYORCH_RUST_CARGO_VERSION` result variable (token; the D13-era `POLYORCH_RUST_VERSION` stays as the locked alias) | naming-map | The reference's no-prefix cargo-version workaround (find:596-601) is not ported: a cargo stub that does not print `cargo <ver>` is a version-probe miss like any other |
 | `Rust_VERSION_MAJOR/MINOR/PATCH` (corr:FindRust.cmake:620-624, from rustc) | `POLYORCH_RUST_VERSION_MAJOR/MINOR/PATCH` result variables (normalized rustc triple, `-nightly`-style suffixes dropped) | naming-map | Note the naming asymmetry inherited from D13: `POLYORCH_RUST_VERSION` is the CARGO token, the MAJOR/MINOR/PATCH triple is the RUSTC one -- mirroring the reference, where `Rust_VERSION` is rustc's and cargo's carries its own prefix |
 | `Rust::Rustc` / `Rust::Cargo` imported executable targets (corr:FindRust.cmake:902-915) | `PolyOrchRust::Rustc` / `PolyOrchRust::Cargo` created on successful `polyorch_rust_setup` | naming-map | D11 target-naming family. Deviation: the reference creates once behind `if(NOT TARGET)`; PolyOrch REPLACES `IMPORTED_LOCATION` on every successful setup so a re-run with different knobs cannot pin stale paths. Skipped in `cmake -P` script mode (add_executable is not scriptable -- same guard class as the native-libs probe) |
+| `_handle_output_directory_genex` (corr:130-148) | `_polyorch_rust_sanitized_out_dir` (PolyOrchFindRust) | naming-map | Same contract: `$<CONFIG>` rewritten (an empty config also eats the preceding `/`, no `dir//file`), any other surviving genex signals failure by leaving the out-var undefined -- the caller raises the FATAL (the reference's warn-then-fatal split, corr:196-199/217-222). Table-locked by `t-rust-copy-plan` |
+| `_corrosion_set_imported_location(_deferred)` (corr:156-262) + `_corrosion_copy_byproducts(_deferred)` (corr:264-376) | `_polyorch_rust_finalize` / `_polyorch_rust_finalize_deferred` / `_polyorch_rust_finalize_pass` / `_polyorch_rust_role_outdir` (PolyOrchRustHelpers) | naming-map | The reference defers two finalize events that duplicate the directory resolution (its corr:294 comment admits it); PolyOrch merges them into ONE `EVAL CODE` + `DEFER CALL` per handle, late-expanding `[[...]]` args behind an ARGN FATAL guard, looping role x config inside. Deviations: file names ride the frozen naming table (the deferred `.exe`-suffix logic corr:117-128,168-171 is unnecessary -- the triple is resolved at configure); the `-static|-shared` exposed-target name remap (corr:159-163) is not ported because the suffixed PolyOrch handle IS the imported target the user sets properties on |
+| no-output-dir default: location + stage to `CMAKE_CURRENT_BINARY_DIR` (corr:192-194, 300-305) | in-place cargo artifact, no staging (single-config and MC alike) | fidelity-gap | Deviation, ruled required by the locked contracts: `t-rust-import-ws` pins `$<TARGET_FILE>` equal to the naming-table cargo path and the fixture harnesses pin single-config default locations. Staging, when a property IS expressed, mirrors the reference exactly (`make_directory` + `copy_if_different` + BYPRODUCTS, literal filenames on config-class dirs only). Close only by amending those contracts |
+| per-config cargo target dir `build_dir = $<CONFIG>` (corr:676-686, 782-786) | shared `.cargo-target` base, configs segregated by cargo's own profile dir genex `$<IF:$<OR:$<CONFIG:Debug>,$<CONFIG:>>,debug,release>` (corr:772) with the matching `--release` conditional (corr:762, both ported verbatim) | fidelity-gap | Deviation, documented in `polyorch_rust_build`: no `<Config>/<profile>` double-nesting, the single-config layout stays byte-stable, and RelWithDebInfo shares cargo's release fingerprint exactly as its `--release` flag implies. If config-flip churn is ever measured, prepend `$<CONFIG>/` to the base -- the seam is the one `_dir` assignment |
+| gnullvm implib `deps/` workaround keyed on `Rust_CARGO_TARGET_ENV` (corr:334-337) | `_polyorch_rust_copy_plan` `KIND implib` testing `TRIPLE MATCHES "gnullvm$"` | naming-map | The env half of the triple is read from the triple text here (the v0 family table), not from a parsed FindRust field. Table-locked by `t-rust-copy-plan`, incl. the mingw row proving NO deps/ outside gnullvm |
+| `_corrosion_initialize_properties` (corr:2313-2326) | inline loop in `polyorch_rust_build` mirroring `CMAKE_{RUNTIME,ARCHIVE,LIBRARY}_OUTPUT_DIRECTORY(_<CFG>)` onto the handle at creation | naming-map | PDB_OUTPUT_DIRECTORY not ported (the v0 rust face emits no pdb). The mirror is load-bearing: an IMPORTED target never consults the `CMAKE_*` variables itself (measured, cmake 4.4.3) and the finalize reads properties only |
+| reference test group `test/output directory` (its CMakeLists:51-139: targetprop / var / pdb-fallback legs, free space-path dirs, MC `$<CONFIG>/` path selection) | legs `tp` / `cv` / space-build-dir + `mcd` / `mcr` of `tests/fixtures/output-dir` + `t-rust-output-dir` (and the matrix.sh MC cell) | naming-map | targetprop and var legs ported (the var leg by the init row above); the free space trick lands in both the build dir and the dest dirs; pdb and postbuild-move legs not ported (no pdb surface; the reference's `LOCATION_$<CONFIG>` genex read is superseded by per-config `file(GENERATE)` target-file probes) |
 
 ## Fidelity gaps
 
-No open rows registered as of WP2/WP3. WP3's FindRust-parity rows are
+WP2/WP3 left no open rows. WP3's FindRust-parity rows are
 closed as follows, per mechanism:
 
 - **toolchain-selection knob** -- parity delivered (see the two naming-map
@@ -53,6 +60,26 @@ closed as follows, per mechanism:
   Windows/Android/OHOS chains (corr:FindRust.cmake:662-780) stay open
   under the WP5b routing work package, as does the `Rust_CROSSCOMPILING`
   derivation (find:834-838) that consumes them.
+
+WP4 (multiconfig / DEFER / copy-staging) closes the multi-config surface the
+D17 ruling unlocked, per mechanism:
+
+- **output-directory resolution + per-CFG locations + staging** -- parity
+  delivered with the three deviations on the rows above (merged single defer,
+  in-place default, literal filenames from the naming table).
+- **MC cargo rule** -- `--release` and the profile dir ride the reference's
+  own genexes (corr:762/772); the per-config target-dir shape deviates as
+  ledgered. Proven live by `t-rust-output-dir` MC legs and the matrix
+  `Ninja Multi-Config` cell.
+- **gnullvm deps/ importlib** -- parity (table-locked offline; no gnullvm
+  toolchain exists on the validation host, so the BYPRODUCTS/plan paths are
+  exercised by injection, not by a real build).
+- **OPEN (new row)**: custom-profile directory mapping (corr:766-770): the
+  reference maps the profile name `dev` to cargo's `debug` output dir;
+  `_polyorch_rust_artifact_names` uses the profile name verbatim as the
+  directory, so `PROFILE dev` would look in `.cargo-target/dev` (a pre-WP4
+  limitation of the PROFILE keyword, now also on the MC path). Register the
+  fix with the custom-profiles cluster, not silently.
 
 Rows are added per work package as clusters are reconciled against the
 reference surface (Phase B, WP3-WP8), completed by the WP10 full-surface

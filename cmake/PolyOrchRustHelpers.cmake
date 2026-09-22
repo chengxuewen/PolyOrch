@@ -42,9 +42,10 @@
 #
 # Out of scope by design (add a `ponytail:` note at the seam when needed):
 # --target cross-compilation triples, rust-version enforcement, cargo
-# bench/fmt/clippy wrappers, and the
-# multi-config per-<CONFIG> artifact staging/copy strategy (multi-config
-# generators resolve to the debug profile today).
+# bench/fmt/clippy wrappers, and install-time relocations. Multi-config
+# generators are supported (WP4): the profile keys on $<CONFIG>, the
+# IMPORTED locations are per-CFG, and output-directory properties stage
+# copies -- see _polyorch_rust_finalize below.
 #
 # Include-time contract: zero side effects -- definitions and comments only.
 # Requires CMake >= 3.25 (PARSE_ARGV, NO_CACHE find_program, cmake_path).
@@ -182,24 +183,37 @@ function(polyorch_rust_build)
     endif()
     _polyorch_rust_require_setup(polyorch_rust_build)
 
-    # --- profile resolution (corr:762 semantics, single-config scope) ------
-    # No explicit PROFILE: cargo's debug profile follows an unset or Debug
-    # CMAKE_BUILD_TYPE, release follows any other value. The flag, the
-    # artifact directory and the rule stamp are all LITERAL and equal --
-    # generator expressions are banned from BYPRODUCTS and unreliable in
-    # OUTPUT (corr:905-909), and a genex flag paired with a literal stamp
-    # would desync on a multi-config generator, whose per-config copy
-    # strategy is a documented Non-goal. Stamp correctness beats partial
-    # multi-config hope.
-    # ponytail(MC): per-<CONFIG> resolution + copy-staging lands with the
-    # multi-config cluster; multi-config generators stay on debug until then.
+    # --- profile resolution (corr:762/772 semantics) -------------------------
+    # No explicit PROFILE: cargo's debug profile follows Debug, release
+    # follows any other value. SINGLE-CONFIG resolves LITERALLY at configure
+    # -- flag, artifact directory and rule stamp are all equal strings.
+    # The literal pairing is LOCKED behaviour (t-rust-artifact-paths pins the
+    # naming-table dir, t-rust-import-ws pins $<TARGET_FILE> against it, and
+    # the corr:905-909 stamp/desync argument keeps literal stamping the
+    # honest choice for Makefiles/Ninja).
+    # MULTI-CONFIG (WP4, port of corr:762 + corr:772): CMAKE_BUILD_TYPE is
+    # empty there, so the profile is keyed on $<CONFIG> per build instead --
+    # the rule carries the conditional --release flag and the artifact
+    # directory carries $<IF:$<CONFIG:Debug>,debug,release>. The cargo
+    # target dir stays the SHARED .cargo-target base (deviation from
+    # corr:675-686's per-$<CONFIG> target dir, ledgered): cargo's own
+    # profile directories already segregate the configs one level deeper,
+    # which keeps the single-config layout byte-stable and makes
+    # RelWithDebInfo share cargo's release profile exactly like the
+    # reference's flag does.
     # R-3 version floors: the resolved debug/release behaviour above is
     # verified on this host's toolchain only -- cmake 4.4.3 and cargo
     # 1.98.1 (pixi env, measured 2026-09-21, the exact binaries the e2e
     # suite drives). Any lower cargo ceiling for --profile/--features
     # equals-form handling is TBD (not probed here; do not cite a number).
+    set(_mc FALSE)
+    if(CMAKE_CONFIGURATION_TYPES AND NOT B_PROFILE)
+        set(_mc TRUE)
+    endif()
     if(B_PROFILE)
         set(_prof "${B_PROFILE}")
+    elseif(_mc)
+        set(_prof "per-config")
     else()
         string(TOLOWER "${CMAKE_BUILD_TYPE}" _bt)
         if(_bt STREQUAL "" OR _bt STREQUAL "debug")
@@ -211,7 +225,12 @@ function(polyorch_rust_build)
     _polyorch_rust_target_dir(_td "${B_BASE_DIR}")
     _polyorch_rust_artifact_names(TRIPLE "${POLYORCH_RUST_HOST_TARGET}"
         KIND "${_kind}" CRATE "${B_CRATE}" PROFILE "${_prof}" BASE_DIR "${_td}"
-        FILE_OUT _file DIR_OUT _dir IMPLIB_OUT _implib)
+        FILE_OUT _file IMPLIB_OUT _implib)
+    if(_mc)
+        set(_dir "${_td}/$<IF:$<OR:$<CONFIG:Debug>,$<CONFIG:>>,debug,release>")
+    else()
+        set(_dir "${_td}/${_prof}")   # == artifact_names DIR_OUT contract
+    endif()
     set(_artifact "${_dir}/${_file}")
     get_filename_component(_base "${_artifact}" NAME_WE)
     if(_base STREQUAL B_TARGET)
@@ -255,15 +274,32 @@ function(polyorch_rust_build)
     if(B_MANIFEST)
         set(_mankw MANIFEST "${B_MANIFEST}")
     endif()
+    set(_argprof "${_prof}")
+    if(_mc)
+        # MC auto-profile: no literal profile flag -- the conditional
+        # --release (corr:762 verbatim) rides the argv instead; "debug" makes
+        # the pure builder emit its no-flag default.
+        set(_argprof debug)
+    endif()
     _polyorch_rust_cargo_args(PACKAGE "${B_PACKAGE}" KIND "${_kind}"
-        CRATE "${B_CRATE}" PROFILE "${_prof}" ${_mankw} ${_flags} ARGO_OUT _argv)
+        CRATE "${B_CRATE}" PROFILE "${_argprof}" ${_mankw} ${_flags} ARGO_OUT _argv)
+    if(_mc)
+        list(APPEND _argv "$<$<NOT:$<OR:$<CONFIG:Debug>,$<CONFIG:>>>:--release>")
+    endif()
     list(APPEND _argv "${_features_gx}" "${_allf_gx}" "${_nondf_gx}" "${_flags_gx}")
     list(APPEND _argv --target-dir "${_td}")
     _polyorch_rust_command(_cmd SUBCOMMAND ${_argv} ENV "${_env_gx}" "${_rustflags_gx}")
 
     set(_byproducts "")
+    set(_implib_path "")
     if(_implib)
+        # gnullvm: cargo emits the import library under deps/, not the
+        # profile root (corr:334-337) -- the BYPRODUCTS stamp follows the
+        # real source location so the rule stays honest there.
         set(_implib_path "${_dir}/${_implib}")
+        if(POLYORCH_RUST_HOST_TARGET MATCHES "gnullvm$")
+            set(_implib_path "${_dir}/deps/${_implib}")
+        endif()
         set(_byproducts BYPRODUCTS "${_implib_path}")
     endif()
     set(_depfiles "")
@@ -329,10 +365,33 @@ function(polyorch_rust_build)
     else()
         add_library("${B_TARGET}" UNKNOWN IMPORTED GLOBAL)
     endif()
+    # Eager locations: the in-place cargo paths. The deferred finalize
+    # registered at the end of this function REWRITES them from the late
+    # property read -- but polyorch_rust_install() reads these at
+    # configure time, so eager values must exist.
     set_target_properties("${B_TARGET}" PROPERTIES IMPORTED_LOCATION "${_artifact}")
     if(_implib)
         set_target_properties("${B_TARGET}" PROPERTIES IMPORTED_IMPLIB "${_implib_path}")
     endif()
+    # Cachevar leg (port of corr:2313-2321 _corrosion_initialize_properties):
+    # an IMPORTED target never consults CMAKE_*_OUTPUT_DIRECTORY on its own
+    # (measured 4.4.3) and the finalize reads PROPERTIES, so mirror the
+    # variables (and per-config ones) onto the handle at creation.
+    # PDB_OUTPUT_DIRECTORY is not ported: the v0 rust face emits no pdb.
+    foreach(_ov RUNTIME ARCHIVE LIBRARY)
+        if(DEFINED CMAKE_${_ov}_OUTPUT_DIRECTORY)
+            set_property(TARGET "${B_TARGET}" PROPERTY
+                "${_ov}_OUTPUT_DIRECTORY" "${CMAKE_${_ov}_OUTPUT_DIRECTORY}")
+        endif()
+        foreach(_cfg ${CMAKE_CONFIGURATION_TYPES})
+            string(TOUPPER "${_cfg}" _cfgu)
+            if(DEFINED CMAKE_${_ov}_OUTPUT_DIRECTORY_${_cfgu})
+                set_property(TARGET "${B_TARGET}" PROPERTY
+                    "${_ov}_OUTPUT_DIRECTORY_${_cfgu}"
+                    "${CMAKE_${_ov}_OUTPUT_DIRECTORY_${_cfgu}}")
+            endif()
+        endforeach()
+    endforeach()
     # Registry marker on the consumer-facing handle (mirrors what
     # polyorch_rust_import already set there), so polyorch_rust_install
     # validates handles from both registration paths the same way.
@@ -372,6 +431,192 @@ function(polyorch_rust_build)
         set_target_properties("${B_TARGET}" "${_med}" "${B_TARGET}-cargo"
             PROPERTIES FOLDER "${B_FOLDER}")
     endif()
+    # WP4 deferred finalize: late-read the output-directory properties and
+    # re-shape the IMPORTED locations (per-CFG on multi-config), staging a
+    # POST_BUILD copy into any expressed output dir. Reference shape
+    # corr:251-262; see _polyorch_rust_finalize.
+    _polyorch_rust_finalize("${B_TARGET}" "${POLYORCH_RUST_HOST_TARGET}"
+        "${_kind}" "${B_CRATE}" "${_td}" "${_prof}" "${_mc}")
+endfunction()
+
+# ---------------------------------------------------------------------------
+# WP4 output-directory machinery.
+# Adapted from corrosion (MIT, commit c4786e7): cmake/Corrosion.cmake:130-376
+# (+ corr:675-686,762-773,905-909 for the rule shape) -- per-config output-
+# directory resolution, deferred IMPORTED_LOCATION(_<CFG>) / IMPORTED_IMPLIB
+# (_<CFG>) setting and POST_BUILD copy staging. No wholesale copy; the
+# mirrored mechanisms and their deviations are ledgered in
+# docs/reference/corrosion-port-ledger.md.
+# ---------------------------------------------------------------------------
+# Internal: registration wrapper for the deferred finalize. The EVAL CODE
+# + [[...]] wrapper is the reference's late-expansion shape (corr:251-262,
+# 365-376): the ${} references expand NOW, the text re-parses at the end
+# of the configure stage, and each [[...]] argument survives the deferral
+# as a single semicolon-safe value.
+function(_polyorch_rust_finalize target triple kind crate td prof mc)
+    cmake_language(EVAL CODE "
+        cmake_language(DEFER CALL
+            _polyorch_rust_finalize_deferred
+            [[${target}]] [[${triple}]] [[${kind}]] [[${crate}]]
+            [[${td}]] [[${prof}]] [[${mc}]])")
+endfunction()
+
+# Internal: resolve one output-directory property into the staging
+# directory for one config -- behaviour-identical to the per-config block
+# of corr:176-200: PROP_<CFG> wins when set; else the base PROP, to which
+# the config name is APPENDED under a multi-config generator when the
+# value is genex-free (CMake's own MC default-path rule, corr:184-191);
+# a $<CONFIG>-carrying value is used as-is. Single-config reads the base
+# property only (corr:211-223). $<CONFIG> substitution and foreign-genex
+# rejection run through _polyorch_rust_sanitized_out_dir (corr:139-147);
+# a violation is a FATAL here (corr:196-199). OUT receives "" when the
+# user expressed no directory -- PolyOrch then keeps the in-place cargo
+# location (deviation from the reference's CMAKE_CURRENT_BINARY_DIR
+# default: the locked single-config contract pins $<TARGET_FILE> at the
+# cargo path, and MC in-place paths are per-config-correct anyway).
+function(_polyorch_rust_role_outdir target prop cfg mc out)
+    set(_d "")
+    get_target_property(_b "${target}" "${prop}")
+    if(_b AND NOT _b STREQUAL "NOTFOUND")
+        set(_d "${_b}")
+    endif()
+    if(mc)
+        string(TOUPPER "${cfg}" _cu)
+        get_target_property(_pc "${target}" "${prop}_${_cu}")
+        if(_pc)
+            set(_d "${_pc}")               # already config-specific
+        elseif(_d)
+            string(GENEX_STRIP "${_d}" _bn)
+            if(_d STREQUAL _bn)
+                set(_d "${_d}/${cfg}")     # CMake's MC append (corr:187-188)
+            endif()
+        endif()
+    endif()
+    if(_d STREQUAL "")
+        set(${out} "" PARENT_SCOPE)
+        return()
+    endif()
+    _polyorch_rust_sanitized_out_dir("${_d}" "${cfg}" _ds)
+    if(NOT DEFINED _ds)
+        message(FATAL_ERROR
+            "polyorch_rust: ${prop} of target ${target} contains an "
+            "unsupported generator expression (output: '${_d}'); only "
+            "\$<CONFIG> is supported in output directories.")
+    endif()
+    set(${out} "${_ds}" PARENT_SCOPE)
+endfunction()
+
+# Internal: one (role, config) pass of the finalizer. OUT_LOC receives the
+# location for this config -- the staged file path, or the in-place cargo
+# path (copy_plan is the single source of truth for the latter, which is
+# what puts a gnullvm importlib under deps/). OUT_SRC/OUT_DIR carry the
+# staging pair and are empty when no output directory is expressed.
+function(_polyorch_rust_finalize_pass target triple crate td prof oprop f ck cfg mc out_loc out_src out_dir)
+    if(NOT "${prof}" STREQUAL "per-config")
+        set(_pd "${prof}")
+    elseif("${cfg}" STREQUAL "Debug")
+        set(_pd debug)
+    else()
+        set(_pd release)   # corr:762/772: every non-Debug config -> release
+    endif()
+    _polyorch_rust_copy_plan(TRIPLE "${triple}" KIND "${ck}" CRATE "${crate}"
+        SRC_DIR "${td}/${_pd}" DEST_DIR "${td}/${_pd}" OUT _pr)
+    string(REPLACE "|" ";" _pp "${_pr}")
+    list(GET _pp 0 _src)
+    _polyorch_rust_role_outdir("${target}" "${oprop}" "${cfg}" "${mc}" _dir)
+    if(_dir STREQUAL "")
+        set(${out_loc} "${_src}" PARENT_SCOPE)
+        set(${out_src} "" PARENT_SCOPE)
+        set(${out_dir} "" PARENT_SCOPE)
+        return()
+    endif()
+    set(${out_loc} "${_dir}/${f}" PARENT_SCOPE)
+    set(${out_src} "${_src}" PARENT_SCOPE)
+    set(${out_dir} "${_dir}" PARENT_SCOPE)
+endfunction()
+
+# Internal: the deferred per-handle finalize -- corr:130-376 machinery in
+# one pass (the reference's location loop corr:156-235 and copy staging
+# corr:264-376 duplicate the same directory resolution, corr:294 comment;
+# merging them keeps one truth). For every (role, config): late-read the
+# output-directory property, set IMPORTED_LOCATION_<CFG> /
+# IMPORTED_IMPLIB_<CFG> on multi-config (base property = last config, the
+# reference's "last configuration wins", corr:229-234), and stage a
+# POST_BUILD make_directory + copy_if_different into every expressed
+# directory -- BYPRODUCTS carry literal file names on config-class genex
+# dirs only (corr:905-909: target-specific genex are banned there, and
+# the file-name half never carries a genex).
+function(_polyorch_rust_finalize_deferred target triple kind crate td prof mc)
+    if(ARGN)
+        message(FATAL_ERROR
+            "_polyorch_rust_finalize_deferred: unexpected additional arguments: ${ARGN}")
+    endif()
+    # File names from the frozen table (profile-independent; the
+    # per-config sentinel only ever rides the directory).
+    _polyorch_rust_artifact_names(TRIPLE "${triple}" KIND "${kind}"
+        CRATE "${crate}" PROFILE "${prof}" FILE_OUT _file IMPLIB_OUT _implib)
+    if("${kind}" STREQUAL "bin")
+        set(_mprop RUNTIME_OUTPUT_DIRECTORY)
+    elseif("${kind}" STREQUAL "static")
+        set(_mprop ARCHIVE_OUTPUT_DIRECTORY)
+    else()
+        set(_mprop LIBRARY_OUTPUT_DIRECTORY)
+    endif()
+    # Roles: <imported-prop>|<output-dir-prop>|<file>|<copy-plan-kind>.
+    # The implib row exists only for a Windows-family shared handle (the
+    # naming table yields "" elsewhere), staged to ARCHIVE like corr:523-528.
+    set(_roles "IMPORTED_LOCATION|${_mprop}|${_file}|${kind}")
+    if("${kind}" STREQUAL "shared" AND NOT "${_implib}" STREQUAL "")
+        list(APPEND _roles "IMPORTED_IMPLIB|ARCHIVE_OUTPUT_DIRECTORY|${_implib}|implib")
+    endif()
+    foreach(_role ${_roles})
+        string(REPLACE "|" ";" _r "${_role}")
+        list(GET _r 0 _iprop)
+        list(GET _r 1 _oprop)
+        list(GET _r 2 _f)
+        list(GET _r 3 _ck)
+        set(_srcs "")
+        set(_dirs "")
+        set(_byps "")
+        set(_last "")
+        if(mc)
+            foreach(_cfg ${CMAKE_CONFIGURATION_TYPES})
+                _polyorch_rust_finalize_pass("${target}" "${triple}" "${crate}"
+                    "${td}" "${prof}" "${_oprop}" "${_f}" "${_ck}" "${_cfg}" TRUE
+                    _loc _src _dir)
+                if(_src)
+                    list(APPEND _srcs "$<$<CONFIG:${_cfg}>:${_src}>")
+                    list(APPEND _dirs "$<$<CONFIG:${_cfg}>:${_dir}>")
+                    list(APPEND _byps "$<$<CONFIG:${_cfg}>:${_dir}/${_f}>")
+                endif()
+                string(TOUPPER "${_cfg}" _cu)
+                set_property(TARGET "${target}" PROPERTY
+                    "${_iprop}_${_cu}" "${_loc}")
+                set(_last "${_loc}")
+            endforeach()
+        else()
+            # One pass; CMAKE_BUILD_TYPE only feeds the $<CONFIG> rewrite.
+            _polyorch_rust_finalize_pass("${target}" "${triple}" "${crate}"
+                "${td}" "${prof}" "${_oprop}" "${_f}" "${_ck}"
+                "${CMAKE_BUILD_TYPE}" FALSE _loc _src _dir)
+            if(_src)
+                set(_srcs "${_src}")
+                set(_dirs "${_dir}")
+                set(_byps "${_dir}/${_f}")
+            endif()
+            set(_last "${_loc}")
+        endif()
+        set_property(TARGET "${target}" PROPERTY "${_iprop}" "${_last}")
+        if(_srcs)
+            add_custom_command(TARGET "cargo-build-${target}" POST_BUILD
+                COMMAND ${CMAKE_COMMAND} -E make_directory ${_dirs}
+                COMMAND ${CMAKE_COMMAND} -E copy_if_different ${_srcs} ${_dirs}
+                BYPRODUCTS ${_byps}
+                COMMENT "staging ${target} (${_f}) to the output directories"
+                COMMAND_EXPAND_LISTS
+                VERBATIM)
+        endif()
+    endforeach()
 endfunction()
 
 # ------------------------------------------------------------------ import ---

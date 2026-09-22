@@ -1,0 +1,8 @@
+[package]
+name = "bin-greet"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "greet-cli"
+path = "src/main.rs"

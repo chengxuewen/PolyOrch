@@ -205,6 +205,78 @@ function(_polyorch_rust_artifact_names)
     endif()
 endfunction()
 
+# Internal: sanitize an output-directory string for one config. Adapted
+# from corrosion (MIT, commit c4786e7): cmake/Corrosion.cmake:130-148
+# (_handle_output_directory_genex). $<CONFIG> is the ONLY generator
+# expression a PolyOrch output directory may contain: it is substituted
+# with CONFIG (an empty CONFIG also eats the preceding '/' so the path
+# never gains a '//' segment, corr:132-135). Anything else surviving the
+# strip leaves OUT undefined -- the caller raises the FATAL, mirroring
+# the reference's warn-then-fatal split.
+function(_polyorch_rust_sanitized_out_dir DIR CONFIG OUT)
+    if("${CONFIG}" STREQUAL "")
+        string(REPLACE "/$<CONFIG>" "" _d "${DIR}")
+        string(REPLACE "$<CONFIG>" "" _d "${_d}")
+    else()
+        string(REPLACE "$<CONFIG>" "${CONFIG}" _d "${DIR}")
+    endif()
+    string(GENEX_STRIP "${_d}" _s)
+    if("${_s}" STREQUAL "${_d}")
+        set(${OUT} "${_d}" PARENT_SCOPE)
+    else()
+        unset(${OUT} PARENT_SCOPE)
+    endif()
+endfunction()
+
+# Internal: pure staging plan for one rust artifact. Given the triple,
+# the role (KIND bin|static|shared names the main artifact; KIND implib
+# names the Windows import library), the crate name, and the two
+# directory strings, OUT receives a one-element list "<src>|<dst>" --
+# or the empty list when the role does not exist for this family (an
+# implib on elf/macho), never an error. SRC_DIR/DEST_DIR are glued
+# verbatim so callers may pass generator-expression strings (the
+# deferred finalize feeds them per-config literals, the copy command
+# chains). Unknown triples reuse the artifact-names / triple-family
+# FATALs. The gnullvm importlib lives under deps/, not the profile
+# root -- cargo does not expose it yet (corr:334-337 workaround).
+function(_polyorch_rust_copy_plan)
+    set(_one TRIPLE KIND CRATE SRC_DIR DEST_DIR OUT)
+    cmake_parse_arguments(PARSE_ARGV 0 A "" "${_one}" "")
+    if(A_UNPARSED_ARGUMENTS)
+        message(FATAL_ERROR
+            "_polyorch_rust_copy_plan unknown args: ${A_UNPARSED_ARGUMENTS}")
+    endif()
+    _polyorch_rust_must(A_TRIPLE A_KIND A_CRATE A_SRC_DIR A_DEST_DIR A_OUT)
+    if(NOT A_KIND MATCHES "^(bin|static|shared|implib)$")
+        message(FATAL_ERROR
+            "polyorch_rust: copy-plan KIND must be bin|static|shared|implib, got '${A_KIND}'")
+    endif()
+    set(_k "${A_KIND}")
+    set(_implib FALSE)
+    if(_k STREQUAL "implib")
+        set(_k shared)
+        set(_implib TRUE)
+    endif()
+    _polyorch_rust_artifact_names(TRIPLE "${A_TRIPLE}" KIND "${_k}"
+        CRATE "${A_CRATE}" FILE_OUT _f IMPLIB_OUT _i)
+    if(_implib)
+        if(_i STREQUAL "")
+            set(${A_OUT} "" PARENT_SCOPE)  # family has no import library
+            return()
+        endif()
+        set(_f "${_i}")
+        set(_sub "")
+        if(A_TRIPLE MATCHES "gnullvm$")
+            set(_sub "deps/")   # corr:336 -- cargo places gnullvm implibs there
+        endif()
+    else()
+        set(_sub "")
+    endif()
+    set(${A_OUT} "${A_SRC_DIR}/${_sub}${_f}|${A_DEST_DIR}/${_f}" PARENT_SCOPE)
+endfunction()
+
+
+
 # Internal: parse a `rustc --print=native-static-libs` transcript into the two
 # link-interface lists a C consumer needs. Pure: TEXT in (the combined stdout
 # + stderr of the probe), OUT_LIBS / OUT_DIRS out; it NEVER raises FATAL -- text
@@ -966,8 +1038,13 @@ endfunction()
 # cmake --build reaches the artifacts through the polyorch-rust-all
 # aggregate target; the mediators themselves are deliberately NOT ALL.
 # DEPENDS is deprecated -- superseded by the auto-build edge.
-# Without PROFILE the cargo profile follows CMAKE_BUILD_TYPE at configure
-# time: unset or Debug -> debug, any other value -> release (an explicit
-# PROFILE always wins). MANIFEST doubles as the rule's file dependency.
+# Without PROFILE the cargo profile follows the configuration. Single-
+# config: CMAKE_BUILD_TYPE at configure time (unset or Debug -> debug, any
+# other value -> release). Multi-config (WP4): the CONFIG at build time --
+# Debug -> debug, every other config -> the release profile (the --release
+# flag and the artifact profile dir are generator expressions; MC also
+# makes the IMPORTED locations per-CFG, and an output-directory property
+# stages a per-config copy; corr:762/772 semantics). An explicit PROFILE
+# always wins on every generator.
 # BASE_DIR relocates the cargo target dir (pixi ENVIRONMENTS_DIR-style
 # redirects); test and clean accept the same keyword, so the trio always agrees.
