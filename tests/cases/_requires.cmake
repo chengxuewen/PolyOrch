@@ -23,12 +23,19 @@
 #     requires gating in the case; both must let a case run for it to run.
 #   * Unknown capability name => FATAL_ERROR (typo-proof).
 #
-# PATH honesty (WP0 state): the probes see EXACTLY the driver PATH plus the
-# documented extra dirs. The tool (non-login) shell here has neither
-# ~/.cargo/bin nor ~/.pixi/bin on PATH, so `system-rust` (and `rustup`,
-# `nightly`) currently report ABSENT in that shell -- fine for WP0, no case
-# declares them yet; drivers prepending those dirs is WP1 work, at which point
-# the probes become the fallback rather than the main path.
+# Parent/child PATH split (load-bearing since WP2 flipped the fixture cases
+# to system-rust): the PARENT case process gates on these probes, while
+# fixture CHILDREN see the driver-composed PATH (tests/fixtures/_driver.cmake
+# prepends ~/.cargo/bin + ~/.pixi/bin to the child environment only). The
+# tool (non-login) shell has neither dir on PATH, so a PATH-only parent probe
+# would SKIP cases whose children can actually build -- probing the driver's
+# extra dirs too keeps the parent gate aligned with what the children see.
+# `system-rust` therefore = cargo on PATH OR in ~/.cargo/bin (same convention
+# as the `pixi` probe's PATHS ~/.pixi/bin). `no-system-rust` deliberately
+# stays PATH-EXACT: it gates the toolchain-MISSING route (t-rust-setup-missing
+# runs setup() in the PARENT, where the bare tool PATH is the honest
+# environment), so the two probes measure different things on a rustup host
+# and can be TRUE together. `rustup`/`nightly` remain PATH-only fallbacks.
 #
 # Usage in a case:
 #   include("${CMAKE_CURRENT_LIST_DIR}/_requires.cmake")
@@ -46,7 +53,11 @@ function(polyorch_requires cap out)
     set(_ok FALSE)
 
     if(cap STREQUAL "system-rust")
+        # PATH first, then the driver-composed dirs (see PATH note above).
         find_program(_pr_cargo NAMES cargo)
+        if(NOT _pr_cargo)
+            find_program(_pr_cargo NAMES cargo PATHS "$ENV{HOME}/.cargo/bin")
+        endif()
         if(_pr_cargo)
             set(_ok TRUE)
         endif()

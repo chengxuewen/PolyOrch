@@ -1,5 +1,5 @@
 # e2e: required
-# requires: pixi-rust
+# requires: system-rust
 include("${CMAKE_CURRENT_LIST_DIR}/_inc.cmake")
 include("${CMAKE_CURRENT_LIST_DIR}/_requires.cmake")
 
@@ -11,14 +11,9 @@ include("${CMAKE_CURRENT_LIST_DIR}/_requires.cmake")
 # -DPOLYORCH_IW_CRATES=ghost-pkg whose FATAL must name the available
 # packages). The offline half of the parser is t-rust-metadata.cmake.
 
-polyorch_requires(pixi-rust _req)
+polyorch_requires(system-rust _req)
 if(NOT _req)
-    message(STATUS "t-rust-import-ws : SKIP (no pixi, or no pixi env materialized with a cargo)")
-    return()
-endif()
-
-if(NOT CMAKE_HOST_SYSTEM_NAME MATCHES "^(Linux|Darwin|Windows)$")
-    message(STATUS "t-rust-import-ws : SKIP (no pixi platform for ${CMAKE_HOST_SYSTEM_NAME})")
+    message(STATUS "t-rust-import-ws : SKIP (no system cargo on PATH or in ~/.cargo/bin)")
     return()
 endif()
 
@@ -29,9 +24,8 @@ endif()
 set(_fx "${CMAKE_CURRENT_LIST_DIR}/../fixtures/import-ws")
 _polyorch_pixi_scratch(_s)
 
-set(_pxws "-DPOLYORCH_FIXTURE_PIXI_WS=${_s}/pixi-ws")
 set(_dargs "-DFIXTURE=${_fx}" "-DBUILD=${_s}/b" "-DCONFIG=${_cfg}"
-           "-DTARGETS=polyorch-rust-all" "-DPASSTHROUGH=${_pxws}")
+           "-DTARGETS=polyorch-rust-all")
 if("$ENV{POLYORCH_TEST_GENERATOR}")
     list(APPEND _dargs "-DGENERATOR=$ENV{POLYORCH_TEST_GENERATOR}")
 endif()
@@ -89,7 +83,7 @@ endif()
 # --- negative leg: unknown CRATES package names the available ones ----------
 execute_process(COMMAND "${CMAKE_COMMAND}"
     "-DFIXTURE=${_fx}" "-DBUILD=${_s}/bneg" "-DCONFIG=${_cfg}"
-    "-DPASSTHROUGH=${_pxws};-DPOLYORCH_IW_CRATES=ghost-pkg"
+    "-DPASSTHROUGH=-DPOLYORCH_IW_CRATES=ghost-pkg"
     -P "${CMAKE_CURRENT_LIST_DIR}/../fixtures/_driver.cmake"
     RESULT_VARIABLE _rc OUTPUT_VARIABLE _out ERROR_VARIABLE _err)
 set(_dlog "${_out}${_err}")

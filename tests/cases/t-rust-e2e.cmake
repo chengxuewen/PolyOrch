@@ -9,12 +9,17 @@ include("${CMAKE_CURRENT_LIST_DIR}/_requires.cmake")
 # (custom commands never run in `cmake -P`), so the contract anchor
 # ${CMAKE_BINARY_DIR}/.cargo-target/<profile>/<file> is exercised as specified.
 # polyorch_rust_test is only asserted as a registered target, never executed.
-# Needs pixi + a materialized pixi env containing cargo (cheap probe, no
-# solve); skips honestly without it.
-# cleanly without it.
-polyorch_requires(pixi-rust _req)
+# THE pixi-rust coverage keeper (WP2 ruling): every other rust case moved to
+# the system route, so this heredoc case is the only proof the FROM pixi
+# setup route works -- the line-2 marker names that capability. Since
+# rust-basic dropped its pixi env there is no materialized store left to
+# pre-gate on, and gating on one could never pass on a clean host: this
+# case IS the materializer. The gate is therefore the pixi TOOL probe; the
+# solve + install below run on every execution (the R-12 conda-index flake
+# lives here now, nowhere else). No tool => honest contract skip.
+polyorch_requires(pixi _req)
 if(NOT _req)
-    message(STATUS "t-rust-e2e : SKIP (no pixi, or no pixi env materialized with cargo)")
+    message(STATUS "t-rust-e2e : SKIP (no pixi tool on this host)")
     return()
 endif()
 

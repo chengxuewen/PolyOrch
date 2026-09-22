@@ -1,5 +1,5 @@
 # e2e: required
-# requires: pixi-rust
+# requires: system-rust
 include("${CMAKE_CURRENT_LIST_DIR}/_inc.cmake")
 include("${CMAKE_CURRENT_LIST_DIR}/_requires.cmake")
 
@@ -12,16 +12,9 @@ include("${CMAKE_CURRENT_LIST_DIR}/_requires.cmake")
 # $ENV{POLYORCH_TEST_CONFIG} (unset => Debug), so the matrix cells drive this
 # case through the matching cargo profile directory.
 
-polyorch_requires(pixi-rust _req)
+polyorch_requires(system-rust _req)
 if(NOT _req)
-    message(STATUS "t-rust-rule-wiring : SKIP (no pixi env materialized with a cargo)")
-    return()
-endif()
-
-# examples-free since the fixture move, but the pixi platform floor is the
-# fixture manifest's: the five platforms it names.
-if(NOT CMAKE_HOST_SYSTEM_NAME MATCHES "^(Linux|Darwin|Windows)$")
-    message(STATUS "t-rust-rule-wiring : SKIP (no pixi platform for ${CMAKE_HOST_SYSTEM_NAME})")
+    message(STATUS "t-rust-rule-wiring : SKIP (no system cargo on PATH or in ~/.cargo/bin)")
     return()
 endif()
 

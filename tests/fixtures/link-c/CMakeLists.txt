@@ -1,7 +1,7 @@
 # tests/fixtures/link-c -- fixture for cases/t-rust-link-c.cmake.
 # P-2 acceptance: a Rust STATIC artifact linked by a real C consumer, end to
 # end. The chain exercised for real (nothing mocked):
-#   pixi rust -> polyorch_rust_setup (FROM pixi, WITH probe) -> the probe
+#   system rust -> polyorch_rust_setup (default route, WITH probe) -> the probe
 #   discovers the system libs this triple's libstd needs -> polyorch_rust_build
 #   (STATIC) attaches them as INTERFACE_LINK_LIBRARIES -> the C executable
 #   (main.c) links the staticlib and, crucially, the C link would FAIL without
@@ -11,32 +11,20 @@ cmake_minimum_required(VERSION 3.25)
 project(polyorch-fixture-link-c LANGUAGES C)
 
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_LIST_DIR}/../../../cmake")
-include(PolyOrchPixiHelpers)
 include(PolyOrchRustHelpers)
 include("${CMAKE_CURRENT_LIST_DIR}/../../cases/_requires.cmake")
 
-polyorch_requires(pixi-rust _req)
+# Since WP2 the rust face defaults to the toolchain on PATH (the driver
+# composes the child PATH with ~/.cargo/bin -- tests/fixtures/_driver.cmake);
+# this probe mirrors the case-side `# requires: system-rust` gate.
+polyorch_requires(system-rust _req)
 if(NOT _req)
-    message(STATUS "polyorch-fixture-link-c : SKIP (no pixi env materialized with a cargo)")
+    message(STATUS "polyorch-fixture-link-c : SKIP (no cargo on the child PATH)")
     return()
 endif()
 
-# --- pixi bootstrap (WP2 deletes this block + pixi.toml) ----------------------
-# Shared workspace override: a case that drives this fixture twice (positive
-# + negative leg) points both configures at one pixi workspace so the second
-# install replays the first one's lock instead of re-solving (the heredoc-era
-# shared WORKDIR behavior). Default: one workspace per build dir.
-if(POLYORCH_FIXTURE_PIXI_WS)
-    set(_ws "${POLYORCH_FIXTURE_PIXI_WS}")
-else()
-    set(_ws "${CMAKE_BINARY_DIR}/pixi-ws")
-endif()
-file(MAKE_DIRECTORY "${_ws}")
-file(COPY_FILE "${CMAKE_CURRENT_LIST_DIR}/pixi.toml" "${_ws}/pixi.toml")
-polyorch_pixi_setup(MANIFEST "${_ws}/pixi.toml" ENVIRONMENT rust INSTALL)
-
 # Probe ON (default): the STATIC interface this test asserts comes from it.
-polyorch_rust_setup(FROM pixi REQUIRED)
+polyorch_rust_setup(REQUIRED)
 
 # Evidence the probe actually ran and found the toolchain's system libs.
 file(WRITE "${CMAKE_BINARY_DIR}/native_libs.txt" "${POLYORCH_RUST_NATIVE_LIBS}")

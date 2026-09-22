@@ -1,6 +1,6 @@
 # tests/fixtures/import-ws -- fixture for cases/t-rust-import-ws.cmake.
 # polyorch_rust_import over a REAL cargo workspace (rust-ws/, two members)
-# with a real pixi rust toolchain: `cargo metadata` runs for real (the offline
+# with a real system rust toolchain: `cargo metadata` runs for real (the offline
 # half, the parser table, is t-rust-metadata.cmake).
 #   dash-ed  [lib] crate-type=staticlib -> handle dash_ed, artifact libdash_ed.a
 #   say-hi   bin                        -> handle say-hi-exe, runs, prints marker
@@ -12,33 +12,21 @@ cmake_minimum_required(VERSION 3.25)
 project(polyorch-fixture-import-ws LANGUAGES NONE)
 
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_LIST_DIR}/../../../cmake")
-include(PolyOrchPixiHelpers)
 include(PolyOrchRustHelpers)
 include("${CMAKE_CURRENT_LIST_DIR}/../../cases/_requires.cmake")
 
-polyorch_requires(pixi-rust _req)
+# Since WP2 the rust face defaults to the toolchain on PATH (the driver
+# composes the child PATH with ~/.cargo/bin -- tests/fixtures/_driver.cmake);
+# this probe mirrors the case-side `# requires: system-rust` gate.
+polyorch_requires(system-rust _req)
 if(NOT _req)
-    message(STATUS "polyorch-fixture-import-ws : SKIP (no pixi env materialized with a cargo)")
+    message(STATUS "polyorch-fixture-import-ws : SKIP (no cargo on the child PATH)")
     return()
 endif()
 
-# --- pixi bootstrap (WP2 deletes this block + pixi.toml) ----------------------
-# Shared workspace override: a case that drives this fixture twice (positive
-# + negative leg) points both configures at one pixi workspace so the second
-# install replays the first one's lock instead of re-solving (the heredoc-era
-# shared WORKDIR behavior). Default: one workspace per build dir.
-if(POLYORCH_FIXTURE_PIXI_WS)
-    set(_ws "${POLYORCH_FIXTURE_PIXI_WS}")
-else()
-    set(_ws "${CMAKE_BINARY_DIR}/pixi-ws")
-endif()
-file(MAKE_DIRECTORY "${_ws}")
-file(COPY_FILE "${CMAKE_CURRENT_LIST_DIR}/pixi.toml" "${_ws}/pixi.toml")
-polyorch_pixi_setup(MANIFEST "${_ws}/pixi.toml" ENVIRONMENT rust INSTALL)
-
 # NO_NATIVE_PROBE: the link interface is t-rust-link-c's subject; this case
 # is about the import registry itself.
-polyorch_rust_setup(FROM pixi REQUIRED NO_NATIVE_PROBE)
+polyorch_rust_setup(REQUIRED NO_NATIVE_PROBE)
 
 set(_cws "${CMAKE_CURRENT_LIST_DIR}/rust-ws")
 

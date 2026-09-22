@@ -35,7 +35,10 @@
 #
 # Result variables of polyorch_rust_setup are the POLYORCH_RUST_* set
 # (documented exception to the brand-casing rule, see decisions.md D11);
-# cache knobs are PolyOrch_RUST_*; public functions are polyorch_rust_*.
+# cache knobs are PolyOrch_RUST_* (incl. the executable-injection pair
+# PolyOrch_RUST_CARGO_EXECUTABLE / PolyOrch_RUSTC_EXECUTABLE and the
+# PolyOrch_RUST_CARGO_TARGET triple selector, see polyorch_rust_setup);
+# public functions are polyorch_rust_*.
 #
 # Out of scope by design (add a `ponytail:` note at the seam when needed):
 # --target cross-compilation triples, rust-version enforcement, cargo
@@ -49,6 +52,19 @@
 include_guard(GLOBAL)
 
 # ---------------------------------------------------------------- internals ---
+
+# Internal: validate one injected executable (WP2 pair). An empty value is
+# "not injected" (no-op); anything set must name a real file -- a suspicious
+# toolchain source fails hard (invariant 5). NAME is the uppercase tool
+# token used in the cache-variable spelling. Splitting the two calls avoids
+# any key:value parsing, which would be fragile on Windows paths.
+function(_polyorch_rust_check_injected NAME VALUE)
+    if(VALUE AND NOT EXISTS "${VALUE}")
+        message(FATAL_ERROR
+            "polyorch_rust_setup: PolyOrch_RUST_${NAME}_EXECUTABLE is set but no such "
+            "file: '${VALUE}' (unset it to fall back to discovery, or fix the path)")
+    endif()
+endfunction()
 
 # Internal: fail when any named variable is undefined or empty. Every public
 # entry point validates its required keywords through this, so the message
@@ -356,6 +372,9 @@ endfunction()
 #   POLYORCH_RUST_HOST_TARGET  `rustc -vV` host triple (artifact naming key)
 #   POLYORCH_RUST_ROUTE        system | pixi (drives the PATH wrapper)
 #   POLYORCH_RUST_BIN_DIR      directory holding the cargo binary
+#   POLYORCH_RUST_CARGO_TARGET the --target triple selected for the build
+#                              (echo of PolyOrch_RUST_CARGO_TARGET; empty =
+#                              host default -- routing not implemented, WP5)
 # When the toolchain is found, setup also runs a one-shot native-static-libs
 # probe (a throwaway staticlib + `rustc --print=native-static-libs`) that fills
 #   POLYORCH_RUST_NATIVE_LIBS  system libs a Rust staticlib needs at final link
@@ -364,6 +383,19 @@ endfunction()
 # probe is a WARNING with empty lists on failure (never a FATAL); skip it with
 # NO_NATIVE_PROBE.
 # FROM defaults to the PolyOrch_RUST_FROM cache value, then to "system".
+# Injection pair: PolyOrch_RUST_CARGO_EXECUTABLE / PolyOrch_RUSTC_EXECUTABLE
+# (cache string/filepath) are honored FIRST on either route -- when set they
+# replace the route's find_program for that tool, and a set-but-nonexistent
+# value is a FATAL regardless of REQUIRED (invariant 5: a suspicious
+# toolchain source fails hard). An unset pair member falls back to the
+# normal route search; the injection never changes POLYORCH_RUST_ROUTE --
+# the route still selects the env-wrapper semantics. Reference equivalent:
+# the user-var promotion in corr:FindRust.cmake:324-332 (naming-map row in
+# docs/reference/corrosion-port-ledger.md).
+# PolyOrch_RUST_CARGO_TARGET (cache string) selects the cargo --target
+# triple; as of WP2 it is only defined + echoed into
+# POLYORCH_RUST_CARGO_TARGET (a STATUS line when non-empty says routing is
+# NOT implemented yet -- WP5 consumes it; empty = build for the host).
 # A miss without REQUIRED sets FOUND=FALSE and reports by STATUS only;
 # with REQUIRED it fails with the fix for that route. The pixi route first
 # requires the pixi side to be set up -- its error message names
@@ -388,10 +420,27 @@ function(polyorch_rust_setup)
             "polyorch_rust_setup: FROM must be system or pixi, got '${_from}'")
     endif()
 
+    # Injection first (see the contract above): validate, then bypass the
+    # route's find_program per tool. EXISTS only -- the same standard the
+    # reference's user vars use; an unreadable-but-present path surfaces as
+    # a version-probe miss, not as a mysterious FATAL here.
+    set(_inj_cargo "${PolyOrch_RUST_CARGO_EXECUTABLE}")
+    set(_inj_rustc "${PolyOrch_RUSTC_EXECUTABLE}")
+    _polyorch_rust_check_injected(CARGO "${_inj_cargo}")
+    _polyorch_rust_check_injected(RUSTC "${_inj_rustc}")
+
     set(_miss "")
     if(_from STREQUAL "system")
-        find_program(_cargo NAMES cargo NO_CACHE)
-        find_program(_rustc NAMES rustc NO_CACHE)
+        if(_inj_cargo)
+            set(_cargo "${_inj_cargo}")
+        else()
+            find_program(_cargo NAMES cargo NO_CACHE)
+        endif()
+        if(_inj_rustc)
+            set(_rustc "${_inj_rustc}")
+        else()
+            find_program(_rustc NAMES rustc NO_CACHE)
+        endif()
         if(NOT _cargo OR NOT _rustc)
             set(_miss "no cargo/rustc on PATH")
         endif()
@@ -406,8 +455,16 @@ function(polyorch_rust_setup)
         # conda layouts move executables per platform; search every bin dir.
         set(_pixi_dirs "${_pixi_bin}" "${_pixi_prefix}/Library/bin"
                        "${_pixi_prefix}/Scripts" "${_pixi_prefix}/bin")
-        find_program(_cargo NAMES cargo PATHS ${_pixi_dirs} NO_DEFAULT_PATH NO_CACHE)
-        find_program(_rustc NAMES rustc PATHS ${_pixi_dirs} NO_DEFAULT_PATH NO_CACHE)
+        if(_inj_cargo)
+            set(_cargo "${_inj_cargo}")
+        else()
+            find_program(_cargo NAMES cargo PATHS ${_pixi_dirs} NO_DEFAULT_PATH NO_CACHE)
+        endif()
+        if(_inj_rustc)
+            set(_rustc "${_inj_rustc}")
+        else()
+            find_program(_rustc NAMES rustc PATHS ${_pixi_dirs} NO_DEFAULT_PATH NO_CACHE)
+        endif()
         if(NOT _cargo OR NOT _rustc)
             set(_miss "pixi environment has no cargo/rustc (fix: polyorch_pixi_environment_add(TOOLS rust))")
         endif()
@@ -461,7 +518,8 @@ function(polyorch_rust_setup)
     foreach(_v POLYORCH_RUST_FOUND POLYORCH_RUST_CARGO POLYORCH_RUST_RUSTC
                POLYORCH_RUST_VERSION POLYORCH_RUST_RUSTC_VERSION
                POLYORCH_RUST_HOST_TARGET
-               POLYORCH_RUST_ROUTE POLYORCH_RUST_BIN_DIR)
+               POLYORCH_RUST_ROUTE POLYORCH_RUST_BIN_DIR
+               POLYORCH_RUST_CARGO_TARGET)
         unset(${_v} CACHE)
     endforeach()
     # Probe results are cleared here so a configure that never reaches the probe
@@ -479,7 +537,15 @@ function(polyorch_rust_setup)
         set(POLYORCH_RUST_HOST_TARGET "${_host}" CACHE INTERNAL "PolyOrch rust toolchain (polyorch_rust_setup)")
         set(POLYORCH_RUST_ROUTE "${_from}" CACHE INTERNAL "PolyOrch rust toolchain (polyorch_rust_setup)")
         set(POLYORCH_RUST_BIN_DIR "${_bindir}" CACHE INTERNAL "PolyOrch rust toolchain (polyorch_rust_setup)")
+        # WP2 echo-only (ponytail: consumed by the WP5 cross-routing cluster;
+        # until then nothing passes --target, so a non-empty value is inert).
+        set(POLYORCH_RUST_CARGO_TARGET "${PolyOrch_RUST_CARGO_TARGET}" CACHE INTERNAL "PolyOrch rust toolchain (polyorch_rust_setup)")
         message(STATUS "polyorch_rust: cargo ${_version} (host ${_host}, from ${_from})")
+        if(POLYORCH_RUST_CARGO_TARGET)
+            message(STATUS "polyorch_rust: PolyOrch_RUST_CARGO_TARGET="
+                "${POLYORCH_RUST_CARGO_TARGET} recorded but --target routing is "
+                "not implemented yet (WP5); the build stays on the host target")
+        endif()
         if(S_NO_NATIVE_PROBE)
             message(STATUS "polyorch_rust: native-static-libs probe skipped (NO_NATIVE_PROBE)")
         else()

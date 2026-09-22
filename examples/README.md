@@ -5,7 +5,7 @@
 | `pixi-bootstrap/` | `cmake -P pixi-bootstrap/bootstrap.cmake [-DPIXI_PIN=x.y.z]` | cold start without pixi: locate/install the tool, solve + install an environment with lock-drift recovery, smoke-run a task |
 | `pixi-configure/` | `cmake -S pixi-configure -B build` | read-only consumption during a normal configure step (`find` + `setup(REPORT)`) |
 | `pixi-workspace/` | `cmake -S pixi-workspace -B build` | the workspace declared in CMake itself -- `polyorch_pixi_init(NAME/VERSION/CHANNELS/PLATFORMS/ENVIRONMENTS_DIR/COPY_SCRIPTS)`, no external pixi.toml, env storage redirected, activation scripts installed beside `.pixi/` |
-| `rust-basic/` | `cmake -P rust-basic/env-setup.cmake && cmake -S rust-basic -B build` | the rust helpers: `env-setup.cmake` installs the example's own pixi rust environment (the only network step), then `polyorch_rust_setup(FROM pixi REQUIRED)` selects its cargo/rustc, `polyorch_rust_build()` exports the binary as the imported target `greet-cli`, `polyorch_rust_test()` registers a non-default `cargo test` target, `polyorch_rust_run()` wires `--target run-greet-cli`; configure alone is host-safe (STATUS + skip while the env is absent) |
+| `rust-basic/` | `cmake -S rust-basic -B build` | the rust helpers on the system route: `polyorch_rust_setup()` (no `FROM` -- cargo/rustc from `PATH`) selects the toolchain, `polyorch_rust_build()` exports the binary as the imported target `greet`, `polyorch_rust_test()` registers a non-default `cargo test` target, `polyorch_rust_run()` wires `--target run-greet`; the whole example is offline -- nothing here installs or pins the toolchain (pinning is an environment concern, and the pixi `FROM pixi` route is a covered mechanism, not an example need) |
 
 The tool-only half of the cold start is its own entry point --
 `polyorch_pixi_tool_ensure([VERSION] [URL] [HASH] [NO_PRECHECK] [QUIET])` --
@@ -21,14 +21,12 @@ configure):
 cmake --build build --target PolyOrchExamplePixiBootstrap   # may reach the network
 cmake --build build --target PolyOrchExamplePixiConfigure   # read-only
 cmake --build build --target PolyOrchExamplePixiWorkspace   # writes its build dir
-cmake --build build --target PolyOrchExampleRustBasic      # install env -> configure -> cargo build -> run (network on first run)
+cmake --build build --target PolyOrchExampleRustBasic      # configure -> cargo build -> run (needs cargo on PATH)
 ```
 
-All examples except rust-basic stay offline once pixi itself is installed: the
-pixi-configure and pixi-workspace manifests are dependency-free, and
-`pixi-workspace` only writes the manifest + local config (no install).
-`rust-basic/env-setup.cmake` solves + installs a rust toolchain from
-conda-forge -- its configure step deliberately skips itself (STATUS, no
-FATAL) until that env exists, so any host can carry it.
-(no install). The version pin, manifest path and smoke task in `bootstrap.cmake`
-are caller policy -- the PolyOrch module ships the mechanism, not the numbers.
+All examples stay offline once pixi itself is installed: the pixi-configure
+and pixi-workspace manifests are dependency-free, and `pixi-workspace` only
+writes the manifest + local config (no install). `rust-basic` needs only a
+cargo on `PATH`. The version pin, manifest path and smoke task in
+`bootstrap.cmake` are caller policy -- the PolyOrch module ships the
+mechanism, not the numbers.

@@ -1,11 +1,11 @@
 # PolyOrch example: build and run a Rust package through the rust helpers.
 #
-# Self-bootstrapping: the configure step solves + installs THIS directory's
-# own pixi environment (pixi.toml declares the rust toolchain).  It is the
-# only example here that touches the network at configure time, so it is
-# OPT-IN when embedded and always active when configured standalone.
+# System route (since WP2): polyorch_rust_setup() takes cargo/rustc from
+# PATH -- the toolchain is a runtime/environment concern, nothing here
+# installs or pins it (the pixi route is a coverage route, not an example
+# need). Configure reaches no network.
 #
-#   # standalone (network on first run, local after):
+#   # standalone:
 #   cmake -S examples/rust-basic -B build
 #   cmake --build build --target greet-cargo     # cargo build  -> .../greet-cli
 #   cmake --build build --target run-greet       # execute the artifact
@@ -25,28 +25,22 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
 else()
     set(_rust_standalone FALSE)
     option(PolyOrch_RUST_EXAMPLES
-        "Include the rust-basic example (self-bootstraps a pixi rust env; needs network)" OFF)
+        "Include the rust-basic example (builds with the system cargo on PATH)" OFF)
 endif()
 if(NOT _rust_standalone AND NOT PolyOrch_RUST_EXAMPLES)
     return()
 endif()
 
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/../../cmake")
-include(PolyOrchPixiHelpers)
 include(PolyOrchRustHelpers)
 
-# [1/4] Establish the pixi face and install this example's environment.
-#         polyorch_pixi_setup(INSTALL) locates pixi (REQUIRED) and runs
-#         `pixi install` against pixi.toml, so cargo/rustc exist for [2/4].
-polyorch_pixi_setup(
-    MANIFEST "${CMAKE_CURRENT_SOURCE_DIR}/pixi.toml"
-    INSTALL
-    REPORT)
+# [1/4] Locate the toolchain on PATH (system route, the default). A host
+#         without cargo gets the REQUIRED FATAL naming exactly that fix --
+#         pinning/switching the toolchain is an environment concern (a
+#         rustup override, a shell, a pixi env), not this example's.
+polyorch_rust_setup(REQUIRED)
 
-# [2/4] Select the toolchain through the pixi route just established.
-polyorch_rust_setup(FROM pixi REQUIRED)
-
-# [3/4] Wrap cargo. The CMake imported target is named `greet` while the
+# [2/4] Wrap cargo. The CMake imported target is named `greet` while the
 #         built binary's file base name is `greet-cli` (the [[bin]] name).
 #         They are kept DISTINCT on purpose: an IMPORTED target whose name
 #         equals its artifact base name makes the Makefile generator silently
@@ -59,7 +53,7 @@ polyorch_rust_build(
     CRATE   greet-cli
     BINARY)
 
-# [4/4] test + run wrappers for the same crate.
+# [3/4] test + run wrappers for the same crate.
 polyorch_rust_test(
     FOLDER "${PROJECT_NAME}/examples/rust-basic"
     PACKAGE greet-cli 

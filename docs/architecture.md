@@ -154,6 +154,20 @@ The risk this table exposes: the prototype's most-refined bridges (cmake, ros) a
 | O8 | What happens to the whitepaper's unsupported claims? | open; covers the Guild entry (PIT-2) and the CLion/DAP assertion, which is tracked as O2. See `status.md` |
 | O9 | Does the contract's uniform-binary-path fact survive a native ecosystem whose output directory cannot be relocated without transcribing? | **registered 2026-09-20 (D10)**: found against the validation target before any experiment ran — cargo binaries live under the project's own `target/` tree, while `modules/01-contract.md` demands `build/<plat>/<arch>/<mode>/<name>` and invariant 2 forbids copying. Candidate amendment: debug metadata carries the ecosystem-native path; the uniform path applies only to engine-built targets. Decide at the first experiment round |
 
+### Ruled: the CMake experiment surface's default Rust toolchain (2026-09-22, D15)
+
+The design-baseline CMake helpers' rust face defaults to the toolchain the
+`PATH` provides (or an explicitly injected executable pair --
+`PolyOrch_RUST_CARGO_EXECUTABLE` / `PolyOrch_RUSTC_EXECUTABLE`): the default
+toolchain is deliberately **not pinned** by any repository file. This is an
+explicit exemption to invariant 1 and D4 for this surface only, registered
+here per D15: pinning or switching a toolchain is a runtime / environment
+concern (a rustup override, a shell, an environment manager), not a fact the
+bridge invents. The pixi route of the same helpers stays as (a) one coverage
+test proving the explicit-environment route works and (b) the seed of the
+deferred phase-D global toolchain switcher, which is where pinning will
+re-enter as an explicit user choice.
+
 ## Superseded From The Whitepaper
 
 - **Xmake's dual role** is resolved empirically. The prototype generated the CMake project, so Xmake is the substrate while CMake is an output or a dispatch target. The earlier "Open Architecture Questions" section of this document is superseded by the invariants above.
