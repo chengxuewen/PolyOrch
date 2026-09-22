@@ -1,0 +1,26 @@
+#!/bin/sh
+# Deterministic stand-in for the cxxbridge-cmd binary (WP7 offline legs).
+# Records its work by writing dummy files: headers get a pragma-only body,
+# *.cpp sources get a single int symbol so a real C++ compiler produces a
+# real archive from them. --version answers the pinned banner
+# (cxxbridge 1.0.131 -- the first lockfile-visible cxxbridge-cmd release,
+# corr:1710). Never a network call, never cargo.
+if [ "x$1" = "x--version" ]; then
+    echo "cxxbridge 1.0.131"
+    exit 0
+fi
+out=""
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --output) out="$2"; shift 2;;
+        *) shift;;
+    esac
+done
+[ -n "$out" ] || exit 1
+case "$out" in
+    *.cpp|*.cc)
+        printf 'int polyorch_cxxbridge_stub_symbol = 7;\n' > "$out";;
+    *)
+        printf '/* polyorch-cxxbridge-stub */\n#pragma once\n' > "$out";;
+esac
+exit 0

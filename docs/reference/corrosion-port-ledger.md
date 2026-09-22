@@ -195,3 +195,142 @@ CONFIG REQUIRED)`, which is the fixture-level half of the brief's
 consumer chain. The root-level half (`PolyOrchConfig.cmake`, the
 PolyOrch-package install chain, docs/modules promotion) stays
 blocked-on-host; no root file was touched by this work package.
+
+## WP7 anchor audit (cxxbridge/cbindgen tool clusters, 2026-09-22)
+
+The brief's region anchors were re-grepped at the pinned c4786e7 BEFORE
+implementing and verified exact: `corrosion_add_cxxbridge` corr:1786-1981
+(docs ANCHOR pair 1734/1784), `corrosion_experimental_cbindgen`
+corr:2068-2264 (docs ANCHOR pair 1984/2066), the cxx-version probe
+`_corrosion_check_cxx_version(_helper)` corr:1680-1726, the tool-search
+paths `_corrosion_find_rust_paths` corr:FindRust.cmake:224-233, and the
+two inline install rules corr:1857-1873 (cxxbridge_v<ver>) /
+corr:2166-2184 (_corrosion_cbindgen). The brief's API sketches carried
+stale keywords the pin does not have, corrected-to-reference rather than
+invented: the cxxbridge sketch's `[STATUS/RUST/CC/CXX]`/`COMMENT` keywords
+and the `HEADERS` name (the reference's input list is `FILES`,
+corr:1789-1792 -- ported as FILES; "rerun-on-header-change" is the
+source-file DEPENDS edge at corr:1959, ported); the cbindgen sketch's
+`CONFIG`/`OUTPUT`/`PARSE` keywords (the pin exposes HEADER_NAME /
+CBINDGEN_VERSION / FLAGS and its rerun machinery is the DEPFILE at
+corr:2235 -- ported in that shape; a cbindgen `-c` config remains
+reachable through FLAGS).
+
+Surface rows (additions to the naming map above):
+
+| Reference | PolyOrch | Class |
+|---|---|---|
+| `corrosion_add_cxxbridge(cxx_target CRATE REGEN_TARGET FILES)` (corr:1786-1981) | `polyorch_rust_cxxbridge(TARGET <handle> FILES <rs>... [REGEN_TARGET] [VERSION] [PREFIX] [OUTPUT_DIR] [ALLOW_INSTALL])` creating `<TARGET>-cxx` | naming-map |
+| `corrosion_experimental_cbindgen` dual signature (corr:2068-2264) | `polyorch_rust_cbindgen` with the SAME keywords on both signatures | naming-map |
+| `_corrosion_check_cxx_version(_helper)` (corr:1680-1726) | `_polyorch_rust_cxx_version_required` | naming-map |
+| inline tool resolution + install rules (corr:1824-1876, 2152-2185; paths corr:find:224-233) | `polyorch_rust_tool_bootstrap` + pure `_polyorch_rust_tool_version_check` (PolyOrchFindRust) | fidelity-gap closed-with-deviation |
+
+Mechanism notes and deviations, by cluster:
+
+- **tool bootstrap consolidation** -- the reference inlines
+  discover-then-install per cluster with different shapes (cxxbridge:
+  exact-version gate + `--version <v> --root --quiet`, per-target
+  `cxxbridge_v<ver>` empty-target trick; cbindgen: presence-only +
+  `--locked --root`, shared `_corrosion_cbindgen`); PolyOrch factors ONE
+  function: cache `<TOOL-UPPER-UNDERSCORED>_TOOL` (FILEPATH, advanced --
+  the INSTALLED_CXXBRIDGE/installed_cbindgen role), search PATH +
+  toolchain bin dir + CARGO_HOME/bin + ~/.cargo/bin + the (default)
+  build-tree `polyorch-tools/<NAME>[-v<ver>]/bin` roots, exact lock
+  compare via the pure helper (corr:1839 semantics; a wrong-version hit
+  is demoted to NOTFOUND, corr:1838-1847), and ONE deferred
+  `cargo install` rule target `polyorch-tool-<crate>[-v<ver>]` built
+  through `_polyorch_rust_command` (the --unset strip leads,
+  `CARGO_BUILD_RUSTC=` pins the selected rustc -- corr:1861-1862/2172).
+  Deviations: the version-banner regex is name-agnostic (the reference
+  hardcodes the binary name, corr:1830/1701); the cxxbridge leg always
+  quiets the install rule (corr:1867) while cbindgen follows the inverse
+  of `PolyOrch_RUST_VERBOSE` (corr:2177 + corr:21's flag); rules are
+  SKIPPED in `cmake -P` script mode (the decision and cache still
+  resolve -- same guard class as the imported handles in setup); the
+  reference's always-present empty `cxxbridge_v<ver>` target becomes an
+  EMPTY `OUT_TARGET` when the tool was discovered (the caller drops its
+  DEPENDS keyword -- semantically identical, one fewer phantom target).
+- **DISCOVERY-ONLY DEFAULT (the network-discipline deviation)** -- the
+  reference's install branch fires unconditionally at configure
+  (corr:1850-1876: "No suitable version installed, so use custom target
+  to build correct version"); PolyOrch fires it only with explicit
+  `ALLOW_INSTALL` (plan R-10 confines crates.io exposure to this cluster
+  AND a permission, and the shared-state gate in the plan requires user
+  authorization before a `cargo install` mutates the toolchain). Without
+  the permission the call reports `live bootstrap deferred (network
+  gate)` and the surface FATALs with acquisition guidance (locked by
+  t-rust-toolplan's phrase child). The install rule itself is deferred
+  to build time exactly like the reference's, so even ALLOW_INSTALL
+  never touches the network during a configure. FIRST-LIVE-EVIDENCE
+  STATUS: none yet -- `cargo install cxxbridge-cmd` has NEVER been run
+  (this host measured crates-io FALSE at WP7 time); the authorization +
+  rollback (`cargo uninstall cxxbridge-cmd`) sequence is deferred to the
+  first live attempt per the plan.
+- **cxxbridge cluster** -- ported verbatim in behavior: the
+  `cargo tree -i cxxbridge-cmd || cxx --all-features --target all
+  --depth=0` derivation (corr:1680-1726, rationale comment included),
+  the rust/cxx.h builtin-header rule (corr:1921-1928), the per-file
+  twin invocations with `--include <cxx_t>/<header>` AFTER `--output`
+  (corr:1949-1961; argv order locked by `_polyorch_rust_cxxbridge_cmd`
+  tables in t-rust-cxxbridge), the directory_component handling for
+  FILES under subdirectories (corr:1934-1942; fixture locks `sub/nested`
+  both sides), the generated folder layout (corr:1879-1900,
+  `polyorch_generated/cxxbridge/<TARGET>-cxx/` instead of
+  corrosion_generated), `add_library STATIC` + `$<BUILD_INTERFACE>`/
+  `$<INSTALL_INTERFACE:include>` include dirs + `cxx_std_11`
+  (corr:1902-1910), the circular PRIVATE/INTERFACE link edges to
+  `<CRATE>-static`/`<CRATE>-shared` (corr:1912-1919 -- the WP6 pair
+  naming made these names live), PRIVATE sources + PUBLIC headers with
+  the corr:1967-1971 ordering rationale, and the header-only
+  REGEN_TARGET (corr:1973-1979). Deviations: the C++ target name is
+  derived (`<TARGET>-cxx`) not caller-chosen; CRATE resolves against any
+  of the pair-handle spellings (the reference has one umbrella target);
+  absolute FILES pass through, resolving corr:1940's own todo;
+  POLYORCH_RUST_MANIFEST (new handle stamp in build()) replaces
+  INTERFACE_COR_PACKAGE_MANIFEST_PATH.
+- **cbindgen cluster** -- ported: both signatures and the keyword set
+  (corr:2069-2080), the missing-HEADER_NAME and unknown-signature FATALs
+  and the AUTHOR_WARNING for unknown args (corr:2082-2107), the auto
+  mode's hostbuild triple switch as a genex (corr:2113-2114 --
+  normalized: with the PolyOrch empty-cross convention the non-hostbuild
+  leg resolves to HOST_TARGET on a host layer where the reference's
+  `_CORROSION_RUST_CARGO_TARGET` already named the host), manifest /
+  package-name resolution from the handle (corr:2116-2124 ->
+  POLYORCH_RUST_MANIFEST / POLYORCH_RUST_PACKAGE), the STATUS
+  "using package" line (corr:2148), manual-mode absolute manifest dir +
+  non-INTERFACE BINDINGS_TARGET AUTHOR_WARNING (corr:2127-2146; gate
+  additionally demands CARGO_PACKAGE -- the reference's own gate
+  duplicates BINDINGS_TARGET at corr:2091-2092 and omits CARGO_PACKAGE,
+  a typo we correct), the bare `-E env TARGET= CARGO= RUSTC=` rule
+  prefix with `--output/--crate/--depfile=/FLAGS` tail +
+  COMMAND_EXPAND_LISTS + manifest WORKING_DIRECTORY + DEPFILE
+  (corr:2220-2238; argv locked by `_polyorch_rust_cbindgen_cmd` tables,
+  env wiring asserted functionally through the stub's echoed header in
+  t-rust-cbindgen), the depfile-parent MAKE_DIRECTORY (corr:2212-2217 --
+  a first-draft port dropped it and the manual-leg subdirectory depfile
+  caught it), and the aggregate + per-header regeneration targets with
+  the mediator edge in auto mode (corr:2248-2263). Deviations: the
+  CMake>=3.23 FILE_SET HEADERS branch (corr:2194-2200) is NOT ported --
+  the reference's pre-3.23 include-dirs fallback is the only shape
+  (our 3.25 floor; header install-side flows through
+  `polyorch_rust_install(PUBLIC_HEADER)` or the user's own install);
+  CBINDGEN_VERSION is WIRED into the lock compare although upstream
+  declares it unimplemented (corr:2052 -- strict superset, honored the
+  moment a pin is given); the install-branch DEPENDS is inline instead
+  of the reference's APPEND-on-second-command (corr:2240-2246, same
+  graph effect).
+- **live-leg honesty** -- the crates.io-free fixture rule pins the
+  cxxbridge VERSION from the tool's own `--version` banner in the parent
+  case instead of deriving it via `cargo tree -i cxx` (the reference's
+  corr:1701 path needs a real `cxx` dependency, forbidden in fixtures by
+  the WP7 brief); `_polyorch_rust_cxx_version_required` is therefore
+  ported-but-live-untested until a registry-capable validation runs.
+  The reference test groups (`test/cxxbridge` 4-variant + circular pair,
+  `test/cbindgen` auto/manual/install, `test/cpp2rust`, `test/rust2cpp`)
+  are WP9 fixture-translation material: the MECHANISMS they cover are
+  covered here by the stub rule legs + the gated live legs; the circular
+  LINK-GROUP variant additionally needs
+  `CMAKE_LINK_GROUP_USING_RESCAN_SUPPORTED` (cmake>=3.24 policy surface
+  outside this port's link story -- ledger note, decide at WP9). The
+  `cbindgen_install*` legs ride the FILE_SET install shape we did not
+  port (registered above).

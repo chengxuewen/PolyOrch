@@ -1356,3 +1356,205 @@ endfunction()
 # always wins on every generator.
 # BASE_DIR relocates the cargo target dir (pixi ENVIRONMENTS_DIR-style
 # redirects); test and clean accept the same keyword, so the trio always agrees.
+
+# ------------------------------------------------------------------ tools ---
+
+# Adapted from corrosion (MIT, commit c4786e7): cmake/Corrosion.cmake:
+# 1680-1726 (cxx version probe), 1824-1876 (cxxbridge tool resolution),
+# 2152-2185 (cbindgen tool resolution). The reference inlines the two
+# tool flows per cluster; PolyOrch factors the shared discovery-or-install
+# machinery into ONE function (deviation, ledgered) so both clusters and
+# any future cargo-installed helper ride one code path.
+
+# Internal: pure version-consistency comparison -- the LOCK-COMPARE
+# semantics of the reference's installed-vs-required check
+# (corr:1839 `cxxbridge_version VERSION_EQUAL cxx_required_version`).
+# Exact equality only, no range logic (that predicate is
+# polyorch_rust_version_ok). An empty operand on either side is FALSE:
+# a missing actual never matches, and a missing pin is the caller's
+# "no requirement" decision, not a wildcard here.
+function(_polyorch_rust_tool_version_check PIN ACTUAL OUT_OK)
+    set(${OUT_OK} FALSE PARENT_SCOPE)
+    if("${PIN}" STREQUAL "" OR "${ACTUAL}" STREQUAL "")
+        return()
+    endif()
+    if("${ACTUAL}" VERSION_EQUAL "${PIN}")
+        set(${OUT_OK} TRUE PARENT_SCOPE)
+    endif()
+endfunction()
+
+# polyorch_rust_tool_bootstrap(TOOL <crate> [BINARY <name>] [VERSION <v>]
+#                              [PREFIX <dir>] [ALLOW_INSTALL] [LOCKED]
+#                              [QUIET] [OUT_VAR <v>] [OUT_TARGET <v>])
+# Resolve one cargo-installable helper tool (crate TOOL, executable BINARY
+# defaulting to TOOL). DISCOVERY ONLY by default: find_program over the
+# PolyOrch-side PREFIX/bin and build-tree default root, the selected
+# toolchain's bin dir, CARGO_HOME/bin and ~/.cargo/bin (the reference's
+# _corrosion_find_rust_paths, corr:FindRust.cmake:224-233, plus the
+# build-tree roots this function's own install branch writes into). When
+# VERSION is given the discovered tool must answer it EXACTLY (lock
+# compare above; a wrong-version hit is demoted to NOTFOUND, mirroring
+# corr:1838-1847 where a mismatched install falls through to the build
+# branch). The result is cached as <TOOL-UPPER-UNDERSCORED>_TOOL (FILEPATH,
+# advanced), e.g. CXXBRIDGE_CMD_TOOL.
+#
+# Not found (or version-mismatched): WITHOUT ALLOW_INSTALL the call only
+# reports -- STATUS '<tool> absent; live bootstrap deferred (network
+# gate)' + FALSE out -- installing on a configure would reach for
+# crates.io unasked (plan R-10 confines network exposure to this cluster
+# AND an explicit permission). WITH ALLOW_INSTALL a build-time
+# `cargo install --root <PREFIX||${CMAKE_BINARY_DIR}/polyorch-tools/...>`
+# rule is added through _polyorch_rust_command (the --unset host-leak
+# strip ordering contract stays intact; CARGO_BUILD_RUSTC pins the
+# selected rustc like corr:1861-1862), the cache points at the
+# build-tree binary and TRUE is reported; OUT_TARGET names the
+# custom target owning the rule (empty when rules are skipped in
+# cmake -P script mode -- the same guard class as the imported handles
+# in polyorch_rust_setup; corr:1857-1873 cxxbridge_v<ver> /
+# corr:2166-2184 _corrosion_cbindgen shapes, one shared name
+# polyorch-tool-<crate>[-v<ver>]). LOCKED adds --locked (the cbindgen
+# leg, corr:2175); QUIET adds --quiet and silences the deferral message
+# (the cxxbridge leg is quiet per corr:1867; the cbindgen leg follows
+# the inverse of PolyOrch_RUST_VERBOSE, corr:2177).
+function(polyorch_rust_tool_bootstrap)
+    cmake_parse_arguments(PARSE_ARGV 0 TB "ALLOW_INSTALL;LOCKED;QUIET"
+        "TOOL;BINARY;VERSION;PREFIX;OUT_VAR;OUT_TARGET" "")
+    if(TB_UNPARSED_ARGUMENTS)
+        message(FATAL_ERROR
+            "polyorch_rust_tool_bootstrap: unknown args: ${TB_UNPARSED_ARGUMENTS}")
+    endif()
+    if(NOT TB_TOOL)
+        message(FATAL_ERROR
+            "polyorch_rust_tool_bootstrap: missing required parameter TOOL")
+    endif()
+    set(_bin "${TB_BINARY}")
+    if(NOT _bin)
+        set(_bin "${TB_TOOL}")
+    endif()
+    string(TOUPPER "${TB_TOOL}" _name)
+    string(REPLACE "-" "_" _name "${_name}")
+    set(_cvar "${_name}_TOOL")
+
+    set(_root "${TB_PREFIX}")
+    if(NOT _root)
+        set(_root "${CMAKE_BINARY_DIR}/polyorch-tools/${_name}")
+        if(TB_VERSION)
+            string(APPEND _root "-v${TB_VERSION}")
+        endif()
+    endif()
+    set(_exe "${_root}/bin/${_bin}${CMAKE_EXECUTABLE_SUFFIX}")
+
+    # --- discovery (never network, never cargo install) --
+    set(_paths "${_root}/bin")
+    if(POLYORCH_RUST_BIN_DIR)
+        list(APPEND _paths "${POLYORCH_RUST_BIN_DIR}")
+    endif()
+    if(DEFINED ENV{CARGO_HOME} AND NOT "$ENV{CARGO_HOME}" STREQUAL "")
+        list(APPEND _paths "$ENV{CARGO_HOME}/bin")
+    endif()
+    if(DEFINED ENV{HOME} AND NOT "$ENV{HOME}" STREQUAL "")
+        list(APPEND _paths "$ENV{HOME}/.cargo/bin")
+    endif()
+    find_program(${_cvar} NAMES "${_bin}" PATHS ${_paths})
+    mark_as_advanced(${_cvar})
+
+    set(_ok FALSE)
+    set(_hit "${${_cvar}}")
+    if(_hit AND NOT _hit MATCHES "NOTFOUND$")
+        if(TB_VERSION)
+            execute_process(COMMAND "${_hit}" --version
+                OUTPUT_VARIABLE _vo ERROR_QUIET OUTPUT_STRIP_TRAILING_WHITESPACE)
+            # Name-agnostic first-triple extraction (deviation: the
+            # reference regex-pins the binary name, corr:1830 -- a crate
+            # whose cmd prints a different banner would then never match).
+            set(_actual "")
+            if(_vo MATCHES "([0-9]+\\.[0-9]+\\.[0-9]+)")
+                set(_actual "${CMAKE_MATCH_1}")
+            endif()
+            _polyorch_rust_tool_version_check("${TB_VERSION}" "${_actual}" _vok)
+            if(_vok)
+                set(_ok TRUE)
+            else()
+                set(${_cvar} "${_cvar}-NOTFOUND" CACHE FILEPATH
+                    "PolyOrch tool ${TB_TOOL} (version-mismatched hit demoted)" FORCE)
+            endif()
+        else()
+            set(_ok TRUE)
+        endif()
+    endif()
+
+    # --- install branch: deferred rule, explicit permission only --
+    if(NOT _ok AND TB_ALLOW_INSTALL)
+        _polyorch_rust_require_setup(polyorch_rust_tool_bootstrap)
+        set(_sub "install;${TB_TOOL};--root;${_root}")
+        if(TB_VERSION)
+            string(APPEND _sub ";--version;${TB_VERSION}")
+        endif()
+        if(TB_LOCKED)
+            string(APPEND _sub ";--locked")
+        endif()
+        if(TB_QUIET)
+            string(APPEND _sub ";--quiet")
+        endif()
+        _polyorch_rust_command(_cmd SUBCOMMAND "${_sub}"
+            ENV "CARGO_BUILD_RUSTC=${POLYORCH_RUST_RUSTC}")
+        set(_tgt "polyorch-tool-${TB_TOOL}")
+        if(TB_VERSION)
+            string(APPEND _tgt "-v${TB_VERSION}")
+        endif()
+        # Script mode has no target registry and add_custom_command is not
+        # scriptable there (measured on 4.4.3) -- the decision is still
+        # reported, the rules are not created.
+        if(NOT CMAKE_SCRIPT_MODE_FILE)
+            file(MAKE_DIRECTORY "${_root}")
+            if(NOT EXISTS "${_exe}")
+                add_custom_command(OUTPUT "${_exe}"
+                    COMMAND ${_cmd}
+                    COMMENT "Installing ${TB_TOOL} (cargo install into ${_root})"
+                    VERBATIM)
+            endif()
+            if(NOT TARGET "${_tgt}")
+                add_custom_target("${_tgt}" DEPENDS "${_exe}")
+            endif()
+            set(${TB_OUT_TARGET} "${_tgt}" PARENT_SCOPE)
+        endif()
+        set(${_cvar} "${_exe}" CACHE FILEPATH "PolyOrch tool ${TB_TOOL}" FORCE)
+        set(_ok TRUE)
+    endif()
+
+    # --- deferral report --
+    if(NOT _ok AND NOT TB_QUIET)
+        message(STATUS "polyorch_rust_tool_bootstrap: ${TB_TOOL} absent; "
+            "live bootstrap deferred (network gate)")
+    endif()
+    if(TB_OUT_VAR)
+        set(${TB_OUT_VAR} ${_ok} PARENT_SCOPE)
+    endif()
+endfunction()
+
+# Internal: derive the cxx version a crate pins, via `cargo tree -i`
+# (port of corr:1680-1726: probe cxxbridge-cmd first, fall back to cxx --
+# the cmd crate is only in lockfiles since cxx 1.0.131, and cxxbridge
+# tracks cxx exactly). The reference's --all-features rationale is kept
+# (feature-gated usage must still resolve: additive features make the
+# superset safe). A registry-backed `cxx` dependency means this probe
+# reaches the network when the lock/cache is cold -- it runs ONLY when
+# polyorch_rust_cxxbridge is called without an explicit VERSION, and its
+# offline-safe twin is the version-consistency table in t-rust-toolplan.
+# OUT_VAR receives the version or the empty string.
+function(_polyorch_rust_cxx_version_required MANIFEST_DIR OUT_VAR)
+    set(${OUT_VAR} "" PARENT_SCOPE)
+    foreach(_name cxxbridge-cmd cxx)
+        _polyorch_rust_command(_cmd
+            SUBCOMMAND "tree;-i;${_name};--all-features;--target;all;--depth=0"
+            ENV "CARGO_BUILD_RUSTC=${POLYORCH_RUST_RUSTC}")
+        execute_process(COMMAND ${_cmd} WORKING_DIRECTORY "${MANIFEST_DIR}"
+            RESULT_VARIABLE _rc OUTPUT_VARIABLE _out ERROR_QUIET)
+        if(_rc EQUAL 0 AND _out MATCHES "${_name} v([0-9]+\\.[0-9]+\\.[0-9]+)")
+            set(${OUT_VAR} "${CMAKE_MATCH_1}" PARENT_SCOPE)
+            return()
+        endif()
+        message(DEBUG "polyorch_rust_tool: \`cargo tree -i ${_name}\` "
+            "did not answer (rc=${_rc}): ${_out}")
+    endforeach()
+endfunction()

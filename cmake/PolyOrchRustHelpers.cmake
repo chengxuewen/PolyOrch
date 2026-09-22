@@ -651,6 +651,14 @@ function(polyorch_rust_build)
     # polyorch_rust_import already set there), so polyorch_rust_install
     # validates handles from both registration paths the same way.
     set_property(TARGET "${B_TARGET}" PROPERTY POLYORCH_RUST_PACKAGE "${B_PACKAGE}")
+    # WP7: the manifest path rides the handle too (the reference's
+    # INTERFACE_COR_PACKAGE_MANIFEST_PATH role, corr:1808/2116) -- read by
+    # polyorch_rust_cxxbridge / polyorch_rust_cbindgen for their auto-mode
+    # version derivation, package resolution and WORKING_DIRECTORY.
+    if(B_MANIFEST)
+        set_property(TARGET "${B_TARGET}" PROPERTY
+            POLYORCH_RUST_MANIFEST "${B_MANIFEST}")
+    endif()
     # System libraries a Rust staticlib needs at final link, from the setup-time
     # native-static-libs probe (_polyorch_rust_probe_native_libs). STATIC only:
     # a shared cdylib has already resolved these against its own link, and a
@@ -1978,5 +1986,438 @@ function(polyorch_rust_install)
             "    \"\${CMAKE_CURRENT_LIST_DIR}/../../..\" ABSOLUTE)\n"
             "include(\"\${CMAKE_CURRENT_LIST_DIR}/${A_EXPORT}-rust.cmake\")\n")
         install(FILES "${_cfgfile}" DESTINATION "${_p}lib/cmake/${A_EXPORT}")
+    endif()
+endfunction()
+# ------------------------------------------------------------------- WP7 ---
+#
+# Adapted from corrosion (MIT, commit c4786e7): cmake/Corrosion.cmake:
+# 1786-1981 (corrosion_add_cxxbridge) and 2068-2264
+# (corrosion_experimental_cbindgen). The tool-resolution half of both
+# regions is factored into polyorch_rust_tool_bootstrap
+# (PolyOrchFindRust) -- discovery-or-deferred-install shared by both
+# clusters. Deviations (all on the port ledger): the cxx target is named
+# <TARGET>-cxx (the reference takes the C++ target name as its first
+# positional); the FILE_SET HEADERS attachment (corr:2194-2200) is not
+# ported (the reference's pre-3.23 include-dirs shape becomes the only
+# shape, the 3.25 floor deletes its branch); the cbindgen manual-mode
+# signature gate additionally requires CARGO_PACKAGE (the reference's
+# duplicated BINDINGS_TARGET term at corr:2090-2093 reads as a typo).
+
+# Internal: pure argv builder for one cxxbridge invocation. Shapes locked
+# against corr:1925 (--header --output), corr:1954 (RUST --header
+# --output) and corr:1956-1958 (RUST --output --include, --include AFTER
+# --output): <tool> [<rust>] [--header] --output <o> [--include <i>].
+# OUT_CMD receives the list; the caller owns VERBATIM.
+function(_polyorch_rust_cxxbridge_cmd)
+    cmake_parse_arguments(PARSE_ARGV 0 C "HEADER"
+        "TOOL;RUST;OUTPUT;INCLUDE;OUT_CMD" "")
+    if(C_UNPARSED_ARGUMENTS)
+        message(FATAL_ERROR
+            "_polyorch_rust_cxxbridge_cmd: unknown args: ${C_UNPARSED_ARGUMENTS}")
+    endif()
+    foreach(_k C_TOOL C_OUTPUT C_OUT_CMD)
+        if(NOT DEFINED ${_k} OR "${${_k}}" STREQUAL "")
+            message(FATAL_ERROR
+                "_polyorch_rust_cxxbridge_cmd: missing required argument '${_k}'")
+        endif()
+    endforeach()
+    if(NOT C_HEADER AND NOT C_RUST)
+        message(FATAL_ERROR
+            "_polyorch_rust_cxxbridge_cmd: RUST is required for the source invocation (no HEADER)")
+    endif()
+    if(C_HEADER AND C_INCLUDE)
+        message(FATAL_ERROR
+            "_polyorch_rust_cxxbridge_cmd: INCLUDE belongs to the source invocation only")
+    endif()
+    set(_argv "${C_TOOL}")
+    if(C_RUST)
+        list(APPEND _argv "${C_RUST}")
+    endif()
+    if(C_HEADER)
+        list(APPEND _argv --header)
+    endif()
+    list(APPEND _argv --output "${C_OUTPUT}")
+    if(C_INCLUDE)
+        list(APPEND _argv --include "${C_INCLUDE}")
+    endif()
+    set(${C_OUT_CMD} "${_argv}" PARENT_SCOPE)
+endfunction()
+
+# polyorch_rust_cxxbridge(TARGET <rust-handle> FILES <file.rs>...
+#                         [REGEN_TARGET <name>] [VERSION <v>] [PREFIX <dir>]
+#                         [OUTPUT_DIR <dir>] [ALLOW_INSTALL])
+# C++ bindings for a #[cxx::bridge] crate via cxxbridge (port of
+# corrosion_add_cxxbridge). Creates the STATIC library <TARGET>-cxx, runs
+# the tool as a BUILD-time custom command into
+# polyorch_generated/cxxbridge/<TARGET>-cxx/ (OUTPUT_DIR relocates the
+# root), and wires the generated sources/headers into it; consumers of
+# <TARGET>-cxx get the include dir and the generation ordering through
+# the normal link edges. FILES resolve against the crate manifest's src/
+# like the reference (corr:1945 -- its "todo: convert absolute paths"
+# note is resolved here: absolute FILES pass through); relative FILES
+# need a handle carrying POLYORCH_RUST_MANIFEST (stamped by build/import
+# with MANIFEST). The tool comes from polyorch_rust_tool_bootstrap:
+# discovered (PATH + toolchain/bin + CARGO_HOME/bin + ~/.cargo/bin +
+# PREFIX/bin) and, with VERSION absent, pinned by the cargo-tree probe
+# against cxxbridge-cmd/cxx (corr:1680-1726). The lock-compare resolution
+# and the explicit-permission install branch are the bootstrap's: the
+# default surface here is discovery plus a loud FATAL -- corr:1850's
+# auto-install shape only rides with ALLOW_INSTALL (crates.io egress).
+# REGEN_TARGET names the header-only regeneration target
+# (corr:1973-1979). The circular link edges to <TARGET>-static/-shared
+# (corr:1912-1919) are ported verbatim; the PUBLIC generated headers
+# (corr:1967-1971) are what make CMake order generation before either
+# side of that cycle.
+function(polyorch_rust_cxxbridge)
+    cmake_parse_arguments(PARSE_ARGV 0 CB "ALLOW_INSTALL"
+        "TARGET;VERSION;PREFIX;OUTPUT_DIR;REGEN_TARGET" "FILES")
+    if(CB_UNPARSED_ARGUMENTS)
+        message(FATAL_ERROR
+            "polyorch_rust_cxxbridge: unknown args: ${CB_UNPARSED_ARGUMENTS}")
+    endif()
+    foreach(_k CB_TARGET CB_FILES)
+        if(NOT DEFINED ${_k} OR "${${_k}}" STREQUAL "")
+            message(FATAL_ERROR
+                "polyorch_rust_cxxbridge: missing required parameter `${_k}'")
+        endif()
+    endforeach()
+    _polyorch_rust_require_setup(polyorch_rust_cxxbridge)
+
+    set(_cxx "${CB_TARGET}-cxx")
+    if(TARGET "${_cxx}")
+        message(FATAL_ERROR
+            "polyorch_rust_cxxbridge: target '${_cxx}' already exists")
+    endif()
+
+    # Manifest of the crate handle (the reference reads
+    # INTERFACE_COR_PACKAGE_MANIFEST_PATH off the imported target,
+    # corr:1808); any of the pair spellings answers.
+    set(_mdir "")
+    foreach(_h "${CB_TARGET}-static" "${CB_TARGET}-shared" "${CB_TARGET}")
+        if(TARGET "${_h}")
+            get_target_property(_mp "${_h}" POLYORCH_RUST_MANIFEST)
+            if(_mp AND NOT _mp MATCHES "-NOTFOUND$" AND EXISTS "${_mp}")
+                get_filename_component(_mdir "${_mp}" DIRECTORY)
+                break()
+            endif()
+        endif()
+    endforeach()
+
+    set(_pin "${CB_VERSION}")
+    if(NOT _pin)
+        if(NOT _mdir)
+            message(FATAL_ERROR
+                "polyorch_rust_cxxbridge: no VERSION given and crate '${CB_TARGET}' carries no readable POLYORCH_RUST_MANIFEST -- cannot derive the pinned cxx version (pass VERSION, or build/import with MANIFEST)")
+        endif()
+        _polyorch_rust_cxx_version_required("${_mdir}" _pin)
+        if(NOT _pin)
+            message(FATAL_ERROR
+                "polyorch_rust_cxxbridge: failed to find a dependency on `cxxbridge-cmd` / `cxx` for crate ${CB_TARGET} (corr:1820 identity; pass VERSION to skip the cargo-tree probe)")
+        endif()
+    endif()
+
+    set(_prefkw "")
+    if(CB_PREFIX)
+        set(_prefkw PREFIX "${CB_PREFIX}")
+    endif()
+    set(_ailkw "")
+    if(CB_ALLOW_INSTALL)
+        set(_ailkw ALLOW_INSTALL)
+    endif()
+    # The cxxbridge install rule is QUIET exactly like corr:1867.
+    polyorch_rust_tool_bootstrap(TOOL cxxbridge-cmd BINARY cxxbridge
+        VERSION "${_pin}" ${_prefkw} ${_ailkw} QUIET
+        OUT_VAR _tok OUT_TARGET _tt)
+    if(NOT _tok)
+        message(FATAL_ERROR
+            "polyorch_rust_cxxbridge: cxxbridge ${_pin} unavailable -- put it on PATH or PREFIX/bin, or re-run with ALLOW_INSTALL (cargo install, crates.io egress)")
+    endif()
+    set(_tool "${CXXBRIDGE_CMD_TOOL}")
+    set(_tdepkw "")
+    if(_tt)
+        set(_tdepkw DEPENDS "${_tt}")
+    endif()
+
+    set(_gen "${CB_OUTPUT_DIR}")
+    if(NOT _gen)
+        set(_gen "${CMAKE_CURRENT_BINARY_DIR}/polyorch_generated/cxxbridge/${_cxx}")
+    endif()
+    set(_hdir "${_gen}/include/${_cxx}")
+    set(_sdir "${_gen}/src")
+
+    add_library("${_cxx}" STATIC)
+    target_include_directories("${_cxx}" PUBLIC
+        $<BUILD_INTERFACE:${_gen}/include>
+        $<INSTALL_INTERFACE:include>)
+    # cxx headers use C++11 features (corr:1909-1910).
+    target_compile_features("${_cxx}" PUBLIC cxx_std_11)
+    foreach(_role static shared)
+        if(TARGET "${CB_TARGET}-${role}")
+            target_link_libraries("${_cxx}" PRIVATE "${CB_TARGET}-${role}")
+            target_link_libraries("${CB_TARGET}-${role}" INTERFACE "${_cxx}")
+        endif()
+    endforeach()
+
+    file(MAKE_DIRECTORY "${_gen}/include/rust")
+    set(_cxxh "${_gen}/include/rust/cxx.h")
+    _polyorch_rust_cxxbridge_cmd(TOOL "${_tool}" HEADER OUTPUT "${_cxxh}"
+        OUT_CMD _cmd)
+    add_custom_command(OUTPUT "${_cxxh}"
+        COMMAND ${_cmd}
+        ${_tdepkw}
+        COMMENT "Generating rust/cxx.h header")
+
+    set(_srcs "")
+    set(_hdrs "${_cxxh}")
+    foreach(_f IN LISTS CB_FILES)
+        get_filename_component(_fn "${_f}" NAME_WE)
+        get_filename_component(_fd "${_f}" DIRECTORY)
+        set(_fdc "")
+        if(_fd)
+            set(_fdc "${_fd}/")
+        endif()
+        set(_h "${_fdc}${_fn}.h")
+        set(_s "${_fdc}${_fn}.cpp")
+        if(IS_ABSOLUTE "${_f}")
+            set(_rs "${_f}")
+        else()
+            if(NOT _mdir)
+                message(FATAL_ERROR
+                    "polyorch_rust_cxxbridge: '${_f}' is manifest-relative but the crate handle carries no readable POLYORCH_RUST_MANIFEST (pass an absolute path)")
+            endif()
+            set(_rs "${_mdir}/src/${_f}")
+        endif()
+        file(MAKE_DIRECTORY "${_hdir}/${_fd}" "${_sdir}/${_fd}")
+        _polyorch_rust_cxxbridge_cmd(TOOL "${_tool}" RUST "${_rs}"
+            HEADER OUTPUT "${_hdir}/${_h}" OUT_CMD _cmd_h)
+        _polyorch_rust_cxxbridge_cmd(TOOL "${_tool}" RUST "${_rs}"
+            OUTPUT "${_sdir}/${_s}" INCLUDE "${_cxx}/${_h}" OUT_CMD _cmd_s)
+        add_custom_command(
+            OUTPUT "${_hdir}/${_h}" "${_sdir}/${_s}"
+            COMMAND ${_cmd_h}
+            COMMAND ${_cmd_s}
+            DEPENDS "${_rs}" ${_tt}
+            COMMENT "Generating cxx bindings for crate ${CB_TARGET} and file ${_f}")
+        list(APPEND _srcs "${_sdir}/${_s}")
+        list(APPEND _hdrs "${_hdir}/${_h}")
+    endforeach()
+    target_sources("${_cxx}" PRIVATE ${_srcs})
+    # PUBLIC for the headers on purpose (corr:1967-1971): every target
+    # depending on the cxx library also gets the files as a generation
+    # dependency, which is what keeps the circular edge orderable.
+    target_sources("${_cxx}" PUBLIC ${_hdrs})
+    if(CB_REGEN_TARGET)
+        # Headers only -- sources are not needed for a regeneration pass
+        # (corr:1974-1975).
+        if(TARGET "${CB_REGEN_TARGET}")
+            message(FATAL_ERROR
+                "polyorch_rust_cxxbridge: REGEN_TARGET '${CB_REGEN_TARGET}' already exists")
+        endif()
+        add_custom_target("${CB_REGEN_TARGET}"
+            DEPENDS ${_hdrs}
+            COMMENT "Generated cxx bindings for crate ${CB_TARGET}")
+    endif()
+endfunction()
+
+# Internal: pure argv builder for one cbindgen run (corr:2224-2233 order:
+# `cmake -E env TARGET= CARGO= RUSTC= <tool> --output <h> --crate <p>
+# [--depfile=<d>] <flags...>`). TRIPLE may be a generator expression (the
+# auto-mode hostbuild switch); the three env entries are ALWAYS emitted,
+# empty value included -- byte-for-byte the reference shape.
+function(_polyorch_rust_cbindgen_cmd)
+    cmake_parse_arguments(PARSE_ARGV 0 C ""
+        "TOOL;CRATE;OUTPUT;DEPFILE;TRIPLE;CARGO;RUSTC;OUT_CMD" "FLAGS")
+    if(C_UNPARSED_ARGUMENTS)
+        message(FATAL_ERROR
+            "_polyorch_rust_cbindgen_cmd: unknown args: ${C_UNPARSED_ARGUMENTS}")
+    endif()
+    foreach(_k C_TOOL C_CRATE C_OUTPUT C_OUT_CMD)
+        if(NOT DEFINED ${_k} OR "${${_k}}" STREQUAL "")
+            message(FATAL_ERROR
+                "_polyorch_rust_cbindgen_cmd: missing required argument '${_k}'")
+        endif()
+    endforeach()
+    set(_argv "${CMAKE_COMMAND}" -E env
+        "TARGET=${C_TRIPLE}" "CARGO=${C_CARGO}" "RUSTC=${C_RUSTC}"
+        "${C_TOOL}"
+        --output "${C_OUTPUT}" --crate "${C_CRATE}")
+    if(C_DEPFILE)
+        list(APPEND _argv "--depfile=${C_DEPFILE}")
+    endif()
+    if(C_FLAGS)
+        list(APPEND _argv ${C_FLAGS})
+    endif()
+    set(${C_OUT_CMD} "${_argv}" PARENT_SCOPE)
+endfunction()
+
+# polyorch_rust_cbindgen(TARGET <rust-handle> HEADER_NAME <h.h>
+#                        [CBINDGEN_VERSION <v>] [PREFIX <dir>]
+#                        [FLAGS f...] [ALLOW_INSTALL]
+#     | MANIFEST_DIRECTORY <dir> CARGO_PACKAGE <p> BINDINGS_TARGET <iface>
+#       [TARGET_TRIPLE <tup>] HEADER_NAME <h.h> [FLAGS ...] ...)
+# C header generation for a #[no_mangle] extern "C" surface via cbindgen
+# (port of corrosion_experimental_cbindgen, corr:2068-2264, both
+# signatures). Auto mode attaches the header to the imported rust handle
+# itself and derives package name, manifest dir and the generation-time
+# TARGET triple from its properties (the hostbuild switch kept as the
+# reference genex, corr:2113-2114, normalized through the PolyOrch host-
+# layer convention: an empty cross triple IS the host). Manual mode
+# attaches to a user-created INTERFACE target and takes the coordinates
+# literally; a non-INTERFACE BINDINGS_TARGET gets the reference's
+# AUTHOR_WARNING (corr:2141-2145). Regeneration on source changes rides
+# the cbindgen DEPFILE (corr:2235); the targets
+# polyorch-cbindgen-<bindings>-bindings[.<header-id>] port
+# corr:2248-2260, mediator edge included in auto mode (the cargo build
+# waits for fresh headers). CBINDGEN_VERSION is declared unimplemented
+# upstream (corr:2052); PolyOrch WIRES it into the bootstrap lock compare
+# -- a registered deviation (the strict superset: a pin is honored the
+# moment one is given).
+function(polyorch_rust_cbindgen)
+    cmake_parse_arguments(PARSE_ARGV 0 CN "ALLOW_INSTALL"
+        "TARGET;MANIFEST_DIRECTORY;CARGO_PACKAGE;BINDINGS_TARGET;TARGET_TRIPLE;HEADER_NAME;CBINDGEN_VERSION;PREFIX"
+        "FLAGS")
+    if(CN_UNPARSED_ARGUMENTS)
+        message(FATAL_ERROR
+            "polyorch_rust_cbindgen: unknown args: ${CN_UNPARSED_ARGUMENTS}")
+    endif()
+    if(NOT CN_HEADER_NAME)
+        message(FATAL_ERROR
+            "polyorch_rust_cbindgen: missing required parameter `HEADER_NAME'")
+    endif()
+    if(NOT CN_TARGET AND NOT (CN_MANIFEST_DIRECTORY AND CN_CARGO_PACKAGE
+                              AND CN_BINDINGS_TARGET))
+        message(FATAL_ERROR
+            "polyorch_rust_cbindgen: unknown signature -- choose either TARGET, or MANIFEST_DIRECTORY + CARGO_PACKAGE + BINDINGS_TARGET (corr:2095 identity, the reference's duplicated BINDINGS_TARGET gate term corrected here)")
+    endif()
+    _polyorch_rust_require_setup(polyorch_rust_cbindgen)
+
+    set(_auto FALSE)
+    if(CN_TARGET)
+        set(_auto TRUE)
+        if(NOT TARGET "${CN_TARGET}")
+            message(FATAL_ERROR
+                "polyorch_rust_cbindgen: TARGET '${CN_TARGET}' is not a known target (import it with polyorch_rust_build / polyorch_rust_import, or use the manual signature)")
+        endif()
+        set(_bt "${CN_TARGET}")
+        # The reference's triple switch (corr:2113-2114): hostbuild flips
+        # to HOST; otherwise the routed triple, which in the host layer
+        # IS the host (PolyOrch empty-cross convention).
+        set(_hb "$<BOOL:$<TARGET_PROPERTY:cargo-build-${CN_TARGET},POLYORCH_RUST_HOST_BUILD>>")
+        set(_not_hb "${POLYORCH_RUST_CARGO_TARGET}")
+        if(NOT _not_hb)
+            set(_not_hb "${POLYORCH_RUST_HOST_TARGET}")
+        endif()
+        set(_triple "$<IF:${_hb},${POLYORCH_RUST_HOST_TARGET},${_not_hb}>")
+        get_target_property(_mpath "${CN_TARGET}" POLYORCH_RUST_MANIFEST)
+        if(NOT _mpath OR NOT EXISTS "${_mpath}")
+            message(FATAL_ERROR
+                "polyorch_rust_cbindgen: no package manifest found for ${CN_TARGET} (the handle carries no POLYORCH_RUST_MANIFEST -- build/import it with MANIFEST)")
+        endif()
+        get_filename_component(_mdir "${_mpath}" DIRECTORY)
+        get_target_property(_pkg "${CN_TARGET}" POLYORCH_RUST_PACKAGE)
+        if(NOT _pkg OR _pkg MATCHES "-NOTFOUND$")
+            message(FATAL_ERROR
+                "polyorch_rust_cbindgen: internal error: could not determine the cargo package name for cbindgen (no POLYORCH_RUST_PACKAGE on ${CN_TARGET})")
+        endif()
+    else()
+        set(_bt "${CN_BINDINGS_TARGET}")
+        cmake_path(ABSOLUTE_PATH CN_MANIFEST_DIRECTORY NORMALIZE
+            OUTPUT_VARIABLE _mdir)
+        if(NOT EXISTS "${_mdir}/Cargo.toml")
+            message(FATAL_ERROR
+                "polyorch_rust_cbindgen: no package manifest in MANIFEST_DIRECTORY ${_mdir}")
+        endif()
+        set(_triple "${CN_TARGET_TRIPLE}")
+        if(NOT _triple)
+            set(_triple "${POLYORCH_RUST_CARGO_TARGET}")
+            if(NOT _triple)
+                set(_triple "${POLYORCH_RUST_HOST_TARGET}")
+            endif()
+        endif()
+        set(_pkg "${CN_CARGO_PACKAGE}")
+        get_target_property(_type "${_bt}" TYPE)
+        if(NOT _type STREQUAL "INTERFACE_LIBRARY")
+            message(AUTHOR_WARNING
+                "polyorch_rust_cbindgen: the BINDINGS_TARGET is expected to be an `INTERFACE` library, but was `${_type}` instead (corr:2142)")
+        endif()
+    endif()
+    message(STATUS "polyorch_rust_cbindgen: using package `${_pkg}` as crate for cbindgen")
+
+    set(_prefkw "")
+    if(CN_PREFIX)
+        set(_prefkw PREFIX "${CN_PREFIX}")
+    endif()
+    set(_ailkw "")
+    if(CN_ALLOW_INSTALL)
+        set(_ailkw ALLOW_INSTALL)
+    endif()
+    # corr:2177: the cbindgen install rule quiets with the inverse of the
+    # verbose output flag.
+    set(_qkw "")
+    if(NOT PolyOrch_RUST_VERBOSE)
+        set(_qkw QUIET)
+    endif()
+    polyorch_rust_tool_bootstrap(TOOL cbindgen VERSION "${CN_CBINDGEN_VERSION}"
+        ${_prefkw} ${_ailkw} ${_qkw}
+        OUT_VAR _tok OUT_TARGET _tt)
+    if(NOT _tok)
+        message(FATAL_ERROR
+            "polyorch_rust_cbindgen: cbindgen unavailable -- put it on PATH or PREFIX/bin, or re-run with ALLOW_INSTALL (cargo install, crates.io egress)")
+    endif()
+    set(_tool "${CBINDGEN_TOOL}")
+    set(_tdepkw "")
+    if(_tt)
+        set(_tdepkw DEPENDS "${_tt}")
+    endif()
+
+    set(_gen "${CMAKE_CURRENT_BINARY_DIR}/polyorch_generated/cbindgen/${_bt}")
+    set(_hdir "${_gen}/include")
+    set(_hdr "${_hdir}/${CN_HEADER_NAME}")
+    set(_dfl "${_gen}/depfile/${CN_HEADER_NAME}.d")
+    # HEADER_NAME may carry relative directories -- BOTH placement dirs
+    # get their full parent chain (corr:2212-2217: header dir and depfile
+    # dir are resolved independently).
+    get_filename_component(_hdr_parent "${_hdr}" DIRECTORY)
+    get_filename_component(_dep_parent "${_dfl}" DIRECTORY)
+    file(MAKE_DIRECTORY "${_hdr_parent}" "${_dep_parent}")
+
+    # FILE_SET HEADERS (corr:2194-2200) is NOT ported -- the reference's
+    # own pre-3.23 fallback becomes the only shape (ledgered).
+    target_include_directories("${_bt}" INTERFACE
+        $<BUILD_INTERFACE:${_hdir}>
+        $<INSTALL_INTERFACE:include>)
+
+    _polyorch_rust_cbindgen_cmd(TOOL "${_tool}" CRATE "${_pkg}"
+        OUTPUT "${_hdr}" DEPFILE "${_dfl}" TRIPLE "${_triple}"
+        CARGO "${POLYORCH_RUST_CARGO}" RUSTC "${POLYORCH_RUST_RUSTC}"
+        FLAGS "${CN_FLAGS}" OUT_CMD _cmd)
+    add_custom_command(
+        OUTPUT "${_hdr}"
+        COMMAND ${_cmd}
+        ${_tdepkw}
+        COMMENT "Generate cbindgen bindings for package ${_pkg} and output header ${_hdr}"
+        DEPFILE "${_dfl}"
+        COMMAND_EXPAND_LISTS
+        WORKING_DIRECTORY "${_mdir}")
+
+    set(_agg "polyorch-cbindgen-${_bt}-bindings")
+    if(NOT TARGET "${_agg}")
+        add_custom_target("${_agg}"
+            COMMENT "Generate cbindgen bindings for package ${_pkg}")
+    endif()
+    string(MAKE_C_IDENTIFIER "${CN_HEADER_NAME}" _hid)
+    set(_per "${_agg}.${_hid}")
+    if(TARGET "${_per}")
+        message(FATAL_ERROR
+            "polyorch_rust_cbindgen: regeneration target '${_per}' already exists (same header generated twice for ${_bt})")
+    endif()
+    add_custom_target("${_per}" DEPENDS "${_hdr}")
+    add_dependencies("${_agg}" "${_per}")
+    add_dependencies("${_bt}" "${_agg}")
+    if(_auto)
+        # corr:2261-2263: the cargo build of the crate waits for fresh
+        # headers (the annotations the generator reads are the source of
+        # truth in both directions).
+        add_dependencies("cargo-build-${CN_TARGET}" "${_agg}")
     endif()
 endfunction()

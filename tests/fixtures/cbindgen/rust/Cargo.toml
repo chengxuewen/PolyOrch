@@ -1,0 +1,12 @@
+[package]
+name = "cb_fixture"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+name = "cb_fixture"
+crate-type = ["staticlib"]
+
+[dependencies]
+
+[workspace]

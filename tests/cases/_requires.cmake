@@ -128,8 +128,27 @@ function(polyorch_requires cap out)
         endif()
 
     elseif(cap STREQUAL "cxxbridge-cmd")
+        # PATH first, then ~/.cargo/bin: a cargo-installed helper lands
+        # in the rustup bin dir the parent tool shell does NOT carry on
+        # PATH (same parent/child alignment argument as `system-rust`
+        # above; the bootstrap's own discovery searches this dir too, so
+        # the gate and the product route agree).
         find_program(_pr_cxxb NAMES cxxbridge)
+        if(NOT _pr_cxxb)
+            find_program(_pr_cxxb NAMES cxxbridge PATHS "$ENV{HOME}/.cargo/bin")
+        endif()
         if(_pr_cxxb)
+            set(_ok TRUE)
+        endif()
+
+    elseif(cap STREQUAL "cbindgen")
+        # Same shape as cxxbridge-cmd (WP7 addition: the second
+        # cargo-installable helper of the port, binary cbindgen).
+        find_program(_pr_cb NAMES cbindgen)
+        if(NOT _pr_cb)
+            find_program(_pr_cb NAMES cbindgen PATHS "$ENV{HOME}/.cargo/bin")
+        endif()
+        if(_pr_cb)
             set(_ok TRUE)
         endif()
 

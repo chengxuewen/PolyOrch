@@ -1,0 +1,32 @@
+#!/bin/sh
+# Deterministic stand-in for cbindgen (WP7 offline legs). Writes a dummy
+# header that ECHOES the environment the rule passed (TARGET/CARGO/RUSTC
+# under `cmake -E env`) so the case asserts the env wiring functionally,
+# not just in rule text. Honors --depfile=path (writes a trivial d-file).
+case "x$1" in
+    x--version) echo "cbindgen 0.99.0-stub"; exit 0;;
+esac
+out=""
+crate=""
+dep=""
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --output) out="$2"; shift 2;;
+        --crate) crate="$2"; shift 2;;
+        --depfile=*) dep="${1#--depfile=}"; shift;;
+        *) shift;;
+    esac
+done
+[ -n "$out" ] || exit 1
+{
+    printf '/* polyorch-cbindgen-stub */\n#pragma once\n'
+    printf '#ifdef __cplusplus\nextern "C" {\n#endif\n'
+    printf 'void %s_stub_marker(void);\n' "$crate"
+    printf '#ifdef __cplusplus\n}\n#endif\n'
+    printf '/* env TARGET=%s CARGO=%s RUSTC=%s */\n' \
+        "${TARGET-unset}" "${CARGO-unset}" "${RUSTC-unset}"
+} > "$out"
+if [ -n "$dep" ]; then
+    printf '%s: src/lib.rs\n' "$out" > "$dep"
+fi
+exit 0
