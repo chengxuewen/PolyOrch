@@ -1,0 +1,36 @@
+# Standalone configure of this LANGUAGES-NONE root never fills
+# CMAKE_CXX_COMPILER_ID (no language = no compiler probe), but
+# PolyOrchPlatformSupport.cmake dispatches the mkspec on that variable.
+# CMAKE_PROJECT_TOP_LEVEL_INCLUDES runs BEFORE project(): probe the host
+# C++ driver here and pre-seed the ID. Mirrors CMake's own candidate
+# order; no side effects beyond message output.
+set(_po_cxx "")
+if(DEFINED ENV{CXX} AND NOT "$ENV{CXX}" STREQUAL "")
+  execute_process(COMMAND "$ENV{CXX}" --version RESULT_VARIABLE _rc OUTPUT_QUIET ERROR_QUIET)
+  if(_rc EQUAL 0)
+    set(_po_cxx "$ENV{CXX}")
+  endif()
+endif()
+if(NOT _po_cxx)
+  find_program(_po_gxx NAMES g++ c++ PATHS ENV PATH)
+  if(_po_gxx)
+    set(_po_cxx "${_po_gxx}")
+  else()
+    find_program(_po_clxx NAMES clang++ PATHS ENV PATH)
+    if(_po_clxx)
+      set(_po_cxx "${_po_clxx}")
+    endif()
+  endif()
+endif()
+if(_po_cxx)
+  execute_process(COMMAND "${_po_cxx}" --version OUTPUT_VARIABLE _v ERROR_QUIET OUTPUT_STRIP_TRAILING_WHITESPACE)
+  if(_v MATCHES "gcc|GCC|g\\+\\+")
+    set(CMAKE_CXX_COMPILER_ID GNU)
+  elseif(_v MATCHES "[Cc]lang version|Apple")
+    set(CMAKE_CXX_COMPILER_ID Clang)
+  else()
+    set(CMAKE_CXX_COMPILER_ID GNU)
+  endif()
+  execute_process(COMMAND "${_po_cxx}" -dumpfullversion -dumpversion OUTPUT_VARIABLE CMAKE_CXX_COMPILER_VERSION ERROR_QUIET OUTPUT_STRIP_TRAILING_WHITESPACE)
+  message(STATUS "inject: probed ${_po_cxx} -> ${CMAKE_CXX_COMPILER_ID} ${CMAKE_CXX_COMPILER_VERSION}")
+endif()

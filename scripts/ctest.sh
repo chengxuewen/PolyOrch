@@ -20,10 +20,9 @@ set -euo pipefail
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 build="${POLYORCH_CTEST_BUILD_DIR:-/tmp/polyorch-ctest}"
 
-# --- 1. the inject file (regenerated each run: cheap, always current) ---
-inject="$build/inject.cmake"
-mkdir -p "$build"
-cat > "$inject" <<'INJ'
+if [ ! -f "$here/scripts/inject.cmake" ]; then
+    # Fallback for fresh clones: (re)generate the stable inject artifact.
+    cat > "$here/scripts/inject.cmake" <<'INJ'
 # Probes the host C++ driver and pre-seeds CMAKE_CXX_COMPILER_ID before
 # project(PolyOrch ... LANGUAGES NONE). See scripts/ctest.sh header.
 set(_po_cxx "")
@@ -59,9 +58,11 @@ else()
   message(FATAL_ERROR "inject: no C++ driver found (try CXX=<driver> $0)")
 endif()
 INJ
+fi
+
 
 # --- 2. configure (indirect: all real work is plain cmake invocations) ---
-cmake -S "$here" -B "$build" -DCMAKE_PROJECT_TOP_LEVEL_INCLUDES="$inject" \
+cmake -S "$here" -B "$build" -DCMAKE_PROJECT_TOP_LEVEL_INCLUDES="$here/scripts/inject.cmake" \
     -DPolyOrch_BUILD_TESTS=ON -DPolyOrch_BUILD_EXAMPLES=OFF \
     -DPolyOrch_TEST_E2E="${POLYORCH_TEST_E2E:-OFF}" \
     -DCMAKE_CXX_COMPILER=gcc "$@"
