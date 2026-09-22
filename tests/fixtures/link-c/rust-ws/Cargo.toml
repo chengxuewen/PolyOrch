@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [workspace]
+members = ["clib_user"]   # WP5b: the clib_user bin (C-staticlib consumer leg)
 
 [lib]
 name = "probe_staticlib"

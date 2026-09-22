@@ -11,8 +11,10 @@ include("${CMAKE_CURRENT_LIST_DIR}/../../cmake/PolyOrchRustHelpers.cmake")
 # Offline proof via stub scripts (t-rust-rustc-version pattern): a discovery
 # stub pair sits at the front of PATH printing 1.98.1, the INJECTED pair is a
 # distinct stub printing 9.9.9 -- if setup still reports 9.9.9 the injection
-# won over PATH. CARGO_TARGET leg: PolyOrch_RUST_CARGO_TARGET echoes verbatim
-# into POLYORCH_RUST_CARGO_TARGET (WP5 consumes; warning-only placeholder).
+# won over PATH. CARGO_TARGET leg (WP5 flip of the WP2 echo contract): a
+# known cross triple is consumed into POLYORCH_RUST_CARGO_TARGET, a
+# host-equal selection normalizes to the empty host layer, and an unknown
+# triple fails at the naming-table family gate.
 # POSIX-only: the stubs are /bin/sh scripts (same gate as t-rust-rustc-version).
 polyorch_requires(posix-shell _req)
 if(NOT _req)
@@ -27,9 +29,17 @@ set(_inj "${_s}/injected")      # injected pair: cargo/rustc 9.9.9
 # assertion paths (file(MAKE_DIRECTORY) is idempotent).
 file(MAKE_DIRECTORY "${_bin}" "${_inj}")
 
-# (a) child leg: an injected path that does not exist must FATAL -- proven
-# BEFORE any discovery, so this works whatever PATH holds.
+# (a) child legs: an injected path that does not exist must FATAL -- proven
+# BEFORE any discovery, so this works whatever PATH holds; the unknown-triple
+# leg (c3) reuses the same fork with a leg selector.
 if(POLYORCH_CHILD)
+    if("$ENV{POLYORCH_EXEC_LEG}" STREQUAL "badtriple")
+        # The family gate runs before discovery, so this leg needs no
+        # working toolchain -- just the bogus cache value.
+        set(PolyOrch_RUST_CARGO_TARGET "wasm32-eabi-polyorch" CACHE INTERNAL "")
+        polyorch_rust_setup(FROM system NO_NATIVE_PROBE)
+        message(FATAL_ERROR "expected setup to reject the unknown cross triple")
+    endif()
     set(PolyOrch_RUST_CARGO_EXECUTABLE "${_bin}/nonexistent-cargo" CACHE INTERNAL "")
     polyorch_rust_setup(FROM system REQUIRED)
     message(FATAL_ERROR "expected setup to reject a nonexistent injected cargo")
@@ -79,10 +89,25 @@ ck_str("${POLYORCH_RUST_VERSION}" "9.9.9")
 ck_str("${POLYORCH_RUST_RUSTC_VERSION}" "9.9.9")
 ck_str("${POLYORCH_RUST_BIN_DIR}" "${_inj}")
 
-# (c) CARGO_TARGET echo (WP2 scope: define + document + echo; routing lands
-# in WP5). The result var must carry the cache value verbatim.
-set(PolyOrch_RUST_CARGO_TARGET "wasm32-eabi-polyorch" CACHE STRING "WP2 echo-only")
+# (c1) WP5 consumption: a known cross triple carries through verbatim
+# (family gate passes) and the host triple stays what the stubs report.
+set(PolyOrch_RUST_CARGO_TARGET "x86_64-unknown-linux-musl" CACHE STRING "WP5 consumed" FORCE)
 polyorch_rust_setup(FROM system REQUIRED NO_NATIVE_PROBE)
-ck_str("${POLYORCH_RUST_CARGO_TARGET}" "wasm32-eabi-polyorch")
+ck_str("${POLYORCH_RUST_CARGO_TARGET}" "x86_64-unknown-linux-musl")
+ck_str("${POLYORCH_RUST_HOST_TARGET}" "x86_64-unknown-linux-gnu")
 
-message(STATUS "rust-executables: OK (injection beat PATH: 9.9.9 vs 1.98.1; target echo verbatim)")
+# (c2) an explicit host-equal selection is a no-op: normalized to the empty
+# host layer (the locked t-rust-artifact-paths shape stays reachable).
+set(PolyOrch_RUST_CARGO_TARGET "x86_64-unknown-linux-gnu" CACHE STRING "host-equal" FORCE)
+polyorch_rust_setup(FROM system REQUIRED NO_NATIVE_PROBE)
+ck_str("${POLYORCH_RUST_CARGO_TARGET}" "")
+
+# (c3) an unknown triple FATALs at the naming-table family gate (cross must
+# name a family PolyOrch can build and -- until the cross cluster's naming
+# tables -- reason about); with or without REQUIRED it is an author mistake.
+set(ENV{POLYORCH_EXEC_LEG} "badtriple")
+ck_child_fail("unrecognized target triple .wasm32-eabi-polyorch.")
+unset(ENV{POLYORCH_EXEC_LEG})
+set(PolyOrch_RUST_CARGO_TARGET "" CACHE STRING "cleared" FORCE)
+
+message(STATUS "rust-executables: OK (injection beat PATH: 9.9.9 vs 1.98.1; target consumed/gated)")

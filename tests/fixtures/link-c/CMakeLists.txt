@@ -37,7 +37,19 @@ file(WRITE "${CMAKE_BINARY_DIR}/iface.txt" "${_iface}")
 add_executable(capp "${CMAKE_CURRENT_LIST_DIR}/main.c")
 target_link_libraries(capp PRIVATE greet-lib)
 
+# WP5b leg (opposite direction, kept OUT of the probe-interface lock above:
+# only the BIN handle gets link_libraries; greet-lib's INTERFACE stays
+# probe-pure): a Rust binary that links a CMake-built C static library
+# through polyorch_rust_link_libraries -- the -L/-l conversion runs on the
+# cargo link (no crates.io, no cargo deps).
+add_library(clib_c STATIC "${CMAKE_CURRENT_LIST_DIR}/clib_c.c")
+polyorch_rust_build(TARGET rust-clib-bin PACKAGE clib_user CRATE clib_user
+    BINARY MANIFEST "${CMAKE_CURRENT_LIST_DIR}/rust-ws/Cargo.toml")
+polyorch_rust_link_libraries(TARGET rust-clib-bin clib_c)
+get_target_property(_rb rust-clib-bin IMPORTED_LOCATION)
+
 set(POLYORCH_FIXTURE_ARTIFACTS
-    "capp=${CMAKE_BINARY_DIR}/capp${CMAKE_EXECUTABLE_SUFFIX}")
+    "capp=${CMAKE_BINARY_DIR}/capp${CMAKE_EXECUTABLE_SUFFIX}"
+    "rustbin=${_rb}")
 string(JOIN "\n" _af ${POLYORCH_FIXTURE_ARTIFACTS})
 file(WRITE "${CMAKE_BINARY_DIR}/polyorch-fixture-artifacts.txt" "${_af}\n")

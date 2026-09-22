@@ -1,0 +1,8 @@
+[package]
+name = "clib_user"
+version = "0.0.0"
+edition = "2021"
+
+[[bin]]
+name = "clib_user"
+path = "src/main.rs"

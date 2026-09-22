@@ -40,8 +40,17 @@
 # PolyOrch_RUST_CARGO_TARGET triple selector, see polyorch_rust_setup);
 # public functions are polyorch_rust_*.
 #
+# Cross-target routing (WP5): a consumed PolyOrch_RUST_CARGO_TARGET routes
+# every build/test rule through --target=<tup> with the .cargo-target/<tup>/
+# artifact namespace, an UNSTAMPED mediator (the hostbuild property flips the
+# artifact layer at generate/defer time -- a stamped OUTPUT cannot), cc-rs
+# env forwarding (corr:779-833), and the WP5b linker control plane
+# (CARGO_TARGET_<TUP>_LINKER/_RUNNER via _polyorch_rust_linker_entries + the
+# explicit PolyOrch_RUST_LINKER_<UP> cache knob), polyorch_rust_set_hostbuild
+# and polyorch_rust_link_libraries. The HOST layer (empty triple) stays the
+# byte-locked pre-WP5 shape.
 # Out of scope by design (add a `ponytail:` note at the seam when needed):
-# --target cross-compilation triples, rust-version enforcement, cargo
+# rust-version enforcement, cargo
 # bench/fmt/clippy wrappers, and install-time relocations. Multi-config
 # generators are supported (WP4): the profile keys on $<CONFIG>, the
 # IMPORTED locations are per-CFG, and output-directory properties stage
@@ -183,6 +192,31 @@ function(polyorch_rust_build)
     endif()
     _polyorch_rust_require_setup(polyorch_rust_build)
 
+    # --- WP5 cross routing ----------------------------------------------------
+    # The consumed cross triple (empty = the host layer, byte-locked by
+    # t-rust-artifact-paths). When set:
+    #  * the rule carries --target=<tup>, suppressed per-invocation by the
+    #    mediator's POLYORCH_RUST_HOST_BUILD property (a genex like every
+    #    other deferred input, so the setter works after declaration);
+    #  * artifacts live one level deeper (.cargo-target/<tup>/<profile>/) --
+    #    cargo's own --target nesting -- and the file-name family follows
+    #    the cross triple;
+    #  * the mediator is an UNSTAMPED custom target (the reference's shape:
+    #    its _cargo-build target carries no OUTPUT precisely because the
+    #    artifact path depends on the late hostbuild property -- corr:915-920
+    #    comment). Re-invocation is cargo-fingerprint-bounded. Deviation
+    #    versus the stamped host rule, ledgered.
+    set(_xtup "")
+    if(POLYORCH_RUST_CARGO_TARGET)
+        set(_xtup "${POLYORCH_RUST_CARGO_TARGET}")
+    endif()
+    set(_name_triple "${POLYORCH_RUST_HOST_TARGET}")
+    set(_xseg "")
+    if(_xtup)
+        set(_name_triple "${_xtup}")
+        set(_xseg "${_xtup}/")
+    endif()
+
     # --- profile resolution (corr:762/772 semantics) -------------------------
     # No explicit PROFILE: cargo's debug profile follows Debug, release
     # follows any other value. SINGLE-CONFIG resolves LITERALLY at configure
@@ -223,13 +257,14 @@ function(polyorch_rust_build)
         endif()
     endif()
     _polyorch_rust_target_dir(_td "${B_BASE_DIR}")
-    _polyorch_rust_artifact_names(TRIPLE "${POLYORCH_RUST_HOST_TARGET}"
+    _polyorch_rust_artifact_names(TRIPLE "${_name_triple}"
         KIND "${_kind}" CRATE "${B_CRATE}" PROFILE "${_prof}" BASE_DIR "${_td}"
+        TARGET "${_xtup}"
         FILE_OUT _file IMPLIB_OUT _implib)
     if(_mc)
-        set(_dir "${_td}/$<IF:$<OR:$<CONFIG:Debug>,$<CONFIG:>>,debug,release>")
+        set(_dir "${_td}/${_xseg}$<IF:$<OR:$<CONFIG:Debug>,$<CONFIG:>>,debug,release>")
     else()
-        set(_dir "${_td}/${_prof}")   # == artifact_names DIR_OUT contract
+        set(_dir "${_td}/${_xseg}${_prof}")   # == artifact_names DIR_OUT contract
     endif()
     set(_artifact "${_dir}/${_file}")
     get_filename_component(_base "${_artifact}" NAME_WE)
@@ -266,7 +301,6 @@ function(polyorch_rust_build)
     set(_nondf_gx "$<$<BOOL:$<TARGET_PROPERTY:${_med},POLYORCH_RUST_NO_DEFAULT_FEATURES>>:--no-default-features>")
     set(_flags_gx "$<TARGET_PROPERTY:${_med},POLYORCH_RUST_CARGO_FLAGS>")
     set(_env_gx "$<TARGET_PROPERTY:${_med},POLYORCH_RUST_ENV_VARS>")
-    set(_rustflags_gx "$<$<BOOL:$<TARGET_PROPERTY:${_med},POLYORCH_RUST_RUSTFLAGS>>:RUSTFLAGS=$<TARGET_PROPERTY:${_med},POLYORCH_RUST_RUSTFLAGS>>")
 
     # Optional keywords are passed only when set: an empty quoted value
     # trips policy CMP0174's author warning on every configure.
@@ -288,7 +322,98 @@ function(polyorch_rust_build)
     endif()
     list(APPEND _argv "${_features_gx}" "${_allf_gx}" "${_nondf_gx}" "${_flags_gx}")
     list(APPEND _argv --target-dir "${_td}")
-    _polyorch_rust_command(_cmd SUBCOMMAND ${_argv} ENV "${_env_gx}" "${_rustflags_gx}")
+    set(_hb "$<NOT:$<BOOL:$<TARGET_PROPERTY:${_med},POLYORCH_RUST_HOST_BUILD>>>")
+    if(_xtup)
+        # hostbuild gate: with the property TRUE the flag elides (an empty
+        # argument vanishes under VERBATIM -- the proven pattern above).
+        list(APPEND _argv "$<${_hb}:--target=${_xtup}>")
+    endif()
+
+    # --- WP5 cc-rs forwarding + WP5b linker plane (corr:779-833, 852-857) ----
+    # Literal ENV material assembled per rule; the command wrapper guarantees
+    # the --unset strip runs FIRST and these entries trail it (contract at
+    # _polyorch_rust_command; t-rust-crossplan pins the order in generated
+    # text). The forwarding trio is keyed to the EFFECTIVE triple, so a
+    # hostbuild flip simply leaves the cross names unused (no gating needed).
+    set(_sys "")
+    if(_xtup AND CMAKE_CROSSCOMPILING AND CMAKE_SYSROOT)
+        set(_sys "${CMAKE_SYSROOT}")
+    endif()
+    set(_osxsys "")
+    set(_depver "")
+    if(APPLE)
+        set(_osxsys "${CMAKE_OSX_SYSROOT}")
+        set(_depver "${CMAKE_OSX_DEPLOYMENT_TARGET}")
+    endif()
+    _polyorch_rust_forward_env(TRIPLE "${_name_triple}" SYSROOT "${_sys}"
+        OSX_SYSROOT "${_osxsys}" DEPLOYMENT_TARGET "${_depver}"
+        OUT_ENV _fwd_x OUT_LINK_ARGS _la_x)
+    if(_xtup)
+        # corr:860-867 shape (the honest non-msvc linker ADDITION): a
+        # triple-targeted C/C++ toolchain (clang --target=...) must have its
+        # target forwarded to the linker rustc invokes. Variable-presence
+        # gated, and skipped when the explicit linker knob owns the link
+        # (corr's "explicit property unset when this function runs" caveat
+        # inverts for us: the cache knob is a static read). msvc is
+        # unreachable -- the builder emitted no list.
+        _polyorch_rust_triple_env_form("${_xtup}" _xtup_up)
+        if((CMAKE_C_COMPILER_TARGET OR CMAKE_CXX_COMPILER_TARGET)
+                AND NOT PolyOrch_RUST_LINKER_${_xtup_up})
+            set(_ct "${CMAKE_C_COMPILER_TARGET}")
+            if(NOT _ct)
+                set(_ct "${CMAKE_CXX_COMPILER_TARGET}")
+            endif()
+            list(APPEND _la_x "--target=${_ct}")
+        endif()
+    endif()
+    # Each link argument becomes its OWN -Clink-arg= token (RUSTFLAGS is
+    # whitespace-split by cargo; a joined multi-arg -Clink-args= would
+    # fragment -- corr passes theirs through `cargo rustc --` instead, a
+    # surface PolyOrch does not have).
+    set(_fwd_largs "")
+    foreach(_la ${_la_x})
+        string(APPEND _fwd_largs " -Clink-arg=${_la}")
+    endforeach()
+    string(STRIP "${_fwd_largs}" _fwd_largs)
+    set(_fwd "${_fwd_x}")
+    if(_xtup)
+        # The host-keyed trio rides too (corr:809-819 host-target env
+        # precedent): a hostbuild flip builds the host triple through the
+        # SAME rule, and cc-rs then reads the host-keyed names. Distinct
+        # names are guaranteed -- setup normalized host-equal routes to "".
+        # No sysroot on the host names: the cross sysroot belongs to the
+        # cross key only (and a host --sysroot would be wrong by
+        # construction on a non-cross compile).
+        _polyorch_rust_forward_env(TRIPLE "${POLYORCH_RUST_HOST_TARGET}"
+            SYSROOT "" OSX_SYSROOT "" DEPLOYMENT_TARGET ""
+            OUT_ENV _fwd_h)
+        set(_fwd "${_fwd_h};${_fwd_x}")
+    endif()
+    _polyorch_rust_linker_entries("${_med}" _lnk)
+
+    # Composed RUSTFLAGS entry: the user's property FIRST (byte-identical to
+    # the pre-WP5 shape when it alone is set -- locked by t-rust-setters),
+    # then link_libraries' -L/-l terms, then the hostbuild-gated sysroot
+    # link-args. ONE assignment: two KEY=VAL entries would let the last
+    # silently win. The whole entry elides when every part is empty -- an
+    # empty RUSTFLAGS= would override a config.toml rustflags (measured,
+    # cmake -E env sets it for real).
+    set(_ll_gx "$<JOIN:$<TARGET_GENEX_EVAL:${_med},$<TARGET_PROPERTY:${_med},POLYORCH_RUST_LINK_LIBRARIES>>, >")
+    set(_ld_gx "$<TARGET_GENEX_EVAL:${_med},$<TARGET_PROPERTY:${_med},POLYORCH_RUST_LINK_DIRS>>")
+    set(_rf_up "$<TARGET_PROPERTY:${_med},POLYORCH_RUST_RUSTFLAGS>")
+    set(_rf_entry "$<$<OR:$<BOOL:${_rf_up}>,$<BOOL:${_ll_gx}>,$<AND:$<BOOL:${_fwd_largs}>,${_hb}>>:RUSTFLAGS=${_rf_up}")
+    string(APPEND _rf_entry "$<$<BOOL:${_ll_gx}>: ${_ll_gx}>")
+    if(_fwd_largs)
+        string(APPEND _rf_entry "$<${_hb}: ${_fwd_largs}>")
+    endif()
+    string(APPEND _rf_entry ">")
+    # LIBRARY_PATH so cc-rs in build scripts finds the link_libraries dirs
+    # (corr:748-757 rationale: RUSTFLAGS' -L never reaches build-script
+    # linking). ':' join -- a Windows ';' form is deferred until a windows
+    # validation leg exists (ledgered).
+    set(_lp_entry "$<$<BOOL:${_ld_gx}>:LIBRARY_PATH=$<JOIN:${_ld_gx},:>>")
+    _polyorch_rust_command(_cmd SUBCOMMAND ${_argv}
+        ENV "${_fwd}" "${_lnk}" "${_lp_entry}" "${_env_gx}" "${_rf_entry}")
 
     set(_byproducts "")
     set(_implib_path "")
@@ -297,7 +422,7 @@ function(polyorch_rust_build)
         # profile root (corr:334-337) -- the BYPRODUCTS stamp follows the
         # real source location so the rule stays honest there.
         set(_implib_path "${_dir}/${_implib}")
-        if(POLYORCH_RUST_HOST_TARGET MATCHES "gnullvm$")
+        if(_name_triple MATCHES "gnullvm$")
             set(_implib_path "${_dir}/deps/${_implib}")
         endif()
         set(_byproducts BYPRODUCTS "${_implib_path}")
@@ -306,19 +431,34 @@ function(polyorch_rust_build)
     if(B_MANIFEST)
         set(_depfiles DEPENDS "${B_MANIFEST}")
     endif()
-    # ponytail: file-stamp granularity -- cargo's own fingerprint decides
-    # whether an invocation recompiles; source files never enter DEPENDS.
-    add_custom_command(OUTPUT "${_artifact}" ${_byproducts}
-        COMMAND ${_cmd}
-        WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
-        ${_depfiles}
-        COMMENT "cargo build ${B_PACKAGE} (${_kind})"
-        COMMAND_EXPAND_LISTS
-        VERBATIM)
     # Primary mediator: owns the rule and carries the POLYORCH_RUST_* build
     # inputs. Deliberately NOT ALL -- consumers reach it through the
     # auto-build edge below or the polyorch-rust-all aggregate.
-    add_custom_target("${_med}" DEPENDS "${_artifact}")
+    if(_xtup)
+        # Cross layer: NO OUTPUT stamp (the path depends on the late
+        # hostbuild property -- the reference reaches the same conclusion
+        # and stamps nothing, corr:915-920). The manifest rides as a plain
+        # prerequisite; re-invocation is cargo-fingerprint-bounded.
+        add_custom_target("${_med}"
+            COMMAND ${_cmd}
+            WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
+            ${_depfiles}
+            COMMENT "cargo build ${B_PACKAGE} (${_kind}, target ${_xtup})"
+            COMMAND_EXPAND_LISTS
+            VERBATIM)
+    else()
+        # Host layer: file-stamp granularity -- cargo's own fingerprint
+        # decides whether an invocation recompiles; source files never enter
+        # DEPENDS. LOCKED shape (t-rust-artifact-paths).
+        add_custom_command(OUTPUT "${_artifact}" ${_byproducts}
+            COMMAND ${_cmd}
+            WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
+            ${_depfiles}
+            COMMENT "cargo build ${B_PACKAGE} (${_kind})"
+            COMMAND_EXPAND_LISTS
+            VERBATIM)
+        add_custom_target("${_med}" DEPENDS "${_artifact}")
+    endif()
     # Compatibility shim for the pre-rename <TARGET>-cargo name (existing
     # callers and IDE muscle memory keep working). A real target, not an
     # ALIAS: add_custom_target(x ALIAS y) configures but generates a rule
@@ -359,6 +499,11 @@ function(polyorch_rust_build)
     set_property(TARGET "${_med}" PROPERTY POLYORCH_RUST_CARGO_FLAGS "")
     set_property(TARGET "${_med}" PROPERTY POLYORCH_RUST_RUSTFLAGS "")
     set_property(TARGET "${_med}" PROPERTY POLYORCH_RUST_ENV_VARS "")
+    # WP5/WP5b routing carriers (all genex-consumed, all late-settable).
+    set_property(TARGET "${_med}" PROPERTY POLYORCH_RUST_HOST_BUILD "")
+    set_property(TARGET "${_med}" PROPERTY POLYORCH_RUST_LINK_LIBRARIES "")
+    set_property(TARGET "${_med}" PROPERTY POLYORCH_RUST_LINK_LANGS "")
+    set_property(TARGET "${_med}" PROPERTY POLYORCH_RUST_LINK_DIRS "")
 
     if(_kind STREQUAL "bin")
         add_executable("${B_TARGET}" IMPORTED GLOBAL)
@@ -436,7 +581,7 @@ function(polyorch_rust_build)
     # POST_BUILD copy into any expressed output dir. Reference shape
     # corr:251-262; see _polyorch_rust_finalize.
     _polyorch_rust_finalize("${B_TARGET}" "${POLYORCH_RUST_HOST_TARGET}"
-        "${_kind}" "${B_CRATE}" "${_td}" "${_prof}" "${_mc}")
+        "${_xtup}" "${_kind}" "${B_CRATE}" "${_td}" "${_prof}" "${_mc}")
 endfunction()
 
 # ---------------------------------------------------------------------------
@@ -453,11 +598,11 @@ endfunction()
 # 365-376): the ${} references expand NOW, the text re-parses at the end
 # of the configure stage, and each [[...]] argument survives the deferral
 # as a single semicolon-safe value.
-function(_polyorch_rust_finalize target triple kind crate td prof mc)
+function(_polyorch_rust_finalize target triple xtup kind crate td prof mc)
     cmake_language(EVAL CODE "
         cmake_language(DEFER CALL
             _polyorch_rust_finalize_deferred
-            [[${target}]] [[${triple}]] [[${kind}]] [[${crate}]]
+            [[${target}]] [[${triple}]] [[${xtup}]] [[${kind}]] [[${crate}]]
             [[${td}]] [[${prof}]] [[${mc}]])")
 endfunction()
 
@@ -511,7 +656,7 @@ endfunction()
 # path (copy_plan is the single source of truth for the latter, which is
 # what puts a gnullvm importlib under deps/). OUT_SRC/OUT_DIR carry the
 # staging pair and are empty when no output directory is expressed.
-function(_polyorch_rust_finalize_pass target triple crate td prof oprop f ck cfg mc out_loc out_src out_dir)
+function(_polyorch_rust_finalize_pass target triple crate td tseg prof oprop f ck cfg mc out_loc out_src out_dir)
     if(NOT "${prof}" STREQUAL "per-config")
         set(_pd "${prof}")
     elseif("${cfg}" STREQUAL "Debug")
@@ -519,8 +664,12 @@ function(_polyorch_rust_finalize_pass target triple crate td prof oprop f ck cfg
     else()
         set(_pd release)   # corr:762/772: every non-Debug config -> release
     endif()
+    # WP5: TARGET carries the cross segment ("" on the host layer); PROFILE
+    # makes SRC_DIR the target-dir BASE (single construction site for both
+    # layers -- see the copy-plan contract).
     _polyorch_rust_copy_plan(TRIPLE "${triple}" KIND "${ck}" CRATE "${crate}"
-        SRC_DIR "${td}/${_pd}" DEST_DIR "${td}/${_pd}" OUT _pr)
+        SRC_DIR "${td}" TARGET "${tseg}" PROFILE "${_pd}"
+        DEST_DIR "${td}/${_pd}" OUT _pr)
     string(REPLACE "|" ";" _pp "${_pr}")
     list(GET _pp 0 _src)
     _polyorch_rust_role_outdir("${target}" "${oprop}" "${cfg}" "${mc}" _dir)
@@ -545,15 +694,32 @@ endfunction()
 # POST_BUILD make_directory + copy_if_different into every expressed
 # directory -- BYPRODUCTS carry literal file names on config-class genex
 # dirs only (corr:905-909: target-specific genex are banned there, and
-# the file-name half never carries a genex).
-function(_polyorch_rust_finalize_deferred target triple kind crate td prof mc)
+# the file-name half never carries a genex). WP5: a late read of the
+# mediator's POLYORCH_RUST_HOST_BUILD re-selects the triple + the
+# .cargo-target/<tup>/ segment, so a post-declaration hostbuild flip is
+# honored by the locations (the cross rule is deliberately unstamped, so
+# no build-system prerequisite strands).
+function(_polyorch_rust_finalize_deferred target triple xtup kind crate td prof mc)
     if(ARGN)
         message(FATAL_ERROR
             "_polyorch_rust_finalize_deferred: unexpected additional arguments: ${ARGN}")
     endif()
+    # WP5 late routing read: the hostbuild setter may have run AFTER
+    # polyorch_rust_build, and this is the last moment it can still be
+    # honored. TRUE falls the whole path resolution back to the host layer
+    # (host file-name family, no .cargo-target/<tup>/ segment); the default
+    # under a cross triple is the cross layer.
+    get_target_property(_hb "cargo-build-${target}" POLYORCH_RUST_HOST_BUILD)
+    set(_eff "${triple}")
+    set(_seg "")
+    if(xtup AND NOT _hb)
+        set(_eff "${xtup}")
+        set(_seg "${xtup}")
+    endif()
     # File names from the frozen table (profile-independent; the
-    # per-config sentinel only ever rides the directory).
-    _polyorch_rust_artifact_names(TRIPLE "${triple}" KIND "${kind}"
+    # per-config sentinel and the WP5 triple segment only ever ride the
+    # directory).
+    _polyorch_rust_artifact_names(TRIPLE "${_eff}" KIND "${kind}"
         CRATE "${crate}" PROFILE "${prof}" FILE_OUT _file IMPLIB_OUT _implib)
     if("${kind}" STREQUAL "bin")
         set(_mprop RUNTIME_OUTPUT_DIRECTORY)
@@ -581,9 +747,9 @@ function(_polyorch_rust_finalize_deferred target triple kind crate td prof mc)
         set(_last "")
         if(mc)
             foreach(_cfg ${CMAKE_CONFIGURATION_TYPES})
-                _polyorch_rust_finalize_pass("${target}" "${triple}" "${crate}"
-                    "${td}" "${prof}" "${_oprop}" "${_f}" "${_ck}" "${_cfg}" TRUE
-                    _loc _src _dir)
+                _polyorch_rust_finalize_pass("${target}" "${_eff}" "${crate}"
+                    "${td}" "${_seg}" "${prof}" "${_oprop}" "${_f}" "${_ck}"
+                    "${_cfg}" TRUE _loc _src _dir)
                 if(_src)
                     list(APPEND _srcs "$<$<CONFIG:${_cfg}>:${_src}>")
                     list(APPEND _dirs "$<$<CONFIG:${_cfg}>:${_dir}>")
@@ -596,8 +762,8 @@ function(_polyorch_rust_finalize_deferred target triple kind crate td prof mc)
             endforeach()
         else()
             # One pass; CMAKE_BUILD_TYPE only feeds the $<CONFIG> rewrite.
-            _polyorch_rust_finalize_pass("${target}" "${triple}" "${crate}"
-                "${td}" "${prof}" "${_oprop}" "${_f}" "${_ck}"
+            _polyorch_rust_finalize_pass("${target}" "${_eff}" "${crate}"
+                "${td}" "${_seg}" "${prof}" "${_oprop}" "${_f}" "${_ck}"
                 "${CMAKE_BUILD_TYPE}" FALSE _loc _src _dir)
             if(_src)
                 set(_srcs "${_src}")
@@ -751,6 +917,11 @@ function(polyorch_rust_import)
     elseif(A_FROZEN)
         set(_lock --frozen)
     endif()
+    # WP5 note: cargo metadata takes NO --target (measured: rc=1
+    # "unexpected argument" on cargo 1.98.1). The probe is triple-free by
+    # design -- with --no-deps the parser reads packages[].targets only,
+    # never the platform-keyed dependency graph -- and every build rule the
+    # replay creates carries the routing itself (see polyorch_rust_build).
     _polyorch_rust_command(_cmd SUBCOMMAND
         metadata --no-deps --format-version 1
         --manifest-path "${A_MANIFEST}" ${_lock})
@@ -971,6 +1142,138 @@ function(polyorch_rust_add_rustflags)
     set_property(TARGET "${_med}" PROPERTY POLYORCH_RUST_RUSTFLAGS "${_new}")
 endfunction()
 
+# polyorch_rust_set_hostbuild(TARGET <n>)
+# Mark the declared handle's build HOST-BUILT (port of corr:1166-1172
+# corrosion_set_hostbuild). Under an active cross route it (a) suppresses the
+# rule's --target at generate time (mediator property genex -- later calls
+# still land) and (b) makes the deferred finalize resolve the IMPORTED
+# locations (and the file-name family) against the host .cargo-target layer.
+# On a non-cross host the setter is observably a NO-OP versus the default --
+# nothing targets a foreign triple to begin with; t-rust-crossplan asserts
+# exactly that (no fakery) and t-rust-musl proves the distinct-directory
+# fall-back under a real musl route. The eager (configure-time) locations set
+# by polyorch_rust_build are cross-shaped until the finalize corrects them --
+# a polyorch_rust_install of a hostbuild-flipped cross handle reads the
+# stale-eager path (deviation, ledgered; polyorch_rust_install stays a
+# host-layer surface in v0). Like the reference there is no DISABLED form:
+# clear with a raw set_property(POLYORCH_RUST_HOST_BUILD "") if ever needed.
+function(polyorch_rust_set_hostbuild)
+    cmake_parse_arguments(PARSE_ARGV 0 A "" "TARGET" "")
+    if(A_UNPARSED_ARGUMENTS)
+        message(FATAL_ERROR
+            "polyorch_rust_set_hostbuild: unknown args: ${A_UNPARSED_ARGUMENTS}")
+    endif()
+    _polyorch_rust_must(A_TARGET)
+    _polyorch_rust_mediator("polyorch_rust_set_hostbuild" "${A_TARGET}" _med)
+    set_property(TARGET "${_med}" PROPERTY POLYORCH_RUST_HOST_BUILD TRUE)
+endfunction()
+
+# polyorch_rust_link_libraries(TARGET <n> <library|target|abs-path>...)
+# Port of corr:1254-1310 corrosion_link_libraries, useful subset (the iOS
+# EFFECTIVE_PLATFORM_NAME hack is not ported -- no Apple validation leg).
+# STATIC-kind mediator: rust never invokes a linker for a staticlib, so the
+# entries forward to the handle's own link interface instead (the reference's
+# early-return shape, corr:1255-1264) -- APPEND keeps the probe-attached
+# system libs intact. Otherwise each entry joins the rule's RUSTFLAGS entry
+# through the POLYORCH_RUST_LINK_LIBRARIES mediator property (generate-time,
+# like the other setters):
+#   CMake target  -> -L$<TARGET_LINKER_FILE_DIR> + -l$<TARGET_LINKER_FILE_BASE_NAME>
+#                    (+ LINKER_LANGUAGE recorded for the cross default-linker
+#                    pick + an ordering edge on the mediator);
+#   abs path      -> -Clink-arg=<path> (rustc verbatim-link form);
+#   bare name     -> -l<name>.
+# Limits shared with the reference: RUSTFLAGS is whitespace-split by cargo,
+# so a linker-file directory containing a space breaks this path (a
+# LIBRARY_PATH twin rides the same property for build-script linking).
+function(polyorch_rust_link_libraries)
+    cmake_parse_arguments(PARSE_ARGV 0 A "" "TARGET" "")
+    _polyorch_rust_must(A_TARGET)
+    if(NOT A_UNPARSED_ARGUMENTS)
+        message(FATAL_ERROR
+            "polyorch_rust_link_libraries: at least one library is required")
+    endif()
+    _polyorch_rust_mediator("polyorch_rust_link_libraries" "${A_TARGET}" _med)
+    get_target_property(_kind "${_med}" POLYORCH_RUST_KIND)
+    if(_kind STREQUAL "static")
+        set_property(TARGET "${A_TARGET}" APPEND PROPERTY
+            INTERFACE_LINK_LIBRARIES "${A_UNPARSED_ARGUMENTS}")
+        return()
+    endif()
+    foreach(_lib IN LISTS A_UNPARSED_ARGUMENTS)
+        if(TARGET "${_lib}")
+            set_property(TARGET "${_med}" APPEND PROPERTY
+                POLYORCH_RUST_LINK_LIBRARIES
+                "-L$<TARGET_LINKER_FILE_DIR:${_lib}>"
+                "-l$<TARGET_LINKER_FILE_BASE_NAME:${_lib}>")
+            set_property(TARGET "${_med}" APPEND PROPERTY
+                POLYORCH_RUST_LINK_DIRS
+                "$<TARGET_LINKER_FILE_DIR:${_lib}>")
+            set_property(TARGET "${_med}" APPEND PROPERTY
+                POLYORCH_RUST_LINK_LANGS
+                "$<TARGET_PROPERTY:${_lib},LINKER_LANGUAGE>")
+            add_dependencies("${_med}" "${_lib}")
+        elseif(IS_ABSOLUTE "${_lib}")
+            set_property(TARGET "${_med}" APPEND PROPERTY
+                POLYORCH_RUST_LINK_LIBRARIES "-Clink-arg=${_lib}")
+        else()
+            set_property(TARGET "${_med}" APPEND PROPERTY
+                POLYORCH_RUST_LINK_LIBRARIES "-l${_lib}")
+        endif()
+    endforeach()
+endfunction()
+
+# Internal: the WP5b linker/runner env entries for one cargo rule. MED is
+# the mediator carrying POLYORCH_RUST_LINK_LANGS ("" for property-free rules
+# like cargo test). Returns [] on the host layer. Entries ride the command
+# wrapper AFTER the --unset strip (contract at _polyorch_rust_command).
+function(_polyorch_rust_linker_entries MED OUT)
+    set(_xt "${POLYORCH_RUST_CARGO_TARGET}")
+    if(NOT _xt)
+        set(${OUT} "" PARENT_SCOPE)
+        return()
+    endif()
+    _polyorch_rust_linker_plan(TRIPLE "${_xt}"
+        OUT_ENV_NAME _name OUT_VALUE _val OUT_WRAPPER _wrap
+        OUT_WRAPPER_CONTENT _wrapc OUT_RUNNER _runner)
+    set(_entries "")
+    if(_wrap)
+        # Configure-time materialization; the generated header carries the
+        # never-a-custom-command-OUTPUT discipline (the ported lesson). A
+        # later hostbuild flip leaves the file inert -- its env name is
+        # triple-scoped.
+        get_filename_component(_wd "${_wrap}" DIRECTORY)
+        file(MAKE_DIRECTORY "${_wd}")
+        file(WRITE "${_wrap}" "${_wrapc}")
+        file(CHMOD "${_wrap}" PERMISSIONS
+            OWNER_READ OWNER_WRITE OWNER_EXECUTE
+            GROUP_READ GROUP_EXECUTE WORLD_READ WORLD_EXECUTE)
+        list(APPEND _entries "${_name}=${_wrap}")
+    elseif(_val)
+        # Explicit cache override (PolyOrch_RUST_LINKER_<TRIPLE-UP>) or a
+        # decision the plan made from the emulator.
+        list(APPEND _entries "${_name}=${_val}")
+    elseif(_name AND (CMAKE_C_COMPILER OR CMAKE_CXX_COMPILER))
+        # Default compiler-as-linker (corr:852-857 shape). Deviation,
+        # ledgered: injected on CROSS rules only -- the reference injects on
+        # the host too, redundant where rustc's default driver already is
+        # the configure compiler. No quoting: file paths ride VERBATIM as
+        # one KEY=VAL argument; the CXX-vs-C pick is a genex over the
+        # recorded LINKER_LANGUAGEs so link_libraries may run later.
+        if(CMAKE_CXX_COMPILER AND MED)
+            list(APPEND _entries
+                "${_name}=$<IF:$<IN_LIST:CXX,$<TARGET_GENEX_EVAL:${MED},$<TARGET_PROPERTY:${MED},POLYORCH_RUST_LINK_LANGS>>>,${CMAKE_CXX_COMPILER},${CMAKE_C_COMPILER}>")
+        elseif(CMAKE_CXX_COMPILER)
+            list(APPEND _entries "${_name}=${CMAKE_CXX_COMPILER}")
+        else()
+            list(APPEND _entries "${_name}=${CMAKE_C_COMPILER}")
+        endif()
+    endif()
+    if(_runner)
+        list(APPEND _entries "${_runner}")
+    endif()
+    set(${OUT} "${_entries}" PARENT_SCOPE)
+endfunction()
+
 # ------------------------------------------------------- test / run / clean ---
 
 # Internal: the cargo target directory all wrappers share: the BASE_DIR
@@ -1012,10 +1315,29 @@ function(polyorch_rust_test)
         list(APPEND _argv --manifest-path "${T_MANIFEST}")
     endif()
     list(APPEND _argv --target-dir "${_td}")
+    # WP5/WP5b: route cargo test through the consumed cross triple too. No
+    # mediator here, so the entries are configure-time literals (the
+    # default linker picks C++ over C when the CXX language is enabled).
+    # Built test binaries EXECUTE under the forwarded RUNNER automatically.
+    set(_fwd_env "")
+    set(_lnk_env "")
+    if(POLYORCH_RUST_CARGO_TARGET)
+        list(APPEND _argv "--target=${POLYORCH_RUST_CARGO_TARGET}")
+        _polyorch_rust_forward_env(TRIPLE "${POLYORCH_RUST_CARGO_TARGET}"
+            OUT_ENV _fwd_env)
+        _polyorch_rust_forward_env(TRIPLE "${POLYORCH_RUST_HOST_TARGET}"
+            OUT_ENV _fwd_env_host)
+        set(_fwd_env "${_fwd_env_host};${_fwd_env}")
+        _polyorch_rust_linker_entries("" _lnk_env)
+    else()
+        _polyorch_rust_forward_env(TRIPLE "${POLYORCH_RUST_HOST_TARGET}"
+            OUT_ENV _fwd_env)
+    endif()
     if(T_ARGS)
         list(APPEND _argv ${T_ARGS})
     endif()
-    _polyorch_rust_command(_cmd SUBCOMMAND ${_argv})
+    _polyorch_rust_command(_cmd SUBCOMMAND ${_argv}
+        ENV "${_fwd_env}" "${_lnk_env}")
     set(_all "")
     if(T_ALL)
         set(_all ALL)
@@ -1049,8 +1371,15 @@ function(polyorch_rust_run)
             "polyorch_rust_run: no such target '${R_TARGET}' "
             "(register it with polyorch_rust_build first)")
     endif()
+    # WP5b: a cross-routed binary cannot execute natively; prefix the
+    # emulator (CMake's own CROSSCOMPILING_EMULATOR convention, the run()
+    # counterpart of the CARGO_TARGET_<TUP>_RUNNER the build rule carries).
+    set(_emu "")
+    if(POLYORCH_RUST_CARGO_TARGET AND CMAKE_CROSSCOMPILING_EMULATOR)
+        set(_emu ${CMAKE_CROSSCOMPILING_EMULATOR})
+    endif()
     add_custom_target("run-${R_TARGET}"
-        COMMAND $<TARGET_FILE:${R_TARGET}>
+        COMMAND ${_emu} $<TARGET_FILE:${R_TARGET}>
         COMMENT "run $<TARGET_FILE:${R_TARGET}>")
     if(TARGET "${R_TARGET}-cargo")
         add_dependencies("run-${R_TARGET}" "${R_TARGET}-cargo")

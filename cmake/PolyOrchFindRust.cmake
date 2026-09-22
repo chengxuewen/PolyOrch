@@ -125,17 +125,37 @@ function(_polyorch_rust_triple_family TRIPLE OUT)
     set(${OUT} ${_family} PARENT_SCOPE)
 endfunction()
 
+# Internal: the CARGO_TARGET_<FORM> / CC_<FORM> environment name form of a
+# target triple: lowercase, dashes turned into underscores, uppercased. The
+# underscore half is load-bearing -- cargo and cc-rs both key on the
+# UNDERSCORE form of the triple and never see a dash (the reference performs
+# exactly this pair of rewrites, corr:Corrosion.cmake:600-607, and its
+# CARGO_TARGET_<T>_LINKER wiring depends on it).
+#
+# Adapted from corrosion (MIT, commit c4786e7): cmake/Corrosion.cmake:600-607.
+function(_polyorch_rust_triple_env_form TRIPLE OUT)
+    string(TOLOWER "${TRIPLE}" _t)
+    string(REPLACE "-" "_" _u "${_t}")
+    string(TOUPPER "${_u}" _u)
+    set(${OUT} "${_u}" PARENT_SCOPE)
+endfunction()
+
 # _polyorch_rust_artifact_names(TRIPLE <t> KIND <bin|static|shared> CRATE <name>
 #                               FILE_OUT <var> [DIR_OUT <var>] [IMPLIB_OUT <var>]
 #                               [PROFILE <debug|release|custom>]
-#                               [BASE_DIR <path>] [OUT_BASE_DIR <var>])
+#                               [BASE_DIR <path>] [OUT_BASE_DIR <var>]
+#                               [TARGET <tup>])
 # Pure naming table. FILE_OUT is the bare artifact file name; IMPLIB_OUT
 # (always set, possibly empty, whenever requested) is the Windows import
 # library name for a shared DLL. DIR_OUT is the ABSOLUTE directory the
-# artifact lands in: <base>/<profile>, where base is BASE_DIR or the default
-# ${CMAKE_BINARY_DIR}/.cargo-target. OUT_BASE_DIR receives that base.
+# artifact lands in: <base>[/<tup>]/<profile>, where base is BASE_DIR or the
+# default ${CMAKE_BINARY_DIR}/.cargo-target and the <tup> segment is present
+# ONLY when TARGET names a cross triple (cargo nests a --target build one
+# level deeper -- the WP5 cross namespace; without TARGET the host layout is
+# the locked pre-WP5 shape, byte-stable per t-rust-artifact-paths).
+# OUT_BASE_DIR receives the base, never the triple segment.
 function(_polyorch_rust_artifact_names)
-    set(_one TRIPLE KIND CRATE FILE_OUT DIR_OUT IMPLIB_OUT PROFILE BASE_DIR OUT_BASE_DIR)
+    set(_one TRIPLE KIND CRATE FILE_OUT DIR_OUT IMPLIB_OUT PROFILE BASE_DIR OUT_BASE_DIR TARGET)
     cmake_parse_arguments(PARSE_ARGV 0 A "" "${_one}" "")
     if(A_UNPARSED_ARGUMENTS)
         message(FATAL_ERROR
@@ -191,7 +211,11 @@ function(_polyorch_rust_artifact_names)
     if(NOT _base)
         set(_base "${CMAKE_BINARY_DIR}/.cargo-target")
     endif()
-    set(_dir "${_base}/${_profile}")
+    set(_xseg "")
+    if(A_TARGET)
+        set(_xseg "${A_TARGET}/")
+    endif()
+    set(_dir "${_base}/${_xseg}${_profile}")
 
     set(${A_FILE_OUT} "${_file}" PARENT_SCOPE)
     if(A_DIR_OUT)
@@ -232,6 +256,11 @@ endfunction()
 # the role (KIND bin|static|shared names the main artifact; KIND implib
 # names the Windows import library), the crate name, and the two
 # directory strings, OUT receives a one-element list "<src>|<dst>" --
+# Optional TARGET <tup> + PROFILE <pd>: when either is given, SRC_DIR is
+# the cargo target-dir BASE and the source path is built as
+# <SRC_DIR>[/<TARGET>]/<PROFILE>/<file> (the WP5 cross nesting; PROFILE
+# without TARGET covers the host glue, keeping one construction site).
+# Without TARGET/PROFILE the legacy verbatim glue stands.
 # or the empty list when the role does not exist for this family (an
 # implib on elf/macho), never an error. SRC_DIR/DEST_DIR are glued
 # verbatim so callers may pass generator-expression strings (the
@@ -240,7 +269,7 @@ endfunction()
 # FATALs. The gnullvm importlib lives under deps/, not the profile
 # root -- cargo does not expose it yet (corr:334-337 workaround).
 function(_polyorch_rust_copy_plan)
-    set(_one TRIPLE KIND CRATE SRC_DIR DEST_DIR OUT)
+    set(_one TRIPLE KIND CRATE SRC_DIR DEST_DIR OUT TARGET PROFILE)
     cmake_parse_arguments(PARSE_ARGV 0 A "" "${_one}" "")
     if(A_UNPARSED_ARGUMENTS)
         message(FATAL_ERROR
@@ -272,7 +301,14 @@ function(_polyorch_rust_copy_plan)
     else()
         set(_sub "")
     endif()
-    set(${A_OUT} "${A_SRC_DIR}/${_sub}${_f}|${A_DEST_DIR}/${_f}" PARENT_SCOPE)
+    set(_pre "")
+    if(A_TARGET)
+        string(APPEND _pre "${A_TARGET}/")
+    endif()
+    if(A_PROFILE)
+        string(APPEND _pre "${A_PROFILE}/")
+    endif()
+    set(${A_OUT} "${A_SRC_DIR}/${_pre}${_sub}${_f}|${A_DEST_DIR}/${_f}" PARENT_SCOPE)
 endfunction()
 
 
@@ -425,11 +461,18 @@ path = "src/lib.rs"
 pub fn add(left: usize, right: usize) -> usize { left + right }
 ]==])
     # --print=native-static-libs stops after codegen (no link, so no cc needed
-    # for the probe itself); --target pins the host triple so the reported set
-    # matches the artifacts polyorch_rust_build names. The wrapper sheds the
-    # inherited compiler env exactly like every other cargo call.
+    # for the probe itself); --target pins the EFFECTIVE triple (the WP5
+    # cross target when routed, else the host) so the reported set matches
+    # the artifacts polyorch_rust_build names. Deviation (ledgered): ONE
+    # cached probe per configure -- a hostbuild-flipped handle on a foreign
+    # family keeps the cross probe's list. The wrapper sheds the inherited
+    # compiler env exactly like every other cargo call.
+    set(_probe_tup "${POLYORCH_RUST_HOST_TARGET}")
+    if(POLYORCH_RUST_CARGO_TARGET)
+        set(_probe_tup "${POLYORCH_RUST_CARGO_TARGET}")
+    endif()
     _polyorch_rust_command(_cmd SUBCOMMAND
-        rustc --lib --color never --target "${POLYORCH_RUST_HOST_TARGET}"
+        rustc --lib --color never --target "${_probe_tup}"
         -- --print=native-static-libs)
     execute_process(COMMAND ${_cmd} WORKING_DIRECTORY "${_dir}"
         RESULT_VARIABLE _rc OUTPUT_VARIABLE _out ERROR_VARIABLE _err)
@@ -544,22 +587,245 @@ endfunction()
 
 # _polyorch_rust_derive_target(OUT)
 # Selector for the cargo --target triple, shaped after the reference
-# derivation chain (corr:FindRust.cmake:659-791) reduced to the two links
-# that exist today: the explicit PolyOrch_RUST_CARGO_TARGET override, else
-# the rustc host triple recorded by the last successful setup. WP5b seam:
-# insert the Windows VS_PLATFORM/PROCESSOR/compiler-id chain and the
-# Android/OHOS ABI tables between the override and the host fallback
-# (reference find:662-780) -- the fallback line below consumes what they
-# would set (find:781-789). Not called by setup yet: the WP2 echo wiring
-# is unchanged until WP5b; shipped with its table test so the seam is
-# code, not a comment.
+# derivation chain (corr:FindRust.cmake:659-791). Consumed by
+# polyorch_rust_setup since WP5, which additionally family-gates the
+# result (an unknown triple FATALs -- cross must name a family PolyOrch
+# can build artifacts for). Precedence (port-ledger row):
+#   1. the explicit PolyOrch_RUST_CARGO_TARGET cache override;
+#   2. SEAM (documented stub on this host): the reference's Windows
+#      VS_PLATFORM / CMAKE_SYSTEM_PROCESSOR / compiler-id chain and the
+#      Android/OHOS ABI tables (corr find:662-780) would derive a triple
+#      here. The validation host is Linux/x86_64; the chains stay the
+#      seam comment until a Windows/Android validation contact -- the
+#      seam is code-visible, not prose-only (t-rust-findrust pins the
+#      two live links);
+#   3. the rustc host triple recorded by the last successful setup
+#      (empty in script mode before any setup -- the caller normalizes
+#      a triple equal to the host to "" = host-default layer).
 function(_polyorch_rust_derive_target OUT)
     if(PolyOrch_RUST_CARGO_TARGET)
         set(${OUT} "${PolyOrch_RUST_CARGO_TARGET}" PARENT_SCOPE)
         return()
     endif()
-    # --- WP5b insertion point: platform-derived triple chains go above ---
+    # --- SEAM: platform-derived triple chains (item 2 above) go here ---
     set(${OUT} "${POLYORCH_RUST_HOST_TARGET}" PARENT_SCOPE)
+endfunction()
+
+# _polyorch_rust_forward_env(TRIPLE <t> OUT_ENV <var> [OUT_LINK_ARGS <var>]
+#     [C_COMPILER <p>] [CXX_COMPILER <p>] [AR <p>] [SYSROOT <p>]
+#     [OSX_SYSROOT <p>] [DEPLOYMENT_TARGET <v>])
+# Pure builder of the cc-rs / build-script forwarding environment (WP5).
+# OUT_ENV receives KEY=VAL entries destined for `cmake -E env` (they ride
+# the command wrapper AFTER its --unset strip -- ordering contract there);
+# OUT_LINK_ARGS receives the linker arguments as a LIST (one per element --
+# the caller maps each to its own -Clink-arg= token; RUSTFLAGS values are
+# whitespace-split by cargo, so a joined multi-arg string would fragment)
+# into the rule's RUSTFLAGS entry.
+#
+# Adapted from corrosion (MIT, commit c4786e7): cmake/Corrosion.cmake:779-833
+# (the CC_/CXX_/AR_<TRIPLE> trio, the SDKROOT/MACOSX_DEPLOYMENT_TARGET Apple
+# block, the --sysroot link arg of corr:653-657). Deviations, all ledgered:
+#  * each keyword overrides its ambient CMAKE_* source (a stub toolchain is
+#    injectable for offline tables); omitting a keyword reads the variable,
+#    passing an empty value suppresses the entry;
+#  * the msvc family emits NOTHING (corr skips only AR -- the task's env
+#    gate "do not inject CC into env for MSVC" is the superset: cl is not a
+#    cc-rs driver and triple-suffixed CC_<tup> is ignored on that path);
+#  * --sysroot rides the caller's GLOBAL RUSTFLAGS (corr injects local
+#    rustflags through `cargo rustc --`; PolyOrch has no local surface).
+# The trio is keyed to the EFFECTIVE triple, so a hostbuild-suppressed
+# --target leaves the cross names simply unused (cc-rs reads the host-triple
+# names for host compilations) -- no per-flag gating needed here.
+function(_polyorch_rust_forward_env)
+    set(_one TRIPLE OUT_ENV OUT_LINK_ARGS C_COMPILER CXX_COMPILER AR
+             SYSROOT OSX_SYSROOT DEPLOYMENT_TARGET)
+    # Scoped CMP0174 NEW: an explicit empty keyword value IS the
+    # suppression mechanism (tests + callers pass SYSROOT "" to veto the
+    # ambient default); the old policy would UNSET the var and warn.
+    cmake_policy(PUSH)
+    cmake_policy(SET CMP0174 NEW)
+    cmake_parse_arguments(PARSE_ARGV 0 F "" "${_one}" "")
+    cmake_policy(POP)
+    if(F_UNPARSED_ARGUMENTS)
+        message(FATAL_ERROR
+            "_polyorch_rust_forward_env unknown args: ${F_UNPARSED_ARGUMENTS}")
+    endif()
+    _polyorch_rust_must(F_TRIPLE F_OUT_ENV)
+    _polyorch_rust_triple_family("${F_TRIPLE}" _fam)
+    if(_fam STREQUAL "msvc")
+        set(${F_OUT_ENV} "" PARENT_SCOPE)
+        if(F_OUT_LINK_ARGS)
+            set(${F_OUT_LINK_ARGS} "" PARENT_SCOPE)
+        endif()
+        return()
+    endif()
+    # Ambient defaults (the language-not-enabled guard: a LANGUAGES NONE
+    # project defines no CMAKE_C_COMPILER and no entry is emitted). The
+    # Apple knob reads CMAKE_OSX_DEPLOYMENT_TARGET, not a literal mapping.
+    foreach(_k C_COMPILER CXX_COMPILER AR SYSROOT OSX_SYSROOT)
+        if(NOT DEFINED F_${_k})
+            set(F_${_k} "${CMAKE_${_k}}")
+        endif()
+    endforeach()
+    if(NOT DEFINED F_DEPLOYMENT_TARGET)
+        set(F_DEPLOYMENT_TARGET "${CMAKE_OSX_DEPLOYMENT_TARGET}")
+    endif()
+    _polyorch_rust_triple_env_form("${F_TRIPLE}" _up)
+    set(_env "")
+    set(_largs "")
+    if(F_C_COMPILER)
+        list(APPEND _env "CC_${_up}=${F_C_COMPILER}")
+    endif()
+    if(F_CXX_COMPILER)
+        list(APPEND _env "CXX_${_up}=${F_CXX_COMPILER}")
+    endif()
+    if(F_AR)
+        list(APPEND _env "AR_${_up}=${F_AR}")
+    endif()
+    if(F_SYSROOT)
+        # corr:651-657: a CMake sysroot is forwarded to the linker rustc
+        # invokes (assumes the --sysroot spelling CMake itself passes with).
+        list(APPEND _largs "--sysroot=${F_SYSROOT}")
+    endif()
+    if(F_OSX_SYSROOT)
+        # corr:818-823: cc-rs picks a compiler that may need the sysroot
+        # explicitly; Apple compilers also honor SDKROOT.
+        list(APPEND _largs "--sysroot=${F_OSX_SYSROOT}")
+        list(APPEND _env "SDKROOT=${F_OSX_SYSROOT}")
+    endif()
+    if(F_DEPLOYMENT_TARGET)
+        # corr:826-829: keep cc-rs on the same Apple platform version.
+        list(APPEND _env "MACOSX_DEPLOYMENT_TARGET=${F_DEPLOYMENT_TARGET}")
+    endif()
+    set(${F_OUT_ENV} "${_env}" PARENT_SCOPE)
+    if(F_OUT_LINK_ARGS)
+        set(${F_OUT_LINK_ARGS} "${_largs}" PARENT_SCOPE)
+    endif()
+endfunction()
+
+# _polyorch_rust_linker_plan(TRIPLE <t> OUT_ENV_NAME <var> OUT_VALUE <var>
+#     OUT_WRAPPER <var> [OUT_WRAPPER_CONTENT <var>] [OUT_RUNNER <var>]
+#     [EXPLICIT <p>] [EMULATOR <list>] [EXEC_FORMAT <s>] [WRAPPER_DIR <p>])
+# Pure condition planner for the WP5b cross linker control plane. Given the
+# routing triple and the (injectable) decision inputs it returns the linker
+# env NAME (`CARGO_TARGET_<UP>_LINKER`, UP per _polyorch_rust_triple_env_form
+# -- the underscore form, corr:Corrosion.cmake:600-607 lesson: never dash),
+# its VALUE when decided statically, the WRAPPER path to materialize ("" =
+# none) plus that file's CONTENT, and the RUNNER env entry ("" = none).
+# An empty name+value with no wrapper means "caller composes the default
+# compiler-as-linker" (it needs target properties, so it is not pure).
+#
+# Fidelity note, ledgered: the task brief cites corr:959-981 / 1061-1070 /
+# 1352-1360 / 1396-1423 and find:242-244 for this plane, but the pinned
+# c4786e7 checkout contains NO such mechanism (verified by scan: the strings
+# CROSSCOMPILING_EMULATOR, RUNNER, THINLTO, OBJC and RC-asm occur nowhere
+# under its cmake/). The shape implemented here is therefore the cargo
+# environment contract itself (CARGO_TARGET_<TRIPLE>_LINKER/_RUNNER per the
+# cargo config reference) plus the two lessons the brief records with it:
+# a wrapper file we touch is materialized at CONFIGURE time and must NEVER
+# be a custom-command OUTPUT, and env values carry no shell quoting. Real
+# emulation legs stay DEFERRED (no qemu on the validation host): only the
+# condition logic is testable here, and t-rust-linkplan table-locks it.
+#
+# Guards (the honest substitutes for "their conditions" -- no upstream text
+# exists to copy): the msvc and macho families take no auto-injection, and
+# a COFF executable format vetoes the wrapper (both still honor an EXPLICIT
+# linker override below the msvc exclusion, which stands absolute).
+function(_polyorch_rust_linker_plan)
+    set(_one TRIPLE OUT_ENV_NAME OUT_VALUE OUT_WRAPPER OUT_WRAPPER_CONTENT
+             OUT_RUNNER EXPLICIT EXEC_FORMAT WRAPPER_DIR)
+    # EMULATOR is multi-value: it is a list (the CMake
+    # CROSSCOMPILING_EMULATOR contract) and callers pass it as one or more
+    # tokens.
+    set(_multi EMULATOR)
+    # Scoped CMP0174 NEW: ""-keyword values are the explicit-suppression
+    # input of the offline tables (same contract as _forward_env).
+    cmake_policy(PUSH)
+    cmake_policy(SET CMP0174 NEW)
+    cmake_parse_arguments(PARSE_ARGV 0 L "" "${_one}" "${_multi}")
+    cmake_policy(POP)
+    if(L_UNPARSED_ARGUMENTS)
+        message(FATAL_ERROR
+            "_polyorch_rust_linker_plan unknown args: ${L_UNPARSED_ARGUMENTS}")
+    endif()
+    _polyorch_rust_must(L_TRIPLE L_OUT_ENV_NAME L_OUT_VALUE L_OUT_WRAPPER)
+    _polyorch_rust_triple_family("${L_TRIPLE}" _fam)
+    if(NOT DEFINED L_EXEC_FORMAT)
+        set(L_EXEC_FORMAT "${CMAKE_EXECUTABLE_FORMAT}")
+    endif()
+    if(NOT DEFINED L_EXPLICIT)
+        _polyorch_rust_triple_env_form("${L_TRIPLE}" _up0)
+        set(L_EXPLICIT "${PolyOrch_RUST_LINKER_${_up0}}")
+    endif()
+    if(NOT DEFINED L_EMULATOR)
+        set(L_EMULATOR "${CMAKE_CROSSCOMPILING_EMULATOR}")
+    endif()
+    if(DEFINED L_EMULATOR)
+        # PARSE_ARGV multi-value protects caller-embedded semicolons
+        # (a\\;b\\;c) -- unprotect so every list operation below (JOIN,
+        # GET, foreach) sees the element structure the name promises.
+        string(REPLACE "\\;" ";" L_EMULATOR "${L_EMULATOR}")
+    endif()
+    if(NOT DEFINED L_WRAPPER_DIR)
+        set(L_WRAPPER_DIR "${CMAKE_BINARY_DIR}/.polyorch-rust")
+    endif()
+    set(_name "")
+    set(_val "")
+    set(_wrap "")
+    set(_wrapc "")
+    set(_runner "")
+    if(_fam STREQUAL "msvc")
+        # corr:852 shape: rustc only invokes the linker directly on MSVC ABI
+        # -- no CC wrapper, no runner, and an injected cl would poison env.
+        if(L_OUT_WRAPPER_CONTENT)
+            set(${L_OUT_WRAPPER_CONTENT} "" PARENT_SCOPE)
+        endif()
+        set(${L_OUT_ENV_NAME} "" PARENT_SCOPE)
+        set(${L_OUT_VALUE} "" PARENT_SCOPE)
+        set(${L_OUT_WRAPPER} "" PARENT_SCOPE)
+        set(${L_OUT_RUNNER} "" PARENT_SCOPE)
+        return()
+    endif()
+    _polyorch_rust_triple_env_form("${L_TRIPLE}" _up)
+    set(_name "CARGO_TARGET_${_up}_LINKER")
+    # RUNNER forwarding is independent of the linker decision (cargo RUNNER
+    # EXECUTES built binaries -- cargo test --, LINKER links them): an
+    # emulator present + a guard-passing shape always yields the runner key.
+    # Value joins on SPACES -- cargo word-splits the runner string; no
+    # quoting (lesson discipline above).
+    set(_rv "")
+    if(L_EMULATOR AND NOT _fam STREQUAL "macho"
+            AND NOT L_EXEC_FORMAT STREQUAL "COFF")
+        string(JOIN " " _rv ${L_EMULATOR})
+        set(_runner "CARGO_TARGET_${_up}_RUNNER=${_rv}")
+    endif()
+    if(L_EXPLICIT)
+        set(_val "${L_EXPLICIT}")
+    elseif(_rv)
+        # Embedded/shell-style runner -> linker wrapper: only when the
+        # emulator's first token is an existing script file (a bare
+        # qemu-<arch> binary is a RUNNER, not a linker driver -- do not
+        # pretend otherwise).
+        list(GET L_EMULATOR 0 _e0)
+        if(EXISTS "${_e0}" AND _e0 MATCHES "\.(sh|bash|pl|py)$")
+            set(_wrap "${L_WRAPPER_DIR}/${L_TRIPLE}-linker")
+            set(_wrapc "#!/bin/sh\n"
+                "# PolyOrch cross-linker wrapper for ${L_TRIPLE} -- GENERATED, do not edit.\n"
+                "# Derived from CMAKE_CROSSCOMPILING_EMULATOR so the link step routes\n"
+                "# through the same wrapper as the runner. Discipline (ported lesson):\n"
+                "# this file is written at CONFIGURE time and must never become a\n"
+                "# custom-command OUTPUT.\n"
+                "exec ${_rv} \"$@\"\n")
+            string(REPLACE ";" "" _wrapc "${_wrapc}")
+        endif()
+    endif()
+    if(L_OUT_WRAPPER_CONTENT)
+        set(${L_OUT_WRAPPER_CONTENT} "${_wrapc}" PARENT_SCOPE)
+    endif()
+    set(${L_OUT_ENV_NAME} "${_name}" PARENT_SCOPE)
+    set(${L_OUT_VALUE} "${_val}" PARENT_SCOPE)
+    set(${L_OUT_WRAPPER} "${_wrap}" PARENT_SCOPE)
+    set(${L_OUT_RUNNER} "${_runner}" PARENT_SCOPE)
 endfunction()
 
 # ------------------------------------------------------------------- setup ---
@@ -585,9 +851,12 @@ endfunction()
 #   POLYORCH_RUST_HOST_TARGET  `rustc -vV` host triple (artifact naming key)
 #   POLYORCH_RUST_ROUTE        system | pixi (drives the PATH wrapper)
 #   POLYORCH_RUST_BIN_DIR      directory holding the cargo binary
-#   POLYORCH_RUST_CARGO_TARGET the --target triple selected for the build
-#                              (echo of PolyOrch_RUST_CARGO_TARGET; empty =
-#                              host default -- routing not implemented, WP5)
+#   POLYORCH_RUST_CARGO_TARGET the consumed --target triple (WP5): the
+#                              derivation chain result when it differs from
+#                              the host (family-gated, FATAL when unknown),
+#                              normalized to empty for a host-equal or
+#                              unset selection -- empty means every rule
+#                              keeps the locked host layer
 #   POLYORCH_RUST_TOOLCHAINS   names of the toolchains the resolved rustup
 #                              install exposes, or the single entry `direct`
 #                              when no rustup was involved; per toolchain,
@@ -617,9 +886,11 @@ endfunction()
 # the user-var promotion in corr:FindRust.cmake:324-332 (naming-map row in
 # docs/reference/corrosion-port-ledger.md).
 # PolyOrch_RUST_CARGO_TARGET (cache string) selects the cargo --target
-# triple; as of WP2 it is only defined + echoed into
-# POLYORCH_RUST_CARGO_TARGET (a STATUS line when non-empty says routing is
-# NOT implemented yet -- WP5 consumes it; empty = build for the host).
+# triple; since WP5 it is CONSUMED: a non-empty value routes every cargo
+# rule through --target=<tup> with the .cargo-target/<tup>/ artifact
+# namespace (see PolyOrchRustHelpers), and an unknown triple fails the
+# configure at the naming-table family gate. An explicit value equal to
+# the host triple is a no-op (normalized to empty).
 # PolyOrch_RUST_MIN_VERSION (cache string) floors the rustc version: empty
 # (default) enforces nothing -- measured-only floors stay the rule (the
 # deferred register stands); when set, a toolchain below the floor is a MISS
@@ -645,6 +916,15 @@ function(polyorch_rust_setup)
     cmake_parse_arguments(PARSE_ARGV 0 S "${_opts}" "${_one}" "")
     if(S_UNPARSED_ARGUMENTS)
         message(FATAL_ERROR "polyorch_rust_setup: unknown args: ${S_UNPARSED_ARGUMENTS}")
+    endif()
+
+    # Author-side gate (WP5): the routed --target triple must name a family
+    # whose artifact layout PolyOrch can build. Checked BEFORE discovery so
+    # an unknown triple fails hard even on a toolchain-missing host (and
+    # whatever REQUIRED says); the host-equal normalization in the _found
+    # block below still runs against the discovered host triple.
+    if(PolyOrch_RUST_CARGO_TARGET)
+        _polyorch_rust_triple_family("${PolyOrch_RUST_CARGO_TARGET}" _gate_family)
     endif()
 
     set(_from "${S_FROM}")
@@ -974,15 +1254,22 @@ function(polyorch_rust_setup)
             endif()
             set_property(TARGET PolyOrchRust::Cargo PROPERTY IMPORTED_LOCATION "${_cargo}")
         endif()
-        # WP2 echo-only (ponytail: consumed by the WP5 cross-routing cluster;
-        # until then nothing passes --target, so a non-empty value is inert).
-        set(POLYORCH_RUST_CARGO_TARGET "${PolyOrch_RUST_CARGO_TARGET}" CACHE INTERNAL "PolyOrch rust toolchain (polyorch_rust_setup)")
-        message(STATUS "polyorch_rust: cargo ${_version} (host ${_host}, from ${_from})")
-        if(POLYORCH_RUST_CARGO_TARGET)
-            message(STATUS "polyorch_rust: PolyOrch_RUST_CARGO_TARGET="
-                "${POLYORCH_RUST_CARGO_TARGET} recorded but --target routing is "
-                "not implemented yet (WP5); the build stays on the host target")
+        # WP5 consumption (see the knob doc above): derive, normalize a
+        # host-equal selection to the empty host layer, and family-gate a
+        # cross value through the naming table's own FATAL. Runs BEFORE the
+        # probe below so the probe sees the routed triple.
+        _polyorch_rust_derive_target(_ctup)
+        if(_ctup AND _ctup STREQUAL _host)
+            set(_ctup "")
         endif()
+        if(_ctup)
+            # family already gated pre-discovery above
+            message(STATUS "polyorch_rust: cross --target ${_ctup} "
+                "(artifacts under .cargo-target/${_ctup}/; cache knob "
+                "PolyOrch_RUST_CARGO_TARGET)")
+        endif()
+        set(POLYORCH_RUST_CARGO_TARGET "${_ctup}" CACHE INTERNAL "PolyOrch rust toolchain (polyorch_rust_setup)")
+        message(STATUS "polyorch_rust: cargo ${_version} (host ${_host}, from ${_from})")
         if(S_NO_NATIVE_PROBE)
             message(STATUS "polyorch_rust: native-static-libs probe skipped (NO_NATIVE_PROBE)")
         else()
@@ -997,6 +1284,18 @@ function(polyorch_rust_setup)
     endif()
 endfunction()
 
+# Internal: the ONE cargo-command prefix. Ordering contract (WP3-era,
+# WP5 load-bearing): the --unset host-leak strip is emitted FIRST, every
+# caller-supplied ENV entry (the cc-rs forwarding list, the linker/runner
+# entries, the user's POLYORCH_RUST_ENV_VARS, the composed RUSTFLAGS) rides
+# AFTER it -- a later assignment always wins over an earlier --unset under
+# cmake -E env, which is what lets the forwarding block re-set exactly the
+# variables the strip removed. Quoting discipline (ported from the
+# reference's env-arg lesson, corr:Corrosion.cmake:789-793): no entry is
+# ever pre-quoted (quoting genex-expanded lists corrupts them); non-file
+# values stay VERBATIM single tokens, file/list values are passed as whole
+# KEY=VAL arguments and only ever expand via COMMAND_EXPAND_LISTS on
+# list-property edges. t-rust-crossplan pins the strip-before-forward order.
 function(_polyorch_rust_command CMD_OUT)
     cmake_parse_arguments(PARSE_ARGV 1 R "" "" "SUBCOMMAND;ENV")
     if(R_SUBCOMMAND)

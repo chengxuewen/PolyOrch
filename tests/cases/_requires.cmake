@@ -153,8 +153,16 @@ function(polyorch_requires cap out)
         endif()
 
     elseif(cap MATCHES "^target-(.+)$")
+        # PATH first, then the driver-composed dir (same alignment argument
+        # as `system-rust` above: the fixture CHILDREN build with the
+        # toolchain the driver puts on their PATH -- ~/.cargo/bin carries a
+        # rustup beside it -- so the parent gate must see it too, or a
+        # target-gated e2e could never execute through run.sh).
         set(_pr_want "${CMAKE_MATCH_1}")
         find_program(_pr_rustup NAMES rustup)
+        if(NOT _pr_rustup)
+            find_program(_pr_rustup NAMES rustup PATHS "$ENV{HOME}/.cargo/bin")
+        endif()
         if(_pr_rustup)
             execute_process(COMMAND "${_pr_rustup}" target list --installed
                 OUTPUT_VARIABLE _pr_tl ERROR_QUIET)

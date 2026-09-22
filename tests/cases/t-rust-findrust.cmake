@@ -278,8 +278,9 @@ set(ENV{PATH} "${_path0}")
 
 # -------------------------------------------------------- derive-target -----
 # _polyorch_rust_derive_target(OUT): override wins; otherwise the host
-# triple recorded by the last successful setup (WP5b inserts the
-# VS/processor/compiler-id chain before that fallback -- see the function).
+# triple recorded by the last successful setup (the VS/processor/compiler-id
+# chain remains the documented seam in the function -- WP5 consumed the two
+# live links via polyorch_rust_setup, the family gate lives there).
 _polyorch_rust_derive_target(_dt)
 ck_str("${_dt}" "")          # no setup yet in scope: empty host, empty override
 set(PolyOrch_RUST_CARGO_TARGET "wasm32-eabi-polyorch" CACHE INTERNAL "")

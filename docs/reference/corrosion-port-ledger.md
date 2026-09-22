@@ -22,7 +22,7 @@ Every ledger row is exactly one of:
 |---|---|---|---|
 | `Rust_COMPILER` user-var promotion (corr:FindRust.cmake:324-332) surfaced to callers as the `RUSTC_EXECUTABLE` tool path (corr:Corrosion.cmake:59-66,113) | `PolyOrch_RUSTC_EXECUTABLE` cache input of `polyorch_rust_setup` | naming-map | Honored first on **both** routes (system and pixi), bypassing `find_program`; set-but-nonexistent is a FATAL. Mechanism-equivalent: user-supplied path wins over discovery |
 | `Rust_CARGO` user-var promotion (corr:FindRust.cmake:324-332) surfaced as the `CARGO_EXECUTABLE` tool path (corr:Corrosion.cmake:59-66,114) | `PolyOrch_RUST_CARGO_EXECUTABLE` cache input of `polyorch_rust_setup` | naming-map | Same semantics as the rustc row; the pair keeps result vars `POLYORCH_RUST_{CARGO,RUSTC}` unchanged |
-| `Rust_CARGO_TARGET` (corr:FindRust.cmake:659-791 derivation chain) | `PolyOrch_RUST_CARGO_TARGET` cache input, echoed to `POLYORCH_RUST_CARGO_TARGET`; selector function `_polyorch_rust_derive_target` | naming-map | WP2 scope was define + document + echo only -- unchanged (a non-empty value still prints a STATUS saying `--target` routing is not implemented; WP5 consumes it). WP3 delivered the derivation SHAPE: override-then-host-fallback, with the WP5b seam marked where the reference's Windows/Android/OHOS chains (find:662-780) insert; see the fidelity table for the open half |
+| `Rust_CARGO_TARGET` (corr:FindRust.cmake:659-791 derivation chain) | `PolyOrch_RUST_CARGO_TARGET` cache input, echoed to `POLYORCH_RUST_CARGO_TARGET`; selector function `_polyorch_rust_derive_target` | naming-map | WP3 delivered the derivation SHAPE (override-then-host-fallback); **WP5 consumed it**: `polyorch_rust_setup` runs the chain pre-discovery through the naming-table family gate (unknown triple FATALs whatever REQUIRED says), normalizes a host-equal selection to the empty host layer, and STATUS-announces a routed triple. The Windows/Android/OHOS chains (corr find:662-780) remain the documented seam in `_polyorch_rust_derive_target`; see the fidelity table for the open half |
 | `Rust_CARGO_HOST_TARGET` (corr:FindRust.cmake:637-638,841) | `POLYORCH_RUST_HOST_TARGET` result variable | naming-map | Pre-existing (D13); cached-triple-vs-result-var mechanics differ only because discovery is per-configure here |
 | `Rust_TOOLCHAIN` (corr:FindRust.cmake:216-219,238-247,465) | `PolyOrch_RUST_TOOLCHAIN` cache input of `polyorch_rust_setup` | naming-map | Same contract: when set, resolution goes through rustup; unknown names FATAL listing the available toolchains, with the reference's `<name>-<default host>` retry (find:472-503) ported. The reference also caches the SELECTED name back into the same variable (find:465-466) -- PolyOrch keeps the knob strictly input-only and records the selection in the resolved paths instead |
 | `Rust_RESOLVE_RUSTUP_TOOLCHAINS` (corr:FindRust.cmake:221-222,319-321) | -- not ported -- | fidelity-gap | Deviation, ruled deferred: the reference's opt-out of proxy descent is unnecessary here because descent is triggered only by a positive proxy tell (auto-detect cannot mis-fire on a direct toolchain), and the injection pair already covers deliberately-pinned setups. Register again if an opt-out demand appears |
@@ -40,6 +40,13 @@ Every ledger row is exactly one of:
 | per-config cargo target dir `build_dir = $<CONFIG>` (corr:676-686, 782-786) | shared `.cargo-target` base, configs segregated by cargo's own profile dir genex `$<IF:$<OR:$<CONFIG:Debug>,$<CONFIG:>>,debug,release>` (corr:772) with the matching `--release` conditional (corr:762, both ported verbatim) | fidelity-gap | Deviation, documented in `polyorch_rust_build`: no `<Config>/<profile>` double-nesting, the single-config layout stays byte-stable, and RelWithDebInfo shares cargo's release fingerprint exactly as its `--release` flag implies. If config-flip churn is ever measured, prepend `$<CONFIG>/` to the base -- the seam is the one `_dir` assignment |
 | gnullvm implib `deps/` workaround keyed on `Rust_CARGO_TARGET_ENV` (corr:334-337) | `_polyorch_rust_copy_plan` `KIND implib` testing `TRIPLE MATCHES "gnullvm$"` | naming-map | The env half of the triple is read from the triple text here (the v0 family table), not from a parsed FindRust field. Table-locked by `t-rust-copy-plan`, incl. the mingw row proving NO deps/ outside gnullvm |
 | `_corrosion_initialize_properties` (corr:2313-2326) | inline loop in `polyorch_rust_build` mirroring `CMAKE_{RUNTIME,ARCHIVE,LIBRARY}_OUTPUT_DIRECTORY(_<CFG>)` onto the handle at creation | naming-map | PDB_OUTPUT_DIRECTORY not ported (the v0 rust face emits no pdb). The mirror is load-bearing: an IMPORTED target never consults the `CMAKE_*` variables itself (measured, cmake 4.4.3) and the finalize reads properties only |
+| `corrosion_set_hostbuild` + `_CORR_PROP_HOST_BUILD` consumed as rule genex (corr:717-728,1166-1172) | `polyorch_rust_set_hostbuild` + mediator property `POLYORCH_RUST_HOST_BUILD` | naming-map | Mechanism ported with two deviations, both locked by tests: the reference ALWAYS passes `--target` (host builds nest under the host-triple dir); PolyOrch omits the flag on the host layer -- the locked t-rust-artifact-paths layout -- and the setter's generate-time genex only suppresses the flag under an ACTIVE cross route. On a non-cross host the setter is observably a no-op versus the default; t-rust-crossplan asserts exactly that (rule text + identical rebased locations), t-rust-musl proves the fall-back to the distinct host directories under a real route. Cross mediators are deliberately UNSTAMPED custom targets (the reference stamps nothing either -- corr:915-920 comment: the path depends on this very property, so it may not be a stamped OUTPUT); the host layer keeps its stamped rule. Eager (configure-time) locations remain cross-shaped until the deferred finalize re-reads the property; a `polyorch_rust_install` of a hostbuild-flipped cross handle reads the stale-eager path (documented at the setter; install is a host-layer surface in v0) |
+| `corrosion_cc_rs_flags` trio `CC_/CXX_/AR_<stripped-triple>` (corr:779-793) + the Darwin `SDKROOT`/`MACOSX_DEPLOYMENT_TARGET`/`--sysroot` block (corr:651-657,818-829) | `_polyorch_rust_forward_env` (pure) consumed by the build/test rules | naming-map | The trio/Apple-block conditions are ported (values from CMAKE_* discovery, empty = language not enabled = no entry). Deviations: (1) the key is the UPPER-UNDERSCORE form `_polyorch_rust_triple_env_form` (corr:600-607) where the reference uses its lower/underscore `stripped_target_triple` -- cc-rs accepts the uppercase form and the linker keys need it anyway; (2) the msvc family emits NOTHING (corr guards only AR there; the task's env gate is the superset and cl is not a cc-rs driver); (3) `--sysroot` rides the caller's GLOBAL RUSTFLAGS as `-Clink-arg=` tokens (corr injects local rustflags through `cargo rustc --`, a surface not ported); (4) on a cross route the rule carries BOTH the cross- and host-keyed trios so a hostbuild flip leaves cc-rs the names it reads (corr's iOS hostbuild workaround, corr:809-819, is the precedent for host-keyed env); (5) `LIBRARY_PATH` is not this builder's input (next row) |
+| `LIBRARY_PATH` fixed old-macOS SDK path (corr:748-757) | `LIBRARY_PATH` env entry derived from `polyorch_rust_link_libraries`' linker-file dirs (`POLYORCH_RUST_LINK_DIRS` mediator property, `:` join) | fidelity-gap closed-with-deviation | Same rationale (RUSTFLAGS' `-L` never reaches build-script linking), opposite sourcing: the reference hardcodes one SDK path; PolyOrch derives from the declared link surface. Windows `;` join deferred until a windows validation leg exists; table-locked by t-rust-linkplan (B4) |
+| `corrosion_link_libraries` (corr:1254-1310) | `polyorch_rust_link_libraries` | naming-map | Staticlib early-return to the CMake link interface: ported (APPEND, keeping the probe-attached system libs intact). CMake-target conversion `$<TARGET_LINKER_FILE_DIR>/<BASE_NAME>` -> `-L/-l`: ported, but the terms ride the GLOBAL RUSTFLAGS env (`POLYORCH_RUST_LINK_LIBRARIES` property, `$<TARGET_GENEX_EVAL>`-joined) where the reference passes them as LOCAL rustflags after `cargo rustc --` -- deviation: dependencies compile with the extra search/link args visible (correctness-neutral for `-L`; `-l` on the final link is per-crate-neutral in practice; RUSTFLAGS is whitespace-split, so a space in a linker-file dir breaks the path -- the reference shares the limit). `LINKER_LANGUAGE` collection for the cross default-linker CXX pick: ported as the `POLYORCH_RUST_LINK_LANGS` genex. Absolute-path `-Clink-arg=` and bare-name `-l` legs: ported. iOS `EFFECTIVE_PLATFORM_NAME` hack: not ported (no Apple validation leg) |
+| `CARGO_TARGET_<T>_LINKER` env wiring + `_corrosion_host_linker` precedent (corr:600-607,815,852-857) | `_polyorch_rust_linker_plan` (pure conditions) + `_polyorch_rust_linker_entries` (rule assembly) + `PolyOrch_RUST_LINKER_<TRIPLE-UP>` cache knob + `CMAKE_CROSSCOMPILING_EMULATOR` -> `CARGO_TARGET_<T>_RUNNER` forwarding + configure-time `<tup>-linker` wrapper materialization under `${CMAKE_BINARY_DIR}/.polyorch-rust/` + `polyorch_rust_run` emulator prefix | fidelity-gap closed-with-deviation | See the WP5b fidelity section: the cited corr regions do not exist in the pinned checkout, the implemented shape is the cargo env contract + the two ported lessons (never-a-stamped-OUTPUT wrapper; no quoting of env file values). Default compiler-as-linker injection is CROSS-rules-only (the reference injects on host too; measured redundant here). Table-locked by t-rust-linkplan; the explicit knob is per-TRIPLE where the reference's `corrosion_set_linker` is per-TARGET (next row) |
+| `corrosion_set_linker(<target> <linker>)` -> `INTERFACE_CORROSION_LINKER` (corr:1144-1163) | -- not ported -- (`PolyOrch_RUST_LINKER_<TRIPLE-UP>` cache knob covers one-linker-per-configure) | fidelity-gap | Ruled deferred: PolyOrch's v0 cross model is one routed triple per configure; a per-target linker becomes necessary with per-target cross routing. The reference's MSVC warn-and-ignore + staticlib warn are subsumed by the plan's family gates |
+| `Rust_CARGO_TARGET_ENV`-keyed extras (task brief's "corr:896-940 THINLTO/OBJC/ASM/RC" cluster) | -- not ported -- | fidelity-gap | The pinned checkout contains no such mechanism (grep-verified: `THINLTO`, `OBJC`, RC-asm, `CMAKE_LINKER` additions absent under `cmake/`); nothing to port without inventing upstream behavior. Register against a future pin bump |
 | reference test group `test/output directory` (its CMakeLists:51-139: targetprop / var / pdb-fallback legs, free space-path dirs, MC `$<CONFIG>/` path selection) | legs `tp` / `cv` / space-build-dir + `mcd` / `mcr` of `tests/fixtures/output-dir` + `t-rust-output-dir` (and the matrix.sh MC cell) | naming-map | targetprop and var legs ported (the var leg by the init row above); the free space trick lands in both the build dir and the dest dirs; pdb and postbuild-move legs not ported (no pdb surface; the reference's `LOCATION_$<CONFIG>` genex read is superseded by per-config `file(GENERATE)` target-file probes) |
 
 ## Fidelity gaps
@@ -55,11 +62,24 @@ closed as follows, per mechanism:
 - **version semantics** (`polyorch_rust_version_ok`, floor, exports) --
   parity delivered with the no-auto-scan deviation.
 - **imported handles** -- parity delivered with the replacement deviation.
-- **CARGO_TARGET derivation** -- SHAPE delivered (`_polyorch_rust_derive
-  target` = override + host fallback, seam marked); the reference's
-  Windows/Android/OHOS chains (corr:FindRust.cmake:662-780) stay open
-  under the WP5b routing work package, as does the `Rust_CROSSCOMPILING`
-  derivation (find:834-838) that consumes them.
+- **CARGO_TARGET derivation + consumption** -- CLOSED with WP5 (2026-09-22):
+  setup runs the derivation chain through the family gate and every
+  build/test rule routes `--target=<tup>` into the `.cargo-target/<tup>/`
+  namespace (real x86_64-unknown-linux-musl legs: t-rust-musl). Still open
+  (unchanged): the reference's Windows/Android/OHOS chains
+  (corr:FindRust.cmake:662-780) stay the documented seam in
+  `_polyorch_rust_derive_target` -- no Windows/Android validation contact
+  exists -- as does the `Rust_CROSSCOMPILING` derivation (find:834-838).
+- **`cargo metadata` triple-freedom** -- behavior note: cargo metadata
+  accepts NO `--target` (measured: rc=1 "unexpected argument", cargo
+  1.98.1), so the import probe and the setup probes stay triple-free; the
+  `--no-deps` parse reads `packages[].targets` only (platform-independent),
+  and every build rule the replay creates carries the routing.
+- **native-static-libs probe** -- one cached probe per configure on the
+  EFFECTIVE (cross-or-host) triple; a hostbuild-flipped handle keeps the
+  cross probe's system-lib list (same-family musl/gnu identical; foreign-
+  family hostbuild + static install consumption is a known, documented
+  ceiling at the probe).
 
 WP4 (multiconfig / DEFER / copy-staging) closes the multi-config surface the
 D17 ruling unlocked, per mechanism:
@@ -80,6 +100,32 @@ D17 ruling unlocked, per mechanism:
   directory, so `PROFILE dev` would look in `.cargo-target/dev` (a pre-WP4
   limitation of the PROFILE keyword, now also on the MC path). Register the
   fix with the custom-profiles cluster, not silently.
+
+WP5 / WP5b (cross routing + linker control plane, 2026-09-22) fidelity note
+(block-level, applies to every row above citing the linker plane): the task
+brief's WP5b anchors -- corr:633-646 (project-stage HOST_OS override),
+corr:959-981 + 1061-1070 (embedded linker from `CMAKE_CROSSCOMPILING_EMULATOR`),
+corr:1075-1079 (quoting lesson), corr:1352-1360 (RUNNER), corr:1396-1423
+(install gate), corr:FindRust.cmake:242-244 (RUNNER) -- are **not present in
+the pinned c4786e7 checkout**: a case-insensitive scan for
+`CROSSCOMPILING_EMULATOR`, `RUNNER`, `THINLTO`, `OBJC` and the RC/ASM-addition
+shape finds zero hits anywhere under its `cmake/`. The mechanisms above were
+therefore implemented from the cargo configuration contract
+(`CARGO_TARGET_<TRIPLE>_LINKER` / `_RUNNER`) and the lessons the brief records
+verbatim (the wrapper file is configure-time material and must never be a
+custom-command OUTPUT -- implemented literally and grepped in t-rust-linkplan
+B2; env values carry no shell quoting -- VERBATIM-token discipline noted at
+`_polyorch_rust_command`). DEFERRED with that evidence, not silently skipped:
+- any REAL emulation leg (no qemu on the validation host; no
+  `# requires: qemu-<tuple>` gate exists by design);
+- the THINLTO/OBJC/OBJCXX/RC/ASM env additions (nothing upstream to port --
+  re-register against a future pin bump);
+- the project-stage `CMAKE_HOST_SYSTEM_NAME` override for cross timing
+  (corr:633-646 per the brief) -- PolyOrch resolves its toolchain per
+  `polyorch_rust_setup` call with the triple supplied by the knob, the
+  reference's timing trap has no analog in this architecture;
+- install-gate "target==host or emulator present" (the reference has no
+  gate at the pin; `polyorch_rust_install` remains a host-layer surface).
 
 Rows are added per work package as clusters are reconciled against the
 reference surface (Phase B, WP3-WP8), completed by the WP10 full-surface

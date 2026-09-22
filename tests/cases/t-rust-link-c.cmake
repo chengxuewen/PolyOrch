@@ -28,7 +28,7 @@ _polyorch_pixi_scratch(_s)
 set(_b "${_s}/b")
 
 set(_dargs "-DFIXTURE=${CMAKE_CURRENT_LIST_DIR}/../fixtures/link-c"
-           "-DBUILD=${_b}" "-DCONFIG=${_cfg}" "-DTARGETS=capp")
+           "-DBUILD=${_b}" "-DCONFIG=${_cfg}" "-DTARGETS=capp\\;rust-clib-bin-cargo")
 if("$ENV{POLYORCH_TEST_GENERATOR}")
     list(APPEND _dargs "-DGENERATOR=$ENV{POLYORCH_TEST_GENERATOR}")
 endif()
@@ -83,6 +83,17 @@ else()
     message(STATUS "rust-link-c: link.txt not present (non-Makefile generator); relying on build success")
 endif()
 
+# --- WP5b leg: polyorch_rust_link_libraries -- a RUST binary linking the
+# CMake C staticlib through the -L/-l conversion, executed here.
+drv_get(_dlog rustbin _rbin)
+ck_file("${_rbin}")
+execute_process(COMMAND "${_rbin}"
+    RESULT_VARIABLE _rlrc OUTPUT_VARIABLE _rlout ERROR_VARIABLE _rlerr)
+message(STATUS "rust-link-c: clib_user output: ${_rlout}")
+if(NOT _rlrc EQUAL 0 OR NOT _rlout MATCHES "POLYORCH_LINKLIB_OK 7")
+    message(FATAL_ERROR "rust-link-c: rust bin linked against clib_c failed (rc=${_rlrc}): ${_rlout}${_rlerr}")
+endif()
+
 # --- run: the linked binary executes and prints the marker. -----------------
 ck_file("${_capp}")
 file(SIZE "${_capp}" _sz)
@@ -97,4 +108,4 @@ if(NOT _cout MATCHES "POLYORCH_RUST_LINK_OK")
     message(FATAL_ERROR "rust-link-c: capp stdout lacks marker:\n${_cout}${_cerr}")
 endif()
 
-message(STATUS "rust-link-c: OK (Rust staticlib linked + run by a C consumer; probe libs [${_libs}])")
+message(STATUS "rust-link-c: OK (Rust staticlib linked + run by a C consumer + Rust bin linked + run against a C staticlib; probe libs [${_libs}])")
