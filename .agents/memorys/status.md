@@ -31,7 +31,7 @@
 | `cmake/PolyOrchRustHelpers.cmake` | rust module (D13+D14, ~1490 lines): setup(+native-libs probe) / build / import(metadata) / set_features / set_env_vars / add_cargo_flags / add_rustflags / test / run / clean / install(+export stub), generate-time property carrier on the `cargo-build-<T>` mediator, triple-family naming, FOLDER, collision guard (PIT-13) |
 | `scripts/` | activation trio `pixi.sh` / `pixi.bat` / `pixi.ps1`; installed beside `.pixi/` via `COPY_SCRIPTS` |
 | `examples/` | pixi-bootstrap (`cmake -P`), pixi-configure, pixi-workspace; each also a `PolyOrchExample*` target |
-| `tests/` | `run.sh` driver + CTest registration; 14 `cmake -P` cases (markers shared) |
+| `tests/` | `run.sh` driver + CTest registration; 39 `cmake -P` cases; shared marker contract incl. `# requires: <cap>` capability gates (cases/_requires.cmake), contract-SKIP veto and driver tripwires (D15) |
 
 ## Verification
 
@@ -46,11 +46,12 @@
 | English-only artifacts | see `conventions.md` C4 | pass (2026-09-18) |
 | vendored Xmake skills unmodified | see `conventions.md` C5 | pass (2026-09-20) |
 | design-doc separation (no cross-naming) | see `conventions.md` C6 | pass (2026-09-20) |
-| cmake unit suite | `bash tests/run.sh` | pass 13/13 offline; 14/14 with `POLYORCH_TEST_E2E=1` (2026-09-21) |
-| CTest registration | `cmake -B <b> -DPolyOrch_BUILD_TESTS=ON && ctest --test-dir <b>` | pass 13/13 (2026-09-21); **blocked standalone** -- root configure FATALs at PlatformSupport mkspec detection without host context (c79c4bf known state) -- re-run under the host or after mkspec fallback lands |
-| rust offline suite | `bash tests/run.sh` | pass 21/21 + 2 skip (2026-09-21) |
-| rust e2e (real cargo via pixi) | `POLYORCH_TEST_E2E=1 bash tests/run.sh` | pass 37/37 incl. link-c + install-e2e + import-ws (2026-09-21) |
-| generator matrix | `bash tests/matrix.sh` | 4/4 cells {Makefiles,Ninja}x{Debug,Release}, right-reason greps (2026-09-21) |
+| cmake unit suite | `bash tests/run.sh` | pass=32 fail=0 skip=7 (7 e2e driver-gated) offline; **39/39** with `POLYORCH_TEST_E2E=1` — no R-12 flake observed this run (2026-09-22) |
+| CTest registration | throwaway host x `-DPolyOrch_TEST_E2E=ON` + `ctest --test-dir <b>` | full ctest leg green in all 4 matrix cells (2026-09-22); **blocked standalone** -- root configure FATALs at PlatformSupport mkspec detection without host context (c79c4bf known state) -- re-run under the host or after mkspec fallback lands |
+| rust offline suite | `bash tests/run.sh` | rust cases 17/17 pass + 6 e2e-skip (2026-09-22) |
+| rust e2e (real cargo via pixi) | `POLYORCH_TEST_E2E=1 bash tests/run.sh` | pass incl. link-c + install-e2e + import-ws, all behind `# requires: pixi-rust` (2026-09-22) |
+| generator matrix | `bash tests/matrix.sh` | 4/4 cells {Makefiles,Ninja}x{Debug,Release}, right-reason greps; ctest leg now carries the SKIP veto (FAIL_REG) and marked-skip (SKIP_REG) properties (2026-09-22) |
+| skip contract + self-lock | scratch-copy proofs (repo untouched): canary tripwire fires; executed==0 tripwire fires; unmarked ": SKIP (" vetoes in BOTH drivers; poisoned-HOME run -> 3 contract skips (run.sh skip count) / 3 ctest Skipped, rc=0 | pass (2026-09-22, D15) |
 | rust-basic umbrella chain | `cmake --build <host> --target PolyOrchExampleRustBasic` | configure(bootstrap env) -> greet-cargo -> run-greet prints `hello, world!` (2026-09-21, clean shell; see PIT-14) |
 
 ## Open Items

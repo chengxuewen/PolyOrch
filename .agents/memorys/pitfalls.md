@@ -158,3 +158,19 @@
 - **Solution**: the crate takes the base as a function argument (`extern C fn take(base) -> pow(base, 2.0)` style) so the symbol survives into the link line; negative leg then fails exactly with `undefined reference to pow`.
 - **Verification**: negative control must fail with the SPECIFIC symbol message, not just nonzero rc.
 - **Forbidden**: constant expressions as proof of link necessity.
+
+## PIT-19: an empty normal pre-set shadows find_program -- cases silently skipped on capable hosts (2026-09-22)
+
+- **Symptom**: after the WP0 SKIP-honesty retrofit made `t-find-real` / `t-tool-ensure-present` bodies actually run, they failed `ck_str` with `[<path>] != []` although pixi exists at `~/.pixi/bin/pixi`. Before the retrofit these two cases had been SILENTLY SKIPPING (honest-looking exit-0 PASS) on every pixi-equipped host since the day they were written.
+- **Root cause**: the gate idiom `set(_x "")` + `find_program(_x NAMES pixi PATHS ...)` — on cmake 4.4.3 in script mode, a pre-existing empty NORMAL variable named `_x` prevents the found value from surfacing in that scope (measured: both `[${_x}]` and the cache entry stay empty; without the pre-set the same call returns the path). So `if(NOT _x)` was TRUE on a host WITH pixi and the case returned 0.
+- **Solution**: never pre-set the find result variable; probe fresh (`find_program(V ...)`) and assert with `ck(V)`. The retrofitted capability gate (`polyorch_requires`) additionally means the "is the tool there" decision is now made by one shared probe instead of per-case idioms.
+- **Verification**: `printf 'set(_b "")\nfind_program(_b NAMES pixi PATHS "$ENV{HOME}/.pixi/bin")\nmessage(STATUS "[${_b}]")\n' > t.cmake && cmake -P t.cmake` prints `[]` (bug shape); delete the first line and it prints the path.
+- **Forbidden**: `set(<var> "")` immediately before `find_program(<var> ...)`; and any exit-0 skip print that no driver counts (fixed same day by the contract SKIP + veto).
+
+## PIT-20: CMake regex cannot quantify a group — `(...){0,2}` silently never matches (2026-09-22)
+
+- **Symptom**: the ctest-side parse of the `# requires:` marker with `string(REGEX MATCH "^(#[^\n]*\n){0,2}# requires: " ...)` matched nothing on a file whose line 1 IS the marker, so marked cases got the veto FAIL regex instead of the skip regex and ctest failed them.
+- **Root cause**: CMake's regex engine does not support a repetition quantifier applied to a capture group; the expression is accepted and silently unmatched.
+- **Solution**: enumerate the fixed line positions as explicit alternatives: `^# requires: ` OR `^#[^\n]*\n# requires: ` OR `^#[^\n]*\n#[^\n]*\n# requires: ` (or `OR` inside `if(... MATCHES)`).
+- **Verification**: write a script containing `set(_h "# requires: pixi\n")` + `string(REGEX MATCH "^(#[^\n]*\n){0,2}# requires: " _m "${_h}")` + `message(STATUS "[${_m}]")` and run it under `cmake -P` (done at `tests/CMakeLists.txt` making-time): prints `[]`. The same input matched by the three explicit `^#...` / `^#...\n#...` alternatives prints non-empty.
+- **Forbidden**: quantified groups `(x){n,m}` in any CMake regex (if(), string(REGEX), install/file(COPY) exclude patterns alike).
