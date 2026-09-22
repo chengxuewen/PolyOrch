@@ -15,14 +15,14 @@ test -f .opencode/opencode.json && python3 -m json.tool .opencode/opencode.json 
 
 ## C1: "Brand and naming layering"
 
-Brand names and document titles use `PolyOrch` (camel case, showing the Poly + Orch roots); the CLI command, package name, and code import name use `polyorch` (all lowercase); the official acronym is **PBOS** (Polyglot Build Orchestration System). Misspellings such as `Polyorch` / `polyOrch` / `POLYORCH` are forbidden.
+Brand names and document titles use `PolyOrch` (camel case, showing the Poly + Orch roots); the CLI command, package name, and code import name use `polyorch` (all lowercase); the official acronym is **PBOS** (Polyglot Build Orchestration System). Misspellings such as `Polyorch` / `polyOrch` / `POLYORCH` are forbidden. Exception (per D11): underscore-continuing all-caps namespaces like `POLYORCH_RUST_*` / `POLYORCH_TEST_E2E` are result/env variable namespaces, not brand spellings; the check below encodes this boundary (bare `POLYORCH` still fails).
 
 ```bash
 # Scope is the content files: docs/ and the repository-root documents (README.md,
 # SKILL.md), plus the future source tree.
 # Instruction and rule files (AGENTS.md, .agents/) are NOT scanned: they legitimately
 # contain the forbidden literals as counter-examples (see PIT-1).
-if grep -rqE 'Polyorch|polyOrch|POLYORCH' docs/ README.md SKILL.md; then
+if grep -rqE 'Polyorch|polyOrch|POLYORCH([^A-Z_]|$)' docs/ README.md SKILL.md; then
   echo "FAIL: wrong brand casing"; exit 1
 else echo "PASS"; fi
 ```

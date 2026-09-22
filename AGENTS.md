@@ -87,8 +87,8 @@ Deviations that actually bind here. Runnable checks live in `.agents/memorys/con
 There is no build or test system — the project has no code. These are the real gates:
 
 ```bash
-# brand / CLI naming must be correctly cased
-grep -rqE 'Polyorch|polyOrch|POLYORCH' docs/ && echo FAIL || echo PASS
+# brand / CLI naming must be correctly cased (D11 namespace exemption encoded: POLYORCH_* variables allowed)
+grep -rqE 'Polyorch|polyOrch|POLYORCH([^A-Z_]|$)' docs/ && echo FAIL || echo PASS
 
 # canonical taglines present byte-exact
 grep -qF 'A scalable build orchestrator for polyglot monorepos.' docs/whitepaper.md && echo PASS
