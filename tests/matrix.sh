@@ -8,8 +8,8 @@
 #   usage: bash tests/matrix.sh          # ~1 min warm, network on cold cache
 # Each cell exports POLYORCH_TEST_CONFIG=<cfg> and POLYORCH_TEST_GENERATOR=<g>
 # into ctest (children inherit): t-rust-profile-release asserts the cargo
-# profile dir the cell's CMAKE_BUILD_TYPE demands, and the four fixture-driver
-# cases (rule-wiring/import-ws/link-c/install-e2e) forward both into
+# profile dir the cell's CMAKE_BUILD_TYPE demands, and the fixture-driver
+# cases (rule-wiring/import-ws/link-c/install-e2e/install-export) forward both into
 # fixtures/_driver.cmake, so every fixture configure+build runs on the cell's
 # generator and config. The per-cell verdict additionally greps the
 # verbose re-run of that case for "(<Cfg> -> .cargo-target/<cfg>/" -- a
@@ -17,8 +17,8 @@
 #
 # MC cell (WP4): runs the suite under -G "Ninja Multi-Config" twice,
 # ctest -C Debug then -C Release (POLYORCH_TEST_CONFIG follows), EXCLUDING
-# the four pre-WP4 fixture-driver cases (rule-wiring/import-ws/link-c/
-# install-e2e): their artifact contracts are written in single-config shape
+# the pre-WP4 fixture-driver cases (rule-wiring/import-ws/link-c/
+# install-e2e) plus the WP8 install-export case: their artifact contracts are written in single-config shape
 # (capp=<b>/capp; import-ws pins file(GENERATE) without a $<CONFIG> slot,
 # which an MC tree collapses to last-config-wins) -- a property of the
 # harnesses, not of the product. Those four stay fully covered by the
@@ -70,7 +70,7 @@ done
 if command -v ninja >/dev/null 2>&1; then
     cells=$((cells+1))
     b="$root/b-mc"
-    excl='^t-rust-(rule-wiring|import-ws|link-c|install-e2e)$'
+    excl='^t-rust-(rule-wiring|import-ws|link-c|install-e2e|install-export)$'
     if cmake -S "$root/host" -B "$b" -G "Ninja Multi-Config" \
             -DPolyOrch_TEST_E2E=ON > "$b.log" 2>&1 \
        && POLYORCH_TEST_E2E=1 POLYORCH_TEST_CONFIG=Debug POLYORCH_TEST_GENERATOR="Ninja Multi-Config" \

@@ -191,3 +191,11 @@
 - **Solution**: exactly one include_guard per module file, at the top of the code region; refactor tools that carve files must grep existing guards before adding their own.
 - **Verification**: `grep -c 'include_guard' cmake/PolyOrchRustHelpers.cmake` = 1 (each module file); suite green post-fix (33/40/4).
 - **Forbidden**: stacked include_guard in one file; trusting parse-success to prove include-execution (parse never runs the guards).
+
+## PIT-23: find_package swallows PACKAGE_PREFIX_DIR -- reserved names collide with your own config (2026-09-22)
+
+- **Symptom**: install-export consumer Config wrapper set PACKAGE_PREFIX_DIR for the replay stub's relocatable paths, but the stub saw a different value at include() time; measured on cmake 4.4.3: ordinary variables survive the find_package boundary, that reserved name does not (CMake's own package-config machinery owns it).
+- **Root cause**: name collision with machinery reserved to the loader, not a scoping bug.
+- **Solution**: do not fight it -- the wrapper's load-bearing line is the include(); where relocatability is needed derive from CMAKE_CURRENT_LIST_DIR under our OWN variable name (the -rust.cmake stub already does this).
+- **Verification**: t-rust-install-export consumer chain green; ledger row records the measurement.
+- **Forbidden**: defining/overwriting CMake-reserved config variables (PACKAGE_PREFIX_DIR et al.) in hand-written package files.

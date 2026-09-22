@@ -24,8 +24,10 @@
 # IMPORTED_TARGETS registry). Naming: lib handles carry underscores, bin
 # handles the suffix "-exe", a staticlib+cdylib target the pair
 # "-static"/"-shared" -- rules + gen: citations in the import section below.
-# polyorch_rust_install() stages built artifacts (bin/ + lib/) and can emit
-# a <name>-rust.cmake replay stub for second-stage C consumers; the
+# polyorch_rust_install() stages built artifacts (per-kind destination
+# overrides, permission/component/configuration gating, PUBLIC_HEADER
+# sidecars) and, with EXPORT, emits a <name>-rust.cmake replay stub plus
+# a <name>Config.cmake find_package wrapper for second-stage consumers;
 # [PREBUILD <t>] keyword on polyorch_rust_build names an explicit
 # user-owned target to run before cargo.
 #
@@ -1632,7 +1634,135 @@ endfunction()
 
 # ---------------------------------------------------------------- install ---
 
-# polyorch_rust_install(TARGETS <handle>... [EXPORT <name>] [PREFIX <dir>])
+# Internal: pure staging plan for ONE rust handle of
+# polyorch_rust_install. Inputs: the artifact-kind triplet (KIND + TRIPLE
+# family + HANDLE), the PREFIX to fold in front of every destination,
+# destination overrides, caller-supplied default permission sets
+# (EXEC_PERMS / FILE_PERMS), a flat PERMISSIONS override, per-call
+# COMPONENT / CONFIGURATIONS pass-through, the configure-time
+# IMPLIB_FILE literal of a windows-family shared handle and the
+# PUBLIC_HEADER list (HEADERS + optional DEST_INCLUDE). OUT_ROWS
+# receives one row per staged file in emission order (main artifact,
+# import library, headers):
+#
+#   <file-expr>|<destination>|<perms>|<component>|<configs>|<stub>
+#
+# Fields are |-joined; multi-value fields are SPACE-joined, so a row may
+# never contain ';' or '|' (a path with either is unsupported -- same
+# encoding contract as the copy plan). The stub field carries the '%'-
+# joined lines the EXPORT replay file gains for this row ('' for header
+# rows); ${_POLYORCH_RUST_ROOT} and $<TARGET_FILE_NAME:...> ride through
+# as literal text, resolved later by file(GENERATE) / include. Kind
+# defaults mirror the landed shape: bin -> runtime dest (bin), static
+# -> archive dest (lib), shared -> runtime dest on the msvc/gnu
+# families (the dll is the RUNTIME artifact, corr:1463-1576) else
+# library dest (lib), implib -> archive dest, headers -> include dest
+# (include/). The INTERFACE_INCLUDE_DIRECTORIES stub line is appended
+# to the MAIN row of a static/shared handle when HEADERS are given --
+# a bin consumer links nothing to compile against. Unknown KIND or
+# unknown TRIPLE FATAL (the triple-family identity).
+function(_polyorch_rust_install_plan)
+    set(_one TRIPLE KIND HANDLE PREFIX RUNTIME_DESTINATION ARCHIVE_DESTINATION
+        LIBRARY_DESTINATION DEST_INCLUDE COMPONENT IMPLIB_FILE OUT_ROWS)
+    set(_multi EXEC_PERMS FILE_PERMS PERMISSIONS CONFIGURATIONS HEADERS)
+    cmake_parse_arguments(PARSE_ARGV 0 A "" "${_one}" "${_multi}")
+    if(A_UNPARSED_ARGUMENTS)
+        message(FATAL_ERROR
+            "_polyorch_rust_install_plan unknown args: ${A_UNPARSED_ARGUMENTS}")
+    endif()
+    _polyorch_rust_must(A_TRIPLE A_KIND A_HANDLE A_OUT_ROWS)
+    if(NOT A_KIND MATCHES "^(bin|static|shared)$")
+        message(FATAL_ERROR
+            "polyorch_rust: install-plan KIND must be bin|static|shared, got '${A_KIND}'")
+    endif()
+    _polyorch_rust_triple_family("${A_TRIPLE}" _fam)
+
+    set(_dr bin)
+    if(A_RUNTIME_DESTINATION)
+        set(_dr "${A_RUNTIME_DESTINATION}")
+    endif()
+    set(_da lib)
+    if(A_ARCHIVE_DESTINATION)
+        set(_da "${A_ARCHIVE_DESTINATION}")
+    endif()
+    set(_dl lib)
+    if(A_LIBRARY_DESTINATION)
+        set(_dl "${A_LIBRARY_DESTINATION}")
+    endif()
+    set(_di include)
+    if(A_DEST_INCLUDE)
+        set(_di "${A_DEST_INCLUDE}")
+    endif()
+
+    # The landed permission defaults (corr:1448/1477) live here so bare
+    # calls get them; callers may pass their own sets. A flat
+    # PERMISSIONS override replaces BOTH sets on every row (the reference
+    # parses per-type PERMISSIONS blocks, corr:1403-1441; the flat form is
+    # the documented PolyOrch shape -- ledger deviation).
+    string(JOIN " " _pe ${A_EXEC_PERMS})
+    if(_pe STREQUAL "")
+        set(_pe "OWNER_READ OWNER_WRITE GROUP_READ WORLD_READ OWNER_EXECUTE GROUP_EXECUTE WORLD_EXECUTE")
+    endif()
+    string(JOIN " " _pf ${A_FILE_PERMS})
+    if(_pf STREQUAL "")
+        set(_pf "OWNER_READ OWNER_WRITE GROUP_READ WORLD_READ")
+    endif()
+    if(A_PERMISSIONS)
+        string(JOIN " " _pf ${A_PERMISSIONS})
+        set(_pe "${_pf}")
+    endif()
+    string(JOIN " " _cfgs ${A_CONFIGURATIONS})
+    set(_comp "${A_COMPONENT}")
+    set(_pre "${A_PREFIX}")
+    set(_h "${A_HANDLE}")
+
+    if(A_KIND STREQUAL "bin")
+        set(_d "${_dr}")
+        set(_perm "${_pe}")
+        set(_add "add_executable(${_h} IMPORTED GLOBAL)")
+    elseif(A_KIND STREQUAL "static")
+        set(_d "${_da}")
+        set(_perm "${_pf}")
+        set(_add "add_library(${_h} STATIC IMPORTED GLOBAL)")
+    else()
+        if(_fam MATCHES "^(msvc|gnu)$")
+            set(_d "${_dr}")      # the dll is the RUNTIME artifact
+        else()
+            set(_d "${_dl}")      # .so / .dylib
+        endif()
+        set(_perm "${_pe}")
+        set(_add "add_library(${_h} SHARED IMPORTED GLOBAL)")
+    endif()
+    set(_fd "${_pre}${_d}")
+    set(_stub "${_add}%set_target_properties(${_h} PROPERTIES IMPORTED_LOCATION     \"\${_POLYORCH_RUST_ROOT}/${_fd}/$<TARGET_FILE_NAME:${_h}>\")")
+    if(A_HEADERS AND NOT A_KIND STREQUAL "bin")
+        string(APPEND _stub "%set_target_properties(${_h} PROPERTIES INTERFACE_INCLUDE_DIRECTORIES \"\${_POLYORCH_RUST_ROOT}/${_pre}${_di}\")")
+    endif()
+    string(JOIN "|" _row "$<TARGET_FILE:${_h}>" "${_fd}" "${_perm}" "${_comp}" "${_cfgs}" "${_stub}")
+    set(_rows "${_row}")
+
+    if(A_KIND STREQUAL "shared" AND A_IMPLIB_FILE)
+        # The implib path is a configure-time literal written by
+        # polyorch_rust_build, so NAME extraction is lexical, not a
+        # genex parse (the pre-WP8 function did the same).
+        get_filename_component(_ibn "${A_IMPLIB_FILE}" NAME)
+        set(_ifd "${_pre}${_da}")
+        string(JOIN "|" _irow "${A_IMPLIB_FILE}" "${_ifd}" "${_pf}" "${_comp}" "${_cfgs}" "set_target_properties(${_h} PROPERTIES IMPORTED_IMPLIB     \"\${_POLYORCH_RUST_ROOT}/${_ifd}/${_ibn}\")")
+        list(APPEND _rows "${_irow}")
+    endif()
+
+    foreach(_hdr IN LISTS A_HEADERS)
+        string(JOIN "|" _hrow "${_hdr}" "${_pre}${_di}" "${_pf}" "${_comp}" "${_cfgs}" "")
+        list(APPEND _rows "${_hrow}")
+    endforeach()
+
+    set(${A_OUT_ROWS} "${_rows}" PARENT_SCOPE)
+endfunction()
+# polyorch_rust_install(TARGETS <handle>...
+#   [EXPORT <name>] [PREFIX <dir>]
+#   [RUNTIME_DESTINATION <dir>] [ARCHIVE_DESTINATION <dir>] [LIBRARY_DESTINATION <dir>]
+#   [PERMISSIONS <perm>...] [COMPONENT <name>] [CONFIGURATIONS <cfg>...]
+#   [PUBLIC_HEADER <file>...])
 # Installs the cargo artifacts behind previously-registered rust handles
 # (binaries to <dir>bin/, archives and unix shared libs to <dir>lib/; a
 # Windows-family dll stages to <dir>bin/ as its RUNTIME part with its
@@ -1641,16 +1771,46 @@ endfunction()
 # into the build tree -- rewriting it (and staging Windows runtime dlls
 # next to consumer exes) is the P2 backlog, not this function.
 #
+# The three <KIND>_DESTINATION keywords override one default each
+# (prefix-relative; the stub resolves destinations against its own
+# directory, so overrides stay consumer-correct). PERMISSIONS is a FLAT
+# override of both default sets -- unlike the reference's per-type
+# blocks (corr:1403-1441, ledgered); without it the runtime artifacts
+# keep OWNER/EXEC bits and the archives/headers are plain files
+# (corr:1448/1477). COMPONENT stamps one component name on every
+# install rule of the call (cmake --install --component <name>); it is
+# a PolyOrch extension -- the pinned reference has NO component
+# mechanism (grep-verified absent from corr:1338-1678). CONFIGURATIONS
+# gates every rule the same way install()'s own keyword does; per-
+# CONFIGURATION MULTI-CONFIG STAGING of the replay stub remains the
+# documented seam (the stub carries one location per handle, the
+# pre-WP8 shape -- gate one configuration per install invocation until
+# an MC stub is built). PUBLIC_HEADER installs each FILE flat under
+# <dir>include/ (no directory tree is preserved -- the reference walks
+# INTERFACE_INCLUDE_DIRECTORIES/file-sets, corr:1632-1670, not ported)
+# and appends an INTERFACE_INCLUDE_DIRECTORIES line to every
+# static/shared replay entry so the header is consumer-visible.
+#
 # EXPORT <name> additionally writes <name>-rust.cmake through
 # file(GENERATE): a replay stub that recreates every handle as an
 # IMPORTED GLOBAL target with its location rebuilt at include time
 # relative to the stub's own directory, and installs it to
-# <dir>lib/cmake/<name>/. The consumer side is a plain include():
+# <dir>lib/cmake/<name>/ together with a generated <name>Config.cmake
+# wrapper. The consumer side is a plain include():
 #
 #   include(<prefix>/lib/cmake/<name>/<name>-rust.cmake)
 #   target_link_libraries(my-app PRIVATE dash_ed)
 #
-# No find_package Config package is generated (deliberate v0 scope cut).
+# or, as the fixture chain of t-rust-install-export consumes it,
+#
+#   find_package(<name> CONFIG REQUIRED)   # via CMAKE_PREFIX_PATH
+#
+# The reference relies on the user's own Config file to define
+# PACKAGE_PREFIX_DIR before including <export>Corrosion.cmake
+# (corr:1536); PolyOrch emits both files, the wrapper setting
+# PACKAGE_PREFIX_DIR (unused by the self-locating stub, kept for the
+# convention) and including the stub beside it. The root-package half
+# (PolyOrch's own install/export chain) stays blocked-on-host.
 # STATIC handles re-attach their probed INTERFACE_LINK_LIBRARIES /
 # INTERFACE_LINK_DIRECTORIES into the stub as literal lists -- without
 # them a C consumer of the installed .a cannot resolve the system libs
@@ -1669,10 +1829,14 @@ endfunction()
 # Shape source: the reference's install rules (corr:1451-1604) -- the
 # per-artifact install(FILES $<TARGET_FILE:t>) staging and the
 # generated-imported-file idea of its export block. The install(EXPORT)
-# / install(TARGETS EXPORT) machinery around it is NOT ported.
+# / install(TARGETS EXPORT) machinery around it is NOT ported (the
+# reference's own install(EXPORT ...) leg is a FATAL at
+# corr:1673-1674); the replay stub remains the single export mechanism
+# (port plan G1 ruling).
 function(polyorch_rust_install)
-    set(_one EXPORT PREFIX)
-    set(_multi TARGETS)
+    set(_one EXPORT PREFIX RUNTIME_DESTINATION ARCHIVE_DESTINATION
+        LIBRARY_DESTINATION COMPONENT)
+    set(_multi TARGETS PERMISSIONS CONFIGURATIONS PUBLIC_HEADER)
     cmake_parse_arguments(PARSE_ARGV 0 A "" "${_one}" "${_multi}")
     if(A_UNPARSED_ARGUMENTS)
         message(FATAL_ERROR
@@ -1697,7 +1861,6 @@ function(polyorch_rust_install)
             "polyorch_rust_install: call polyorch_rust_setup first "
             "(no host triple to classify the artifact layout by)")
     endif()
-    _polyorch_rust_triple_family("${POLYORCH_RUST_HOST_TARGET}" _fam)
 
     set(_p "${A_PREFIX}")
     if(_p AND NOT _p MATCHES "/$")
@@ -1708,91 +1871,112 @@ function(polyorch_rust_install)
                     OWNER_EXECUTE GROUP_EXECUTE WORLD_EXECUTE)
     set(_file_perms OWNER_READ OWNER_WRITE GROUP_READ WORLD_READ)
 
+    # Per-call planner pass-through (IMPLIB_FILE joins it per handle).
+    set(_extra "")
+    foreach(_kw RUNTIME_DESTINATION ARCHIVE_DESTINATION LIBRARY_DESTINATION COMPONENT)
+        if(A_${_kw})
+            list(APPEND _extra "${_kw}" "${A_${_kw}}")
+        endif()
+    endforeach()
+    foreach(_kw PERMISSIONS CONFIGURATIONS)
+        if(A_${_kw})
+            list(APPEND _extra ${_kw} ${A_${_kw}})
+        endif()
+    endforeach()
+    if(A_PUBLIC_HEADER)
+        list(APPEND _extra HEADERS ${A_PUBLIC_HEADER})
+    endif()
+
     set(_stub "")
     if(A_EXPORT)
         # Append, never set-with-list: a multi-argument set() would join
         # the lines with ';' and the stub would not parse (measured).
         string(APPEND _stub
             "# Generated by polyorch_rust_install() -- DO NOT EDIT.\n"
-            "# Consume with a plain include():\n"
-            "#   include(<install-prefix>/${_p}lib/cmake/${A_EXPORT}/${A_EXPORT}-rust.cmake)\n"
-            "# No find_package Config is generated for these targets.\n"
+            "# Consume with include(<install-prefix>/${_p}lib/cmake/${A_EXPORT}/${A_EXPORT}-rust.cmake)\n"
+            "# or with find_package(${A_EXPORT} CONFIG) via the sibling Config file.\n"
             "get_filename_component(_POLYORCH_RUST_ROOT\n"
             "    \"\${CMAKE_CURRENT_LIST_DIR}/../../..\" ABSOLUTE)\n")
     endif()
 
-    # Pass 2: stage + serialize. Every handle was validated in the
-    # pre-pass, so only the kind lookup remains here.
+    # Pass 2: plan + stage + serialize. Every handle was validated in the
+    # pre-pass, so only the kind lookup and the implib literal remain.
     foreach(_h IN LISTS A_TARGETS)
         set(_med "cargo-build-${_h}")
         get_target_property(_kind "${_med}" POLYORCH_RUST_KIND)
-
-        if(_kind STREQUAL "bin")
-            install(FILES "$<TARGET_FILE:${_h}>" DESTINATION "${_p}bin"
-                PERMISSIONS ${_exec_perms})
-            if(A_EXPORT)
-                string(APPEND _stub
-                    "add_executable(${_h} IMPORTED GLOBAL)\n"
-                    "set_target_properties(${_h} PROPERTIES IMPORTED_LOCATION "
-                    "    \"\${_POLYORCH_RUST_ROOT}/bin/$<TARGET_FILE_NAME:${_h}>\")\n")
-            endif()
-        elseif(_kind STREQUAL "static")
-            install(FILES "$<TARGET_FILE:${_h}>" DESTINATION "${_p}lib"
-                PERMISSIONS ${_file_perms})
-            if(A_EXPORT)
-                string(APPEND _stub
-                    "add_library(${_h} STATIC IMPORTED GLOBAL)\n"
-                    "set_target_properties(${_h} PROPERTIES IMPORTED_LOCATION "
-                    "    \"\${_POLYORCH_RUST_ROOT}/lib/$<TARGET_FILE_NAME:${_h}>\")\n")
-                # Verbatim copy of the probe-attached interface (literal
-                # lists by contract). A genex the user grafted onto the
-                # handle is replayed as text and may not resolve in the
-                # consumer context -- not our composition, documented here.
-                get_target_property(_ifl "${_h}" INTERFACE_LINK_LIBRARIES)
-                get_target_property(_ifd "${_h}" INTERFACE_LINK_DIRECTORIES)
-                if(_ifl)
-                    string(APPEND _stub
-                        "set_target_properties(${_h} PROPERTIES INTERFACE_LINK_LIBRARIES \"${_ifl}\")\n")
-                endif()
-                if(_ifd)
-                    string(APPEND _stub
-                        "set_target_properties(${_h} PROPERTIES INTERFACE_LINK_DIRECTORIES \"${_ifd}\")\n")
-                endif()
-            endif()
-        else() # shared
-            if(_fam MATCHES "^(msvc|gnu)$")
-                set(_srel bin)      # the dll is the RUNTIME artifact
-            else()
-                set(_srel lib)      # .so / .dylib (install_name caveat above)
-            endif()
-            install(FILES "$<TARGET_FILE:${_h}>" DESTINATION "${_p}${_srel}"
-                PERMISSIONS ${_exec_perms})
+        set(_plext ${_extra})
+        if(_kind STREQUAL "shared")
             get_target_property(_implib "${_h}" IMPORTED_IMPLIB)
             if(_implib)
-                install(FILES "${_implib}" DESTINATION "${_p}lib"
-                    PERMISSIONS ${_file_perms})
-            endif()
-            if(A_EXPORT)
-                string(APPEND _stub
-                    "add_library(${_h} SHARED IMPORTED GLOBAL)\n"
-                    "set_target_properties(${_h} PROPERTIES IMPORTED_LOCATION "
-                    "    \"\${_POLYORCH_RUST_ROOT}/${_srel}/$<TARGET_FILE_NAME:${_h}>\")\n")
-                if(_implib)
-                    # The implib path is a configure-time literal written by
-                    # polyorch_rust_build, so NAME extraction is lexical, not
-                    # a genex parse.
-                    get_filename_component(_impname "${_implib}" NAME)
-                    string(APPEND _stub
-                        "set_target_properties(${_h} PROPERTIES IMPORTED_IMPLIB "
-                        "    \"\${_POLYORCH_RUST_ROOT}/lib/${_impname}\")\n")
-                endif()
+                list(APPEND _plext IMPLIB_FILE "${_implib}")
             endif()
         endif()
+        _polyorch_rust_install_plan(TRIPLE "${POLYORCH_RUST_HOST_TARGET}"
+            KIND "${_kind}" HANDLE "${_h}" PREFIX "${_p}"
+            EXEC_PERMS ${_exec_perms} FILE_PERMS ${_file_perms}
+            ${_plext} OUT_ROWS _rows)
+
+        set(_ri 0)
+        foreach(_row IN LISTS _rows)
+            string(REPLACE "|" ";" _f "${_row}")
+            list(GET _f 0 _art)
+            list(GET _f 1 _dest)
+            list(GET _f 2 _perms)
+            list(GET _f 3 _comp)
+            list(GET _f 4 _cfgs)
+            list(GET _f 5 _sb)
+            string(REPLACE " " ";" _perms "${_perms}")
+            string(REPLACE " " ";" _cfgs "${_cfgs}")
+            set(_iargs "")
+            if(_comp)
+                list(APPEND _iargs COMPONENT "${_comp}")
+            endif()
+            if(_cfgs)
+                list(APPEND _iargs CONFIGURATIONS ${_cfgs})
+            endif()
+            install(FILES "${_art}" DESTINATION "${_dest}"
+                PERMISSIONS ${_perms} ${_iargs})
+            if(A_EXPORT AND NOT _sb STREQUAL "")
+                string(REPLACE "%" "\n" _sb "${_sb}")
+                string(APPEND _stub "${_sb}\n")
+                # Verbatim copy of the probe-attached interface (literal
+                # lists by contract), right after the static main entry.
+                # A genex the user grafted onto the handle is replayed as
+                # text and may not resolve in the consumer context -- not
+                # our composition, documented here.
+                if(_ri EQUAL 0 AND _kind STREQUAL "static")
+                    get_target_property(_ifl "${_h}" INTERFACE_LINK_LIBRARIES)
+                    get_target_property(_ifd "${_h}" INTERFACE_LINK_DIRECTORIES)
+                    if(_ifl)
+                        string(APPEND _stub
+                            "set_target_properties(${_h} PROPERTIES INTERFACE_LINK_LIBRARIES \"${_ifl}\")\n")
+                    endif()
+                    if(_ifd)
+                        string(APPEND _stub
+                            "set_target_properties(${_h} PROPERTIES INTERFACE_LINK_DIRECTORIES \"${_ifd}\")\n")
+                    endif()
+                endif()
+            endif()
+            math(EXPR _ri "${_ri} + 1")
+        endforeach()
     endforeach()
 
     if(A_EXPORT)
         set(_stubfile "${CMAKE_CURRENT_BINARY_DIR}/${A_EXPORT}-rust.cmake")
         file(GENERATE OUTPUT "${_stubfile}" CONTENT "${_stub}")
         install(FILES "${_stubfile}" DESTINATION "${_p}lib/cmake/${A_EXPORT}")
+        # The find_package entry point of the pair (the corr:1536
+        # PACKAGE_PREFIX_DIR convention, emitted rather than user-written
+        # -- deviation registered in the port ledger). Component and
+        # configuration gating do not reach these two files: they install
+        # unconditionally with CMake's default rules.
+        set(_cfgfile "${CMAKE_CURRENT_BINARY_DIR}/${A_EXPORT}Config.cmake")
+        file(WRITE "${_cfgfile}"
+            "# Generated by polyorch_rust_install() -- DO NOT EDIT.\n"
+            "# find_package(${A_EXPORT} CONFIG REQUIRED) entry point.\n"
+            "get_filename_component(PACKAGE_PREFIX_DIR\n"
+            "    \"\${CMAKE_CURRENT_LIST_DIR}/../../..\" ABSOLUTE)\n"
+            "include(\"\${CMAKE_CURRENT_LIST_DIR}/${A_EXPORT}-rust.cmake\")\n")
+        install(FILES "${_cfgfile}" DESTINATION "${_p}lib/cmake/${A_EXPORT}")
     endif()
 endfunction()
