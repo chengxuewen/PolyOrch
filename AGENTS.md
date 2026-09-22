@@ -8,11 +8,13 @@
 
 PolyOrch — a scalable build orchestrator for polyglot monorepos, providing adapter-based
 integration for heterogeneous build systems, environments, and package managers.
+Its implementation is the **CMake helper surface** (D16; supersedes the D3 Lua/Xmake-addon
+form). xmake = reference corpus + package-management source; Pixi = environment manager.
 
-**This repository contains NO source code.** It is docs-first: the deliverable is the v1.0
-specification plus an agent toolchain. Do not hunt for `src/`, `crates/`, or a build entry
-point — none exist. The integration stack it *describes* (Xmake / Pixi / vcpkg / Conan) is the
-subject matter, not a local dependency.
+The repository carries a real CMake implementation (`cmake/`, `tests/`, `examples/`,
+`scripts/`) alongside the specification docs. There is no compiled PolyOrch binary — the
+deliverable is CMake code plus its fixture test suites (run.sh, matrix.sh). Xmake itself is
+NOT a local dependency; it is the reference corpus and a package-management subject.
 
 ## STRUCTURE
 
@@ -84,7 +86,7 @@ Deviations that actually bind here. Runnable checks live in `.agents/memorys/con
 
 ## COMMANDS
 
-There is no build or test system — the project has no code. These are the real gates:
+The test system is the cmake case suites; gates are shell checks. Real commands:
 
 ```bash
 # brand / CLI naming must be correctly cased (D11 namespace exemption encoded: POLYORCH_* variables allowed)

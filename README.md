@@ -14,18 +14,19 @@ repository gains a single entry point for build, run, debug, and introspection.
 
 ## Status
 
-**This repository contains no source code.** It is documentation-first: the deliverable
-at this stage is the v1.0 specification, plus the agent toolchain that will build it.
-There is no `src/`, no build entry point, and no test suite — do not look for one.
+**The deliverable is a CMake helper surface plus its test suites** — `cmake/` modules
+(pixi environment face, rust face), `tests/` (offline units + fixture e2e + generator
+matrix), `examples/`. Documentation remains the specification layer; the whitepaper is a
+frozen v1.0 record (see D16 in `.agents/memorys/decisions.md`).
 
 | | |
 |---|---|
-| Phase | Design landed — whitepaper v1.0, architecture design baseline, module reference, 12 project profiles |
-| Planned stack | Lua, shipped as an Xmake addon (Xmake as the engine, Pixi for environments) |
-| Source tree | not yet added |
+| Phase | Implementation underway — CMake helper surfaces (pixi environment face, rust face), fixture test suite, local generator matrix; D16 supersedes the old Lua/Xmake-addon delivery form |
+| Stack | CMake helper surface; Pixi environments; xmake = reference corpus + package-management source (vcpkg · Conan via Xrepo) |
+| Tests | `bash tests/run.sh` (offline) · `POLYORCH_TEST_E2E=1 bash tests/run.sh` · `bash tests/matrix.sh` |
 
-The real gates today are the shell checks in `.agents/memorys/conventions.md` (C0–C5);
-there is no build or test system to run.
+The binding gates are the shell checks in `.agents/memorys/conventions.md` (C0–C6) plus
+the cmake test suites above.
 
 ## Repository layout
 
@@ -41,7 +42,7 @@ docs/          the specification — start at docs/README.md
   memorys/       mutable facts (status / conventions / decisions / pitfalls)
   skills/        agent skills, including 58 vendored Xmake skills
 .opencode/     opencode configuration
-scripts/       empty — a planned gate runner
+scripts/       activation trio (pixi.sh/.bat/.ps1); gate runner planned
 AGENTS.md      the agent knowledge base, loaded on every turn
 SKILL.md       the skills registry
 ```

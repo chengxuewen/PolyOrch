@@ -182,3 +182,11 @@
 - **Solution**: exponent arrives at runtime (function argument), fold-proof at any profile; the assertion target (`pow` undefined in the archive) holds for debug AND release.
 - **Verification**: `nm -u` on the release archive shows the undefined ref; negative leg fails-to-link in both Release and Debug cells (matrix 4/4 green with vetoes live).
 - **Forbidden**: pinning negative-symbol tests to one optimization profile; any fixture whose proof-carrying symbol is computable at compile time.
+
+## PIT-22: a second include_guard(GLOBAL) in the same file aborts the first load (2026-09-22)
+
+- **Symptom**: after splitting PolyOrchRustHelpers, every `include(PolyOrchRustHelpers)` became a silent no-op: CMAKE_MODULE_PATH append + child include never ran; 11 cases failed "Unknown CMake command" while `cmake -P` parse of the file was clean.
+- **Root cause**: the original's single `include_guard(GLOBAL)` (line ~52) was carried inside the copied header block, and the refactor added a second `include_guard(GLOBAL)` below it. The first call marks the file; the SECOND call, in the same pass, sees the mark and `return()`s out of the file — guards are checks, not idempotent declarations.
+- **Solution**: exactly one include_guard per module file, at the top of the code region; refactor tools that carve files must grep existing guards before adding their own.
+- **Verification**: `grep -c 'include_guard' cmake/PolyOrchRustHelpers.cmake` = 1 (each module file); suite green post-fix (33/40/4).
+- **Forbidden**: stacked include_guard in one file; trusting parse-success to prove include-execution (parse never runs the guards).

@@ -11,10 +11,10 @@
 | Domain | Polyglot monorepo build orchestration |
 | Brand / CLI | `PolyOrch` / `polyorch` |
 | Official acronym | **PBOS** (Polyglot Build Orchestration System) |
-| Stack | PolyOrch itself: **Lua**, shipped as an Xmake addon (D3). Integration: Xmake (engine) / Pixi (environment) / vcpkg · Conan via Xrepo (package sources, not bridges) |
+| Stack | PolyOrch itself: **CMake helper surface** (D16, supersedes D3 delivery form). Environment: Pixi. xmake = reference corpus + package-management source (vcpkg · Conan via Xrepo, not bridges) |
 | Vendored deps | `.agents/skills/xmake-*` / `xrepo-*` -- 58 Xmake agent skills (Apache-2.0, pinned commit `ef67caa`). See `XMAKE-ATTRIBUTION.md` |
 | Language policy | **English for all artifacts.** Chinese only for AI chat and plan docs under `.omo/` — see C4 |
-| Git | `main`; docs-first history through `f04c1fb`, cmake surface committed 2026-09-21 |
+| Git | `main`; docs-first history superseded -- `cmake/`, `tests/`, `examples/`, `docs/` all carry committed substance since 2026-09-21 |
 
 > Working-copy location is intentionally not stated in this file (C6); see D10 and the git-excluded plan zone.
 
@@ -28,7 +28,8 @@
 |---|---|
 | `cmake/PolyOrchPixiHelpers.cmake` | single pixi module (~1500 lines, D12): find / tool_ensure / tool_install / install / env_target / env_paths / activate_script / scripts_install / setup / report / bootstrap + manifest-mutating actions |
 | `cmake/PolyOrchOptionHelpers.cmake` | `polyorch_option` + expression helpers |
-| `cmake/PolyOrchRustHelpers.cmake` | rust module (D13+D14, ~1550 lines): setup(+native-libs probe; honors the WP2 injection pair `PolyOrch_RUST_{CARGO,RUSTC}_EXECUTABLE`, echoes `PolyOrch_RUST_CARGO_TARGET` -- routing lands WP5) / build / import(metadata) / set_features / set_env_vars / add_cargo_flags / add_rustflags / test / run / clean / install(+export stub), generate-time property carrier on the `cargo-build-<T>` mediator, triple-family naming, FOLDER, collision guard (PIT-13) |
+| `cmake/PolyOrchFindRust.cmake` | rust toolchain layer (D16 split): setup(FROM system\|pixi) + EXECUTABLE injection, triple families, artifact naming, native-static-libs probe, cargo command wrapper (PATH + host-env isolation, PIT-14) |
+| `cmake/PolyOrchRustHelpers.cmake` | rust build-graph API (D13/D14): build / import(metadata) / 4 setters / test / run / clean / install(+export stub), mediator + property carrier, FOLDER, collision guard (PIT-13) |
 | `scripts/` | activation trio `pixi.sh` / `pixi.bat` / `pixi.ps1`; installed beside `.pixi/` via `COPY_SCRIPTS` |
 | `examples/` | pixi-bootstrap (`cmake -P`), pixi-configure, pixi-workspace; `rust-basic` -- system rust route, no pixi and no network since WP2; each also a `PolyOrchExample*` target |
 | `tests/` | `run.sh` driver + CTest registration; 40 `cmake -P` cases; shared marker contract incl. `# requires: <cap>` capability gates (cases/_requires.cmake; `system-rust` probes PATH + `~/.cargo/bin` since WP2, aligning the parent gate with the driver-composed child PATH), contract-SKIP veto and driver tripwires (D15) |
@@ -75,7 +76,7 @@
 - [x] **Corrosion gap backlog CLOSED via D14 execution** (`602273f..7ac0c71`): profile<->CMAKE_BUILD_TYPE, ALL/NO_DEFAULT features + RUSTFLAGS/env/cargo-flags setters, --unset host-leak isolation, native-static-libs link interface (+ C-consumer proof), metadata batch import, install+export stubs, PREBUILD seam, three-tier testing (identity pins, rule-wiring, matrix).
 - [ ] **Rust deferred register** (post-D14, explicit non-gaps): cross-`--target` routing + hostbuild (naming table is the seam); multi-config output staging / `IMPORTED_LOCATION_<CFG>` cluster; macOS install_name rewrites at install; local (crate-scoped, `cargo rustc`) rustflags; INHERITABLE feature propagation; cargo/rustc minimum-version ENFORCEMENT (vars exposed, no gate yet); package-version exposure as a variable; per-crate native-libs variance; ctest-vs-run.sh SKIP asymmetry (G2 finding, drivers left as-is).
 - [ ] Gate runner in `scripts/` (canonical C1-C6 + suite one-shot)
-- [ ] Root README/AGENTS still describe the repo as having no source code -- stale against `cmake/`/`scripts/`/`tests/`/`examples/`
+- [ ] docs/derived/* + whitepaper-facing prose still describe the xmake-engine/Lua-addon product shape -- sweep them to D16 (CMake-first) at next doc-audit; README/AGENTS/status were aligned 2026-09-22
 
 ## History
 
