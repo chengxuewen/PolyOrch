@@ -117,3 +117,7 @@ tests/.scratch
 examples/*/pixi.sh
 examples/*/pixi.bat
 examples/*/pixi.ps1
+
+# in-source configure accidents (suites always build out-of-tree)
+CMakeCache.txt
+CMakeFiles/
