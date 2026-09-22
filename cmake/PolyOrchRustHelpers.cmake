@@ -38,7 +38,14 @@
 # cache knobs are PolyOrch_RUST_* (incl. the executable-injection pair
 # PolyOrch_RUST_CARGO_EXECUTABLE / PolyOrch_RUSTC_EXECUTABLE and the
 # PolyOrch_RUST_CARGO_TARGET triple selector, see polyorch_rust_setup);
-# public functions are polyorch_rust_*.
+# the WP6 import-time build-face defaults PolyOrch_RUST_ALL_FEATURES /
+# PolyOrch_RUST_NO_DEFAULT_FEATURES / PolyOrch_RUST_CARGO_FLAGS /
+# PolyOrch_RUST_VERBOSE / PolyOrch_RUST_NO_USES_TERMINAL /
+# PolyOrch_RUST_DEFAULT_KINDS apply when the per-target knob is absent
+# (corr:690-700 + CORROSION_VERBOSE_OUTPUT corr:21 shape; the inverse
+# terminal polarity kept exactly); public functions are polyorch_rust_*.
+# Package versions surface via polyorch_rust_package_version as
+# POLYORCH_RUST_PKG_<name>_VERSION (closes the deferred-register line).
 #
 # Cross-target routing (WP5): a consumed PolyOrch_RUST_CARGO_TARGET routes
 # every build/test rule through --target=<tup> with the .cargo-target/<tup>/
@@ -138,6 +145,20 @@ function(_polyorch_rust_require_setup CALLER)
     endif()
 endfunction()
 
+# Internal: the USES_TERMINAL choice for cargo-carrying rules (WP6). Inverse
+# polarity of the reference kept exactly (corr:696-700, applied at corr:915/
+# 948): the default ASKS FOR the console; PolyOrch_RUST_NO_USES_TERMINAL
+# removes it. Makefiles carry no textual trace of the option (measured on
+# 4.4.3 -- it is a no-op there); a Ninja custom-command edge gains
+# "pool = console". t-rust-knobs asserts both generated-text halves.
+function(_polyorch_rust_uterm OUT)
+    if(PolyOrch_RUST_NO_USES_TERMINAL)
+        set(${OUT} "" PARENT_SCOPE)
+    else()
+        set(${OUT} USES_TERMINAL PARENT_SCOPE)
+    endif()
+endfunction()
+
 # Internal: the one command line every wrapper shells out to. EVERY cargo
 # invocation is prefixed by `cmake -E env` with the host-leak strip below --
 # including the plain system route, so the former bare-cargo fast path is
@@ -187,10 +208,80 @@ function(polyorch_rust_build)
         endif()
     endforeach()
     if(NOT _kind)
-        message(FATAL_ERROR
-            "polyorch_rust_build: pick exactly one of BINARY, STATIC, SHARED")
+        # --- WP6 default kinds ------------------------------------------
+        # No kind keyword: consult PolyOrch_RUST_DEFAULT_KINDS (default
+        # STATIC;SHARED) and dispatch through this SAME single-kind
+        # machinery -- one full build per kind, handles <TARGET>-static /
+        # -shared / -exe (the import dual-kind pairing convention, so
+        # mediators, shims, folders and the PIT-13 guard behave per
+        # dispatched handle and the collision guard keeps its meaning).
+        # A kind-less build therefore yields SUFFIXED handles only: the
+        # bare TARGET name is never a target. Reference deviation
+        # (ledgered): corrosion has no build-time default-kind surface --
+        # its BUILD_SHARED_LIBS gate (corr:539-548) picks which member of
+        # an already-built pair the umbrella target links. An EXPLICITLY
+        # EMPTY list opts out: the historical FATAL stays the verdict.
+        if(DEFINED PolyOrch_RUST_DEFAULT_KINDS AND
+           PolyOrch_RUST_DEFAULT_KINDS STREQUAL "")
+            message(FATAL_ERROR
+                "polyorch_rust_build: pick exactly one of BINARY, STATIC, SHARED")
+        endif()
+        set(_dk "${PolyOrch_RUST_DEFAULT_KINDS}")
+        if(NOT _dk)
+            set(_dk STATIC SHARED)
+        endif()
+        set(_dkw "")
+        foreach(_d ${_dk})
+            string(TOLOWER "${_d}" _dl)
+            if(NOT _dl MATCHES "^(bin|static|shared)$")
+                message(FATAL_ERROR
+                    "polyorch_rust_build: PolyOrch_RUST_DEFAULT_KINDS entry "
+                    "'${_d}' is not one of bin|static|shared")
+            endif()
+            list(APPEND _dkw "${_dl}")
+        endforeach()
+        set(_fwd "")
+        foreach(_v PROFILE MANIFEST BASE_DIR FOLDER PREBUILD)
+            if(B_${_v})
+                list(APPEND _fwd ${_v} "${B_${_v}}")
+            endif()
+        endforeach()
+        if(B_FEATURES)
+            list(APPEND _fwd FEATURES "${B_FEATURES}")
+        endif()
+        if(B_DEPENDS)
+            list(APPEND _fwd DEPENDS "${B_DEPENDS}")
+        endif()
+        if(B_LOCKED)
+            list(APPEND _fwd LOCKED)
+        endif()
+        if(B_FROZEN)
+            list(APPEND _fwd FROZEN)
+        endif()
+        foreach(_dl ${_dkw})
+            if(_dl STREQUAL "bin")
+                polyorch_rust_build(TARGET "${B_TARGET}-exe"
+                    PACKAGE "${B_PACKAGE}" CRATE "${B_CRATE}" BINARY ${_fwd})
+            elseif(_dl STREQUAL "static")
+                polyorch_rust_build(TARGET "${B_TARGET}-static"
+                    PACKAGE "${B_PACKAGE}" CRATE "${B_CRATE}" STATIC ${_fwd})
+            else()
+                polyorch_rust_build(TARGET "${B_TARGET}-shared"
+                    PACKAGE "${B_PACKAGE}" CRATE "${B_CRATE}" SHARED ${_fwd})
+            endif()
+        endforeach()
+        return()
     endif()
     _polyorch_rust_require_setup(polyorch_rust_build)
+
+    # WP6 global-default contradiction gate: the seeded ALL_FEATURES default
+    # and this call's FEATURES would generate the exact argv pair the
+    # setter rejects. Per-target override route: polyorch_rust_set_features
+    # replaces all three feature properties (write-through).
+    if(B_FEATURES AND PolyOrch_RUST_ALL_FEATURES)
+        message(FATAL_ERROR
+            "polyorch_rust_build: FEATURES and PolyOrch_RUST_ALL_FEATURES are mutually exclusive")
+    endif()
 
     # --- WP5 cross routing ----------------------------------------------------
     # The consumed cross triple (empty = the host layer, byte-locked by
@@ -320,6 +411,13 @@ function(polyorch_rust_build)
     if(_mc)
         list(APPEND _argv "$<$<NOT:$<OR:$<CONFIG:Debug>,$<CONFIG:>>>:--release>")
     endif()
+
+    # WP6 verbose: the global CORROSION_VERBOSE_OUTPUT analogue
+    # (corr:21,588-589,891): --verbose on the cargo BUILD command only --
+    # the reference gates no metadata/probe call with it, mirrored exactly.
+    if(PolyOrch_RUST_VERBOSE)
+        list(APPEND _argv --verbose)
+    endif()
     list(APPEND _argv "${_features_gx}" "${_allf_gx}" "${_nondf_gx}" "${_flags_gx}")
     list(APPEND _argv --target-dir "${_td}")
     set(_hb "$<NOT:$<BOOL:$<TARGET_PROPERTY:${_med},POLYORCH_RUST_HOST_BUILD>>>")
@@ -431,6 +529,8 @@ function(polyorch_rust_build)
     if(B_MANIFEST)
         set(_depfiles DEPENDS "${B_MANIFEST}")
     endif()
+
+    _polyorch_rust_uterm(_uterm)
     # Primary mediator: owns the rule and carries the POLYORCH_RUST_* build
     # inputs. Deliberately NOT ALL -- consumers reach it through the
     # auto-build edge below or the polyorch-rust-all aggregate.
@@ -445,6 +545,7 @@ function(polyorch_rust_build)
             ${_depfiles}
             COMMENT "cargo build ${B_PACKAGE} (${_kind}, target ${_xtup})"
             COMMAND_EXPAND_LISTS
+            ${_uterm}
             VERBATIM)
     else()
         # Host layer: file-stamp granularity -- cargo's own fingerprint
@@ -456,6 +557,7 @@ function(polyorch_rust_build)
             ${_depfiles}
             COMMENT "cargo build ${B_PACKAGE} (${_kind})"
             COMMAND_EXPAND_LISTS
+            ${_uterm}
             VERBATIM)
         add_custom_target("${_med}" DEPENDS "${_artifact}")
     endif()
@@ -494,9 +596,15 @@ function(polyorch_rust_build)
     set_property(TARGET "${_med}" PROPERTY POLYORCH_RUST_PROFILE "${_prof}")
     set_property(TARGET "${_med}" PROPERTY POLYORCH_RUST_BASE_DIR "${_td}")
     set_property(TARGET "${_med}" PROPERTY POLYORCH_RUST_FEATURES "${B_FEATURES}")
-    set_property(TARGET "${_med}" PROPERTY POLYORCH_RUST_ALL_FEATURES "")
-    set_property(TARGET "${_med}" PROPERTY POLYORCH_RUST_NO_DEFAULT_FEATURES "")
-    set_property(TARGET "${_med}" PROPERTY POLYORCH_RUST_CARGO_FLAGS "")
+    # WP6 import-time global defaults: the PolyOrch_RUST_* cache knobs seed
+    # the SAME property carriers the setters write -- defaults, not
+    # overrides: a later polyorch_rust_set_features call replaces what
+    # build() initialised (its documented write-through), a raw
+    # set_property likewise, and add_cargo_flags APPENDS after the seeded
+    # global flags. Unset knobs expand to "" = the pre-WP5 byte shape.
+    set_property(TARGET "${_med}" PROPERTY POLYORCH_RUST_ALL_FEATURES "${PolyOrch_RUST_ALL_FEATURES}")
+    set_property(TARGET "${_med}" PROPERTY POLYORCH_RUST_NO_DEFAULT_FEATURES "${PolyOrch_RUST_NO_DEFAULT_FEATURES}")
+    set_property(TARGET "${_med}" PROPERTY POLYORCH_RUST_CARGO_FLAGS "${PolyOrch_RUST_CARGO_FLAGS}")
     set_property(TARGET "${_med}" PROPERTY POLYORCH_RUST_RUSTFLAGS "")
     set_property(TARGET "${_med}" PROPERTY POLYORCH_RUST_ENV_VARS "")
     # WP5/WP5b routing carriers (all genex-consumed, all late-settable).
@@ -873,6 +981,31 @@ function(_polyorch_rust_metadata_targets JSON OUT_SPECS)
     set(${OUT_SPECS} "${_specs}" PARENT_SCOPE)
 endfunction()
 
+# Internal: pure reader of ONE package's version from
+# `cargo metadata --format-version 1` JSON -- sibling of
+# _polyorch_rust_metadata_targets over the same document. The reference's
+# corrosion_parse_package_version (corr:2267-2309) instead file(READ)s the
+# manifest and regexes the [package] table; deviation (ledgered): metadata
+# is authoritative, needs no following table, and carries prerelease
+# suffixes verbatim (the reference's [0-9.]+ regex would truncate them).
+# OUT receives the version string and stays UNDEFINED when no package
+# matches (the caller raises the error).
+function(_polyorch_rust_metadata_package_version JSON PACKAGE OUT)
+    string(JSON _np LENGTH "${JSON}" "packages")
+    if(NOT _np GREATER 0)
+        return()
+    endif()
+    math(EXPR _plast "${_np} - 1")
+    foreach(_pi RANGE 0 ${_plast})
+        string(JSON _pn GET "${JSON}" "packages" ${_pi} "name")
+        if(_pn STREQUAL "${PACKAGE}")
+            string(JSON _pv GET "${JSON}" "packages" ${_pi} "version")
+            set(${OUT} "${_pv}" PARENT_SCOPE)
+            return()
+        endif()
+    endforeach()
+endfunction()
+
 # polyorch_rust_import(MANIFEST <path> [CRATES a;b] [LOCKED|FROZEN]
 #                      [FOLDER <ide>] IMPORTED_TARGETS <var>
 #                      [SKIPPED_TARGETS <var>])
@@ -1020,6 +1153,87 @@ function(polyorch_rust_import)
     list(LENGTH _skips _ns)
     message(STATUS
         "polyorch_rust_import: ${_ni} target(s) imported [${_imps}] (${_ns} skipped)")
+endfunction()
+
+# polyorch_rust_package_version(PACKAGE <p> [MANIFEST <path>] OUT_VAR <out>)
+# Surface one cargo package's [package] version (reference:
+# corrosion_parse_package_version, corr:2267-2309 -- naming-map + mechanism
+# deviation on the port ledger; the deferred-register line "package-version
+# exposure as a variable" closes with this function). A previously-resolved
+# POLYORCH_RUST_PKG_<name>_VERSION cache entry (<p> with dashes normalized
+# to underscores) answers WITHOUT invoking cargo; giving MANIFEST always
+# re-reads that workspace (an explicit input beats the ambient cache).
+# Otherwise runs `cargo metadata --no-deps --format-version 1` through the
+# standard isolation wrapper -- deliberately NO --target (cargo metadata
+# rejects it, measured 1.98.1; --no-deps reads only packages[]), in the
+# manifest's directory or CMAKE_CURRENT_SOURCE_DIR without MANIFEST, so
+# cargo's upward .cargo/config walk applies exactly like polyorch_rust_import.
+# Failing metadata and an unknown package FATAL with polyorch_rust_import's
+# own guard identities ("cargo metadata failed" / "no package '<p>' in the
+# cargo metadata (available: ...)"), so callers grep one phrase family.
+# OUT_VAR receives the version; the cache entry is written before returning
+# so repeated calls re-resolve at most once.
+function(polyorch_rust_package_version)
+    set(_one PACKAGE MANIFEST OUT_VAR)
+    cmake_parse_arguments(PARSE_ARGV 0 A "" "${_one}" "")
+    if(A_UNPARSED_ARGUMENTS)
+        message(FATAL_ERROR
+            "polyorch_rust_package_version: unknown args: ${A_UNPARSED_ARGUMENTS}")
+    endif()
+    _polyorch_rust_must(A_PACKAGE A_OUT_VAR)
+    string(REPLACE "-" "_" _key "${A_PACKAGE}")
+    set(_cvar "POLYORCH_RUST_PKG_${_key}_VERSION")
+    if(NOT A_MANIFEST AND DEFINED ${_cvar})
+        set(${A_OUT_VAR} "${${_cvar}}" PARENT_SCOPE)
+        return()
+    endif()
+    _polyorch_rust_require_setup(polyorch_rust_package_version)
+    set(_mankw "")
+    set(_mdir "${CMAKE_CURRENT_SOURCE_DIR}")
+    if(A_MANIFEST)
+        set(_mankw --manifest-path "${A_MANIFEST}")
+        get_filename_component(_mdir "${A_MANIFEST}" DIRECTORY)
+    endif()
+    _polyorch_rust_command(_cmd SUBCOMMAND
+        metadata --no-deps --format-version 1 ${_mankw})
+    execute_process(COMMAND ${_cmd} WORKING_DIRECTORY "${_mdir}"
+        RESULT_VARIABLE _rc OUTPUT_VARIABLE _out ERROR_VARIABLE _err)
+    if(NOT _rc EQUAL 0)
+        string(REPLACE "\n" ";" _elines "${_err}")
+        list(LENGTH _elines _en)
+        if(_en GREATER 5)
+            math(EXPR _estart "${_en} - 5")
+            list(SUBLIST _elines ${_estart} 5 _elines)
+        endif()
+        string(JOIN "\n" _etail ${_elines})
+        set(_what "'${A_MANIFEST}'")
+        if(NOT A_MANIFEST)
+            set(_what "the workspace of '${_mdir}'")
+        endif()
+        message(FATAL_ERROR
+            "polyorch_rust_package_version: cargo metadata failed (rc=${_rc}) for "
+            "${_what}:\n${_etail}")
+    endif()
+    _polyorch_rust_metadata_package_version("${_out}" "${A_PACKAGE}" _v)
+    if(NOT DEFINED _v)
+        string(JSON _np LENGTH "${_out}" "packages")
+        set(_avail "")
+        if(_np GREATER 0)
+            math(EXPR _plast "${_np} - 1")
+            foreach(_pi RANGE 0 ${_plast})
+                string(JSON _pn GET "${_out}" "packages" ${_pi} "name")
+                list(APPEND _avail "${_pn}")
+            endforeach()
+        endif()
+        list(SORT _avail)
+        string(REPLACE ";" ", " _avail_s "${_avail}")
+        message(FATAL_ERROR
+            "polyorch_rust_package_version: no package '${A_PACKAGE}' in the cargo "
+            "metadata (available: ${_avail_s})")
+    endif()
+    set(${_cvar} "${_v}" CACHE INTERNAL
+        "PolyOrch rust package version (polyorch_rust_package_version)")
+    set(${A_OUT_VAR} "${_v}" PARENT_SCOPE)
 endfunction()
 
 # ---------------------------------------------------------------- setters ---
@@ -1342,9 +1556,12 @@ function(polyorch_rust_test)
     if(T_ALL)
         set(_all ALL)
     endif()
+
+    _polyorch_rust_uterm(_uterm)
     add_custom_target("${_name}" ${_all} COMMAND ${_cmd}
         WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
         COMMENT "cargo test ${T_PACKAGE}"
+        ${_uterm}
         VERBATIM)
     if(T_FOLDER)
         set_target_properties("${_name}" PROPERTIES FOLDER "${T_FOLDER}")

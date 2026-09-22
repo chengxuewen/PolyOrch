@@ -1338,6 +1338,15 @@ endfunction()
 # aggregate target; the mediators themselves are deliberately NOT ALL.
 # DEPENDS is deprecated -- superseded by the auto-build edge.
 # Without PROFILE the cargo profile follows the configuration. Single-
+# DEPENDS is deprecated -- superseded by the auto-build edge.
+# Without a kind keyword the call dispatches per the
+# PolyOrch_RUST_DEFAULT_KINDS cache (unset -> STATIC;SHARED; explicitly
+# empty -> the historical pick-exactly-one FATAL): one full build per
+# kind, handles suffixed -static / -shared / -exe (the import pairing
+# convention -- the bare TARGET name is then not a target). The WP6
+# import-time defaults PolyOrch_RUST_ALL_FEATURES / NO_DEFAULT_FEATURES /
+# CARGO_FLAGS / VERBOSE / NO_USES_TERMINAL seed the same property carriers
+# (defaults, not overrides; see the module header).
 # config: CMAKE_BUILD_TYPE at configure time (unset or Debug -> debug, any
 # other value -> release). Multi-config (WP4): the CONFIG at build time --
 # Debug -> debug, every other config -> the release profile (the --release

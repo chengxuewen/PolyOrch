@@ -48,6 +48,12 @@ Every ledger row is exactly one of:
 | `corrosion_set_linker(<target> <linker>)` -> `INTERFACE_CORROSION_LINKER` (corr:1144-1163) | -- not ported -- (`PolyOrch_RUST_LINKER_<TRIPLE-UP>` cache knob covers one-linker-per-configure) | fidelity-gap | Ruled deferred: PolyOrch's v0 cross model is one routed triple per configure; a per-target linker becomes necessary with per-target cross routing. The reference's MSVC warn-and-ignore + staticlib warn are subsumed by the plan's family gates |
 | `Rust_CARGO_TARGET_ENV`-keyed extras (task brief's "corr:896-940 THINLTO/OBJC/ASM/RC" cluster) | -- not ported -- | fidelity-gap | The pinned checkout contains no such mechanism (grep-verified: `THINLTO`, `OBJC`, RC-asm, `CMAKE_LINKER` additions absent under `cmake/`); nothing to port without inventing upstream behavior. Register against a future pin bump |
 | reference test group `test/output directory` (its CMakeLists:51-139: targetprop / var / pdb-fallback legs, free space-path dirs, MC `$<CONFIG>/` path selection) | legs `tp` / `cv` / space-build-dir + `mcd` / `mcr` of `tests/fixtures/output-dir` + `t-rust-output-dir` (and the matrix.sh MC cell) | naming-map | targetprop and var legs ported (the var leg by the init row above); the free space trick lands in both the build dir and the dest dirs; pdb and postbuild-move legs not ported (no pdb surface; the reference's `LOCATION_$<CONFIG>` genex read is superseded by per-config `file(GENERATE)` target-file probes) |
+| `corrosion_parse_package_version(<manifest> <out>)` (corr:2267-2309) | `polyorch_rust_package_version(PACKAGE <p> [MANIFEST <m>] OUT_VAR <v>)` + pure sibling `_polyorch_rust_metadata_package_version` | naming-map | Deviation (mechanism): the reference file(READ)s the manifest and regexes the `[package]` table; PolyOrch reads `cargo metadata --no-deps --format-version 1` (the import machinery's own document, wrapper-isolated, triple-free). Consequences: prerelease versions ride verbatim (the reference's `[0-9.]+` regex truncates them); no following-table needed; `NOTFOUND`-via-out-var became UNDEFINED-OUT + a public FATAL reusing `polyorch_rust_import`'s guard identities. Cache surface: `POLYORCH_RUST_PKG_<name>_VERSION` (dashes normalized to underscores), answered without cargo on a cache hit unless MANIFEST re-reads |
+| `CORROSION_VERBOSE_OUTPUT` option + `_CORROSION_VERBOSE_OUTPUT_FLAG` (corr:21,588-589,891) | `PolyOrch_RUST_VERBOSE` cache knob consumed at `polyorch_rust_build`'s argv assembly | naming-map | Deviation: the reference calls `option()` at include time; PolyOrch's modules keep the zero-side-effect include contract, so the knob is a plain cache variable read per build. Flag placement mirrors corr:891 -- the cargo BUILD command only (metadata and setup probes never carry it; t-rust-knobs asserts the cargo-test rule stays flag-free) |
+| per-call `ALL_FEATURES` / `NO_DEFAULT_FEATURES` (corr:690-695,710-714,1009-1012) + `CORROSION_ALL_FEATURES` / `CORROSION_NO_DEFAULT_FEATURES` target properties (corr:616-617,1221-1243) | `PolyOrch_RUST_ALL_FEATURES` / `PolyOrch_RUST_NO_DEFAULT_FEATURES` cache defaults seeding the existing `POLYORCH_RUST_*` property carriers | naming-map | The reference composes per-call args with the property (property wins, corr:710 comment) and has NO global selector; PolyOrch adds one (plan WP6): defaults fold into the property init at build(), so the same guarded genex chain expands them and a later `polyorch_rust_set_features` write-through replaces them (the reference's precedence direction preserved). PolyOrch's build() has no per-call selector keywords (features flow through the setter family); `build(FEATURES ..)` + the global ALL default is rejected configure-time with the setter's mutual-exclusion identity |
+| `INTERFACE_CORROSION_CARGO_FLAGS` target property (corr:731) | `PolyOrch_RUST_CARGO_FLAGS` cache default seeding `POLYORCH_RUST_CARGO_FLAGS` | naming-map | No reference global counterpart (extension of the same defaults channel); `polyorch_rust_add_cargo_flags` appends AFTER the seeded defaults, the existing list-property genex carries both |
+| `COR_NO_USES_TERMINAL` per-call arg (corr:696-700, applied at corr:915/948, documented corr:966/983) | `PolyOrch_RUST_NO_USES_TERMINAL` cache knob via `_polyorch_rust_uterm`, applied to the build mediator rule (both layers) and the `polyorch_rust_test` rule | naming-map | Inverse polarity kept EXACTLY: the default now ASKS FOR the console on cargo-carrying rules (suite-wide text change: Ninja edges gain `pool = console`; Makefile generators carry no textual trace, measured 4.4.3 -- the option is inert there and script mode never reaches rule creation). The reference's shim/clean-target distinction has no PolyOrch analog: the `<TARGET>-cargo` shim and the aggregate carry no COMMAND and stay flag-free |
+| -- no reference mechanism (the brief's corr:1109-1117 anchor is the `_generator_add_cargo_targets` call site; the actual `BUILD_SHARED_LIBS` gate corr:539-548 chooses which member of an ALREADY-imported pair the umbrella links) -- | `PolyOrch_RUST_DEFAULT_KINDS` cache (unset -> `STATIC;SHARED`; explicitly empty -> the historical pick-exactly-one FATAL) consumed by kind-less `polyorch_rust_build`, handles `<TARGET>-static` / `-shared` / `-exe` | naming-map | PolyOrch EXTENSION per the port plan, registered not smuggled: a kind-less call dispatches one full build per listed kind through the single-kind machinery (import's dual-kind pairing convention, so mediators, shims, FOLDER, auto-build edges and the PIT-13 guard behave per dispatched handle; unknown entries FATAL before any target exists). `polyorch_rust_install` needs no alignment change -- kind defaulting lives at the build face and install keeps consuming explicit handles, as the reference's explicit `corrosion_install(TARGETS ..)` list does |
 
 ## Fidelity gaps
 
@@ -127,6 +133,38 @@ B2; env values carry no shell quoting -- VERBATIM-token discipline noted at
 - install-gate "target==host or emulator present" (the reference has no
   gate at the pin; `polyorch_rust_install` remains a host-layer surface).
 
+WP6 (workspace/version/knob parity, 2026-09-22) closes the import-time
+defaults and the version-surfacing line, and registers the task brief's
+stale anchors: corr:1109-1117 and corr:1377 (cited as "BUILD_SHARED_LIBS
+default kinds" and "install default kinds") do NOT carry that mechanism at
+the pin -- 1109-1117 is `corrosion_import_crate`'s
+`_generator_add_cargo_targets` call, 1377 is `corrosion_install`'s
+hand-rolled EXPORT argument parse; `BUILD_SHARED_LIBS` itself sits at
+corr:539-548 and gates the umbrella's LINK side, not the kinds. The brief's
+corr:21-32 "global COR_* knobs" range holds the VERBOSE option and a
+removed-feature warning (the ALL/NO_DEFAULT/USES_TERMINAL selectors are
+per-call parses at corr:1009-1013). Mechanism verdicts:
+
+- **package-version exposure** -- parity with the metadata-read deviation
+  on the naming-map row; the deferred-register line closes with
+  `polyorch_rust_package_version`.
+- **import-time global defaults** -- a PolyOrch extension at the GLOBAL
+  level (only VERBOSE is global upstream; the rest are per-call/property
+  composites at corr:710-714). Defaults fold into the property carriers
+  build() initialises: knobs unset, every generated rule is byte-
+  identical to the pre-WP6 shape except for the USES_TERMINAL default
+  (above); knobs set, `t-rust-knobs` locks the tokens in generated
+  build.make and the Ninja `pool = console` halves.
+- **default kind pair** -- extension, no upstream mechanism (see the
+  naming-map row); install-side alignment verified as a no-op.
+- **nostd via the target RUSTFLAGS seam** (plan WP6 line): no new
+  mechanism was built -- `polyorch_rust_add_rustflags` already carries any
+  per-target `--cfg` a no_std build needs. Two anchor corrections
+  registered: the plan's corr:94-95 is not the rustflags seam at the pin
+  (the reference's per-target form is `corrosion_add_target_local_rustflags`,
+  used from corr:834-868), and its LOCAL (`cargo rustc --`) scope stays the
+  pre-existing deferred line (PolyOrch's RUSTFLAGS is the GLOBAL env
+  variant); no GLOBAL_NO_STD_FLAG twin exists or was invented.
 Rows are added per work package as clusters are reconciled against the
 reference surface (Phase B, WP3-WP8), completed by the WP10 full-surface
 pass.
