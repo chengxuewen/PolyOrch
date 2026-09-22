@@ -63,14 +63,17 @@ for g in "Unix Makefiles" Ninja; do
 done
 
 # --- Ninja Multi-Config cell (WP4) ------------------------------------------
-# See the header MC note. Skips the four single-config-shaped fixture cases;
+# See the header MC note. Skips the single-config-shaped fixture cases
+# (the pre-WP4 four + install-export + the WP9 import-built multitarget
+# fixture: its per-config genex locations make the literal-path artifact
+# contract single-config shape);
 # the MC proof is t-rust-output-dir's own MC legs (--config Debug AND Release
 # inside the case), so the cell's right-reason gate re-runs it verbose and
 # greps both config markers.
 if command -v ninja >/dev/null 2>&1; then
     cells=$((cells+1))
     b="$root/b-mc"
-    excl='^t-rust-(rule-wiring|import-ws|link-c|install-e2e|install-export)$'
+    excl='^t-rust-(rule-wiring|import-ws|link-c|install-e2e|install-export|multitarget)$'
     if cmake -S "$root/host" -B "$b" -G "Ninja Multi-Config" \
             -DPolyOrch_TEST_E2E=ON > "$b.log" 2>&1 \
        && POLYORCH_TEST_E2E=1 POLYORCH_TEST_CONFIG=Debug POLYORCH_TEST_GENERATOR="Ninja Multi-Config" \

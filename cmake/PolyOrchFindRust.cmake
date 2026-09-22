@@ -204,6 +204,13 @@ function(_polyorch_rust_artifact_names)
     set(_profile "debug")
     if(A_PROFILE STREQUAL "release")
         set(_profile release)
+    elseif(A_PROFILE STREQUAL "dev")
+        # WP9 closure of the ledger OPEN row: cargo's built-in `dev` profile
+        # writes into `debug/`, so the profile NAME is not the artifact DIR
+        # name for it (the reference maps it the same way, corr:766-770).
+        # `test`/`bench` are deliberately NOT mapped: cargo hashes their
+        # artifact names, so the reference excludes them too.
+        set(_profile debug)
     elseif(A_PROFILE AND NOT A_PROFILE STREQUAL "debug")
         set(_profile "${A_PROFILE}")    # custom cargo profile -> own directory
     endif()

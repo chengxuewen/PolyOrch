@@ -1,0 +1,12 @@
+[package]
+name = "pp-probe"
+version = "0.1.0"
+edition = "2021"
+
+[workspace]   # standalone root: the parent tree carries a Cargo.toml
+
+[profile.nodbg]
+inherits = "dev"
+debug-assertions = false
+opt-level = 1
+

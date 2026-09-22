@@ -1,0 +1,18 @@
+[package]
+name = "multitarget-crate"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+name = "mt_lib"
+crate-type = ["lib", "staticlib"]
+
+[[bin]]
+name = "bin1"
+path = "src/bin/bin1.rs"
+
+[[bin]]
+name = "bin2"
+path = "src/bin/bin2.rs"
+
+[workspace]   # standalone root: the parent tree carries a Cargo.toml

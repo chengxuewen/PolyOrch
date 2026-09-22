@@ -349,6 +349,14 @@ function(polyorch_rust_build)
             set(_prof release)
         endif()
     endif()
+    # WP9: DIRECTORY form of the profile (dev -> debug, the same mapping the
+    # naming table applies; the `per-config` sentinel and custom names pass
+    # through). The argv flag and the POLYORCH_RUST_PROFILE property keep the
+    # profile NAME -- only the artifact directory is normalized.
+    set(_pdir "${_prof}")
+    if(_pdir STREQUAL "dev")
+        set(_pdir debug)
+    endif()
     _polyorch_rust_target_dir(_td "${B_BASE_DIR}")
     _polyorch_rust_artifact_names(TRIPLE "${_name_triple}"
         KIND "${_kind}" CRATE "${B_CRATE}" PROFILE "${_prof}" BASE_DIR "${_td}"
@@ -357,7 +365,7 @@ function(polyorch_rust_build)
     if(_mc)
         set(_dir "${_td}/${_xseg}$<IF:$<OR:$<CONFIG:Debug>,$<CONFIG:>>,debug,release>")
     else()
-        set(_dir "${_td}/${_xseg}${_prof}")   # == artifact_names DIR_OUT contract
+        set(_dir "${_td}/${_xseg}${_pdir}")   # == artifact_names DIR_OUT contract
     endif()
     set(_artifact "${_dir}/${_file}")
     get_filename_component(_base "${_artifact}" NAME_WE)
@@ -389,11 +397,20 @@ function(polyorch_rust_build)
     # plain STRING (a ';' list would split mid-value;
     # polyorch_rust_add_rustflags joins with spaces).
     set(_med "cargo-build-${B_TARGET}")
-    set(_features_gx "$<$<BOOL:$<TARGET_PROPERTY:${_med},POLYORCH_RUST_FEATURES>>:--features=$<JOIN:$<TARGET_PROPERTY:${_med},POLYORCH_RUST_FEATURES>,,>>")
-    set(_allf_gx "$<$<BOOL:$<TARGET_PROPERTY:${_med},POLYORCH_RUST_ALL_FEATURES>>:--all-features>")
-    set(_nondf_gx "$<$<BOOL:$<TARGET_PROPERTY:${_med},POLYORCH_RUST_NO_DEFAULT_FEATURES>>:--no-default-features>")
-    set(_flags_gx "$<TARGET_PROPERTY:${_med},POLYORCH_RUST_CARGO_FLAGS>")
-    set(_env_gx "$<TARGET_PROPERTY:${_med},POLYORCH_RUST_ENV_VARS>")
+    # WP9 fidelity fix (corr:702-727): the reference wraps every deferred
+    # build-input property read in GENEX_EVAL, so a generator expression a
+    # user stores INSIDE the property value -- the app_features and
+    # INDIRECT_VAR_TEST shapes of test/features / test/envvar -- expands at
+    # generate time. A bare $<TARGET_PROPERTY> returns list values raw, and
+    # a nested genex then survives LITERALLY into the cargo argv (measured).
+    set(_feat_p "$<GENEX_EVAL:$<TARGET_PROPERTY:${_med},POLYORCH_RUST_FEATURES>>")
+    set(_allf_p "$<GENEX_EVAL:$<TARGET_PROPERTY:${_med},POLYORCH_RUST_ALL_FEATURES>>")
+    set(_nondf_p "$<GENEX_EVAL:$<TARGET_PROPERTY:${_med},POLYORCH_RUST_NO_DEFAULT_FEATURES>>")
+    set(_features_gx "$<$<BOOL:${_feat_p}>:--features=$<JOIN:${_feat_p},,>>")
+    set(_allf_gx "$<$<BOOL:${_allf_p}>:--all-features>")
+    set(_nondf_gx "$<$<BOOL:${_nondf_p}>:--no-default-features>")
+    set(_flags_gx "$<GENEX_EVAL:$<TARGET_PROPERTY:${_med},POLYORCH_RUST_CARGO_FLAGS>>")
+    set(_env_gx "$<GENEX_EVAL:$<TARGET_PROPERTY:${_med},POLYORCH_RUST_ENV_VARS>>")
 
     # Optional keywords are passed only when set: an empty quoted value
     # trips policy CMP0174's author warning on every configure.
@@ -500,7 +517,11 @@ function(polyorch_rust_build)
     # cmake -E env sets it for real).
     set(_ll_gx "$<JOIN:$<TARGET_GENEX_EVAL:${_med},$<TARGET_PROPERTY:${_med},POLYORCH_RUST_LINK_LIBRARIES>>, >")
     set(_ld_gx "$<TARGET_GENEX_EVAL:${_med},$<TARGET_PROPERTY:${_med},POLYORCH_RUST_LINK_DIRS>>")
-    set(_rf_up "$<TARGET_PROPERTY:${_med},POLYORCH_RUST_RUSTFLAGS>")
+    # GENEX_EVAL (string semantics), NOT TARGET_GENEX_EVAL: the property is a
+    # configure-time SPACE-JOINED string (polyorch_rust_add_rustflags), and
+    # TGE would re-list its quoted elements -- a key="value" flag then
+    # mis-parses the genex boundary (measured: stray '>' + argv splits).
+    set(_rf_up "$<GENEX_EVAL:$<TARGET_PROPERTY:${_med},POLYORCH_RUST_RUSTFLAGS>>")
     set(_rf_entry "$<$<OR:$<BOOL:${_rf_up}>,$<BOOL:${_ll_gx}>,$<AND:$<BOOL:${_fwd_largs}>,${_hb}>>:RUSTFLAGS=${_rf_up}")
     string(APPEND _rf_entry "$<$<BOOL:${_ll_gx}>: ${_ll_gx}>")
     if(_fwd_largs)
@@ -699,7 +720,7 @@ function(polyorch_rust_build)
     # POST_BUILD copy into any expressed output dir. Reference shape
     # corr:251-262; see _polyorch_rust_finalize.
     _polyorch_rust_finalize("${B_TARGET}" "${POLYORCH_RUST_HOST_TARGET}"
-        "${_xtup}" "${_kind}" "${B_CRATE}" "${_td}" "${_prof}" "${_mc}")
+        "${_xtup}" "${_kind}" "${B_CRATE}" "${_td}" "${_pdir}" "${_mc}")
 endfunction()
 
 # ---------------------------------------------------------------------------

@@ -1,0 +1,6 @@
+[package]
+name = "gs-probe"
+version = "0.1.0"
+edition = "2021"
+
+[workspace]   # standalone root: the parent tree carries a Cargo.toml

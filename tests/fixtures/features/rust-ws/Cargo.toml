@@ -1,0 +1,17 @@
+[package]
+name = "feat-probe"
+version = "0.1.0"
+edition = "2021"
+
+[features]
+# default ON: the crate CANNOT compile while it is active, so a successful
+# build is physical evidence that --no-default-features reached cargo
+# (the reference's compile-breakage shape, test/features rust/Cargo.toml).
+default = ["compile-breakage"]
+one = []
+two = []
+three = []
+compile-breakage = []
+
+
+[workspace]   # standalone root: the parent tree carries a Cargo.toml (link-c precedent)

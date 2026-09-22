@@ -103,12 +103,17 @@ D17 ruling unlocked, per mechanism:
 - **gnullvm deps/ importlib** -- parity (table-locked offline; no gnullvm
   toolchain exists on the validation host, so the BYPRODUCTS/plan paths are
   exercised by injection, not by a real build).
-- **OPEN (new row)**: custom-profile directory mapping (corr:766-770): the
-  reference maps the profile name `dev` to cargo's `debug` output dir;
-  `_polyorch_rust_artifact_names` uses the profile name verbatim as the
-  directory, so `PROFILE dev` would look in `.cargo-target/dev` (a pre-WP4
-  limitation of the PROFILE keyword, now also on the MC path). Register the
-  fix with the custom-profiles cluster, not silently.
+- **CLOSED (WP9, 2026-09-22)**: custom-profile directory mapping
+  (corr:766-770) -- `_polyorch_rust_artifact_names` now normalizes the
+  profile NAME `dev` to cargo's artifact DIRECTORY `debug` (the one
+  built-in whose name differs from its dir; `test`/`bench` stay
+  unmapped -- the reference excludes them for hashed artifact names).
+  The fix rides BOTH the naming table (offline rows pinned in
+  `t-rust-artifact-paths`) and `polyorch_rust_build`'s single-config
+  `_pdir` + the deferred finalize, so `PROFILE dev` now imports from
+  `.cargo-target/debug/`. Proven live by `t-rust-customprofiles`'s cp-dev
+  leg (artifact in debug/ + debug_assertions run marker).
+  No-output-dir staging remains the ledgered deviation it always was.
 
 WP5 / WP5b (cross routing + linker control plane, 2026-09-22) fidelity note
 (block-level, applies to every row above citing the linker plane): the task
@@ -343,3 +348,79 @@ RUST_TARGET_TRIPLE) stand: genuinely absent at the pin. WP7's
 cxx/cbindgen region confirmations were independently re-verified.
 
 
+
+## WP9 fidelity audit -- test-parity reconciliation (2026-09-22)
+
+The pinned tree's `test/` directory is the sole ledger for this pass: 22
+actual fixture directories enumerated from `corr:test/CMakeLists.txt`
+(the brief's remembered "24 entries" count does not exist at the pin --
+22 `add_subdirectory` calls is the measured truth). Verdict classes:
+PORTED (a live leg or locked table covers the mechanism), PORTED-ADAPTED
+(the property under test is covered in a simplified/renamed shape --
+deviation named), DEFERRED (exact blocker). New legs follow the
+command-layer convention: a physical effect (run marker / compile
+failure / file in the tree / archive member), generated-rule text only
+as a secondary pin; nothing const-foldable (PIT-21).
+
+| # | Reference dir | Our case(s) | Verdict |
+|---|---|---|---|
+| 1 | `cargo_flags` | `t-rust-cargoflags` (+ fixture `cargo-flags`) | PORTED (WP9) -- compile_error-per-missing-feature as the reference, delivered through the CARGO_FLAGS property via ONE generate-time genex; `--timings` build-tree file as the second observable. Deviations: import-time `FLAGS` has no PolyOrch import keyword (the channel is `add_cargo_flags`); stable cargo 1.98 `--timings` takes NO value (bare flag; `--timings=html` rejected, measured) and writes `cargo-timings/cargo-timing-*.html` one level under the target dir |
+| 2 | `cbindgen` | `t-rust-cbindgen` stub-rule legs + `t-rust-cbindgen-e2e` (gated) | PORTED (WP7) -- live tool legs ride the crates.io + authorization gate (unchanged since WP7) |
+| 3 | `config_discovery` | `t-rust-configdisc` | PORTED (WP9) -- offline inversion of the registry-alias trick: `.cargo/config.toml` beside the project root carrying [build] rustflags + [env]; both consumed at COMPILE time (cfg arm + `env!` hard-error), proving the rule's WORKING_DIRECTORY + --manifest-path discovery combo and the load-bearing empty-RUSTFLAGS elision |
+| 4 | `corrosion_install` | `t-rust-install-e2e`, `t-rust-install-export` | PORTED (WP4/WP8) -- install surface + find_package consumer chain; per-CFG stub staging remains the documented seam |
+| 5 | `cpp2rust` | `t-rust-link-c` (Rust bin <- C staticlib), cluster note | PORTED-ADAPTED -- one C archive, not the reference's three C++ libs (rename + space-path legs: the space trick is locked in the `output-dir` fixture instead); the real `corrosion_link_libraries` direction runs live |
+| 6 | `crate_type` | `t-rust-defaultkinds`, import kind derivation | PORTED-ADAPTED -- `FLAGS --crate-type=...` has no analog: PolyOrch reads `[lib] crate-type` from cargo metadata and dispatches kinds from it (the reference's flag exists to stop its own double-build; there is nothing to stop here). The `CRATE_TYPES` import filter is likewise absent (metadata selection is the filter) |
+| 7 | `custom_profiles` | `t-rust-customprofiles` (+ `basic_profiles` legs folded in) | PORTED (WP9) -- four explicit spellings (debug / release / nodbg / dev) x distinct BASE_DIRs; dir + run-marker physical per leg; the dev -> debug mapping CLOSED this pass (see the WP4 OPEN-row flip above). The reference's MC genex profile (`$<IF:$<CONFIG:Release>,...>`) and INTERFACE-corrosion-cargo-profile override target are NOT ported: explicit profiles are configure-time literals here by design (deviation, this row) |
+| 8 | `custom_target` | -- | DEFERRED -- the blocker is PolyOrch-side, not host-side: `polyorch_rust_setup`'s WP5 family gate rejects a `.json` target-spec file as a triple, and the naming table has no file-name family for one (host capability measured: `RUSTC_BOOTSTRAP=1 rustc -Z unstable-options --print target-spec-json` succeeds, rust-src installed). Porting needs a triple-file design at the derive/naming seam -- register, do not smuggle |
+| 9 | `cxxbridge` | `t-rust-cxxbridge` stub-rule legs + `t-rust-cxxbridge-e2e` (gated) | PORTED (WP7) -- circular/link-group variant stays deferred per the WP7 note (`CMAKE_LINK_GROUP_USING_RESCAN` outside this port's link story) |
+| 10 | `envvar` | `t-rust-envvars` (+ fixture `env-var`) | PORTED (WP9) -- build.rs panics on a missing var (compile-level physical proof), bakes values via cargo:rustc-env, run asserts the exact strings: literal, generate-time genex-VALUED entry (deviation: the reference genexes NAME=VALUE wholesale -- our setter validates `^[A-Za-z_]\\w*=` so the name stays literal), and the cargo-version token (replaces their COR_CARGO_VERSION_MAJOR/MINOR pair -- PolyOrch exposes the full token). No-env negative leg proves non-ambient (PIT-14 strip holds) |
+| 11 | `features` | `t-rust-features` (+ fixture `features`) | PORTED (WP9) -- the headline closure of the analysis's #1 hole: real cfg build with compile-breakage default (NO_DEFAULT_FEATURES load-bearing), genex-delivered feature list (the app_features carrier shape), positive run marker + negative compile-failure both ways |
+| 12 | `find_rust` | `t-rust-findrust`, `t-rust-rustc-version`, `t-rust-executables`, setup guards | PORTED (WP3) -- proxy tell, enumeration, floor gate, imported handles; double-`find_package` idempotency == repeated `polyorch_rust_setup` (t-rust-executables); the rustup_proxy disabled-without-rustup leg == the WP3 proxy branch under real rustup |
+| 13 | `gensource` | `t-rust-gensource` (+ fixture `gensource`) | PORTED-ADAPTED (WP9) -- generator is a `cmake -P` script, not a host-built Rust binary (its role is the ORDERING edge, not its language -- hostbuild is separately covered); generated file lands in the BINARY tree via env!-supplied absolute path (source-tree generation would race the matrix cells). Rebuild leg deletes the stamped artifact (the reference's unstamped always-run mediator would re-invoke cargo on any build -- the stamping deviation, ledgered at the no-output-dir row, made visible here) |
+| 14 | `hostbuild` | `t-rust-crossplan` (suppression + no-op legs), `t-rust-musl` (host-dir fall-back under a real route) | PORTED (WP5) -- the C-function print of their fixture adds no mechanism beyond the link_libraries leg already run in `t-rust-link-c` |
+| 15 | `multitarget` | `t-rust-multitarget` (+ fixture `multitarget`) | PORTED (WP9) -- one package, import-yields-three handles (mt_lib + bin1-exe + bin2-exe), distinct-path FATAL at fixture level (configure-time guard) + two runs through ONE shared C static archive. Joins the matrix.sh MC exclusion (import-built handles carry per-config genex locations -- single-config contract by construction). Their bin3/c++ lib: same mechanism, two bins prove the per-handle routing |
+| 16 | `nostd` | `t-rust-nostd` (+ fixture `nostd`) | PORTED-ADAPTED (WP9 feasibility form) -- the NO_STD keyword itself stays unported (WP6 ruling; this leg tests the SHAPE: #![no_std] + panic_handler builds through the standard wrapper, C consumer archives against it). Measured deviations recorded at the fixture: debug-profile overflow check and precompiled unwinding core forced `panic = "abort"` profiles in Cargo.toml (a manifest-level property of no_std staticlibs, not of PolyOrch); no executable link -- the reference builds none either (static member), and the no_std archive still carries `DW.ref.rust_eh_personality` |
+| 17 | `output directory` | `t-rust-output-dir` + matrix MC cell | PORTED (WP4) |
+| 18 | `override_crate_type` | `t-rust-defaultkinds` + import pairing | PORTED-ADAPTED -- the `OVERRIDE_CRATE_TYPE name=kinds` keyword has no analog: kind selection is metadata-derived and the DEFAULT_KINDS pair dispatch is the user-side lever (ledger row above, WP6). Their staticlib+cdylib override effect == what crate-type metadata already declares here |
+| 19 | `parse_target_triple` | `t-rust-findrust` (gate leg), `t-rust-artifact-names` / `t-rust-copy-plan` (family-rejection rows) | PORTED-ADAPTED -- the reference WARNS (and continues with the host triple) on an unparsable `Rust_CARGO_TARGET`; PolyOrch FATALs at setup whatever REQUIRED says (the WP5 family-gate deviation, ledgered at the CARGO_TARGET naming-map row) -- the should-fail / should-not-fail pair is covered as pass / hard-fail instead of warn / no-warn |
+| 20 | `rust2cpp` | `t-rust-link-c` (C exe <- Rust staticlib, run marker), `t-rust-install-e2e` (archive staging), defaultkinds pair | PORTED -- static + shared kinds of the same direction; the shared cdylib consumer-executable leg stays network-free covered by the pair handles (their `.so` dlopen story is the install seam's job, already locked) |
+| 21 | `rustflags` | `t-rust-rustflags` (+ fixture `rustflags`); `cargo_config_rustflags` leg folded into `t-rust-configdisc` | PORTED (WP9) -- plain --cfg, key="value" (cargo shell-words split, quotes reach rustc -- measured), the $<CONFIG> genex flag (debug|release arm either way, the reference's own regex ambiguity kept), and the GLOBAL-scope proof through a path dependency that cannot compile without the cfg (their local-scope some_dependency leg stays the deferred `cargo rustc --` line). Flags-off negative leg fails on the dep's compile_error |
+| 22 | `workspace` | `t-rust-import-ws` | PORTED -- CRATES selection + exact imported-set pins; their member3-shadow-bin case == the metadata-driven selection here (unlisted members never emit handles) |
+
+### Product fixes this audit produced (both were latent until a real
+### build exercised them -- the value of closing the command-layer gap)
+
+- **GENEX_EVAL wrappers on the deferred build-input reads** (corr:702-727,
+  ported shape was missing them): FEATURES / ALL_FEATURES /
+  NO_DEFAULT_FEATURES / CARGO_FLAGS / ENV_VARS reads now wrap the
+  `$<TARGET_PROPERTY>` in `$<GENEX_EVAL:...>`, and the RUSTFLAGS read uses
+  `$<GENEX_EVAL:...>` (NOT TARGET_GENEX_EVAL: measured, TGE re-lists a
+  space-joined string property around its quoted elements and mis-parses a
+  nested genex boundary -- a `--cfg=key="value"` flag then leaked a stray
+  `>` into the argv; corr chose the same spelling for these properties for
+  the same reason per its corr:705 todo comment). Without this, a user
+  property value carrying a generator expression expanded LITERALLY into
+  the cargo argv -- exactly the reference's app_features / INDIRECT_VAR_TEST
+  shapes, now locked live by `t-rust-features` / `t-rust-envvars`.
+- **`dev` -> `debug` profile-dir normalization** closing the WP4 OPEN row
+  (see above): `_polyorch_rust_artifact_names` table + `polyorch_rust_build`
+  `_pdir` (dir + deferred finalize) -- argv keeps spelling `--profile dev`.
+- **matrix.sh**: `t-rust-multitarget` joins the MC-cell exclusion regex
+  (import-built per-config genex locations; classic cells cover it fully,
+  and it passed a dedicated MC-Release run at authoring time along with the
+  eight explicit-profile/PROFILE-debug siblings -- none of the other eight
+  needed an exclusion).
+
+### Register updates from this pass
+
+- `custom_target`: re-registered above with the measured blocker
+  (family-gate rejection of file triples + no naming family for one);
+  NOT-YET list in the port plan unchanged otherwise.
+- `nostd`: the WP6 ruling ("keyword not ported; target-RUSTFLAGS seam
+  carries it") stands; `t-rust-nostd` adds the missing FEASIBILITY leg for
+  the manifest-level shape and records the panic="abort" measurement.
+- Reference `test/README.md` ctest-FIXTURES lifecycle: our drivers'
+  marker-gate + scratch isolation + SKIP-veto contract is the accepted
+  substitute (analysis TP2 ruling); the reference's
+  `PASS_REGULAR_EXPRESSION`-on-run idiom is what the new cases implement
+  as execute_process + marker asserts inside `cmake -P` cases.

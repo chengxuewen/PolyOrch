@@ -1,0 +1,9 @@
+[package]
+name = "rf-probe"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+rf-dep = { path = "rf-dep" }
+
+[workspace]   # standalone root: the parent tree carries a Cargo.toml

@@ -1,0 +1,19 @@
+[package]
+name = "ns-probe"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+crate-type = ["staticlib"]
+
+# panic="abort" for BOTH profiles: the no_std crate carries its own panic
+# handler and cannot use the precompiled unwinding core (cargo's own help
+# text, measured here). The reference's edition-2015 no-op crate dodges the
+# same requirement by accident, not by design; the ledger row records it.
+[profile.release]
+panic = "abort"
+
+[profile.dev]
+panic = "abort"
+
+[workspace]   # standalone root: the parent tree carries a Cargo.toml

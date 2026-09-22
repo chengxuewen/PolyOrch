@@ -1,0 +1,5 @@
+[build]
+rustflags = ["--cfg=cfg_disc_flag"]
+
+[env]
+CFG_DISC_ENV = "cfg-disc-env-ok"
