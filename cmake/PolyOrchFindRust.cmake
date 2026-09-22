@@ -1410,7 +1410,9 @@ endfunction()
 # gate)' + FALSE out -- installing on a configure would reach for
 # crates.io unasked (plan R-10 confines network exposure to this cluster
 # AND an explicit permission). WITH ALLOW_INSTALL a build-time
-# `cargo install --root <PREFIX||${CMAKE_BINARY_DIR}/polyorch-tools/...>`
+# `cargo install --root <PREFIX||${CMAKE_BINARY_DIR}/polyorch-tools/...>`.
+# VERSION is dual-use: version GATE and cargo install version specifier --
+# therefore a full SemVer triple (cargo rejects bare `0.29`, measured)
 # rule is added through _polyorch_rust_command (the --unset host-leak
 # strip ordering contract stays intact; CARGO_BUILD_RUSTC pins the
 # selected rustc like corr:1861-1862), the cache points at the
@@ -1452,17 +1454,22 @@ function(polyorch_rust_tool_bootstrap)
     set(_exe "${_root}/bin/${_bin}${CMAKE_EXECUTABLE_SUFFIX}")
 
     # --- discovery (never network, never cargo install) --
+    # An explicit PREFIX means "this tree only" (the reference's
+    # prefix-scoped install root has the same semantics): the ambient
+    # cargo locations are searched only when no PREFIX was given.
     set(_paths "${_root}/bin")
-    if(POLYORCH_RUST_BIN_DIR)
-        list(APPEND _paths "${POLYORCH_RUST_BIN_DIR}")
+    if(NOT TB_PREFIX)
+        if(POLYORCH_RUST_BIN_DIR)
+            list(APPEND _paths "${POLYORCH_RUST_BIN_DIR}")
+        endif()
+        if(DEFINED ENV{CARGO_HOME} AND NOT "$ENV{CARGO_HOME}" STREQUAL "")
+            list(APPEND _paths "$ENV{CARGO_HOME}/bin")
+        endif()
+        if(DEFINED ENV{HOME} AND NOT "$ENV{HOME}" STREQUAL "")
+            list(APPEND _paths "$ENV{HOME}/.cargo/bin")
+        endif()
     endif()
-    if(DEFINED ENV{CARGO_HOME} AND NOT "$ENV{CARGO_HOME}" STREQUAL "")
-        list(APPEND _paths "$ENV{CARGO_HOME}/bin")
-    endif()
-    if(DEFINED ENV{HOME} AND NOT "$ENV{HOME}" STREQUAL "")
-        list(APPEND _paths "$ENV{HOME}/.cargo/bin")
-    endif()
-    find_program(${_cvar} NAMES "${_bin}" PATHS ${_paths})
+    find_program(${_cvar} NAMES "${_bin}" PATHS ${_paths} NO_DEFAULT_PATH)
     mark_as_advanced(${_cvar})
 
     set(_ok FALSE)
