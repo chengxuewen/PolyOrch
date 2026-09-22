@@ -333,4 +333,13 @@ Mechanism notes and deviations, by cluster:
   `CMAKE_LINK_GROUP_USING_RESCAN_SUPPORTED` (cmake>=3.24 policy surface
   outside this port's link story -- ledger note, decide at WP9). The
   `cbindgen_install*` legs ride the FILE_SET install shape we did not
-  port (registered above).
+  port (registered above).### Correction (2026-09-22, post-WP7 audit)
+
+The WP5 report claimed `hostbuild` had zero hits in the pin; re-grep at
+`c4786e7` shows `corrosion_set_hostbuild` at corr:1166 with 14 total
+hits -- that claim was wrong and the mechanism is ported (row above).
+The other two stale-anchor findings (IMPORTED_LINK_DEPENDENT_LIBRARIES,
+RUST_TARGET_TRIPLE) stand: genuinely absent at the pin. WP7's
+cxx/cbindgen region confirmations were independently re-verified.
+
+
