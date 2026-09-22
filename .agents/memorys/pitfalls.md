@@ -110,6 +110,7 @@
 - **Solution**: do not pre-set lookup variables to ""; leave them undefined (`unset(_x)` if a previous branch may have set them). Probe: `set(_x ""); find_program(_x NAMES cmake NO_DEFAULT_PATH PATHS /usr/bin NO_CACHE)` => stays empty; without the pre-set => /usr/bin/cmake.
 - **Verification**: `grep -n 'set(_cargo "")\|set(_rustc "")' cmake/PolyOrchRustHelpers.cmake` returns nothing; `POLYORCH_TEST_E2E=1 bash tests/run.sh` t-rust-e2e green.
 - **Forbidden**: initializing a variable to empty immediately before any `find_program/find_path/find_package(... NO_CACHE)` call in this codebase.
+- **Instances**: setup cargo/rustc lookup (original); WP3 rustup-layer re-find (third instance of the same family -- use fresh variable names then copy, never pre-seed a NO_CACHE target var).
 
 ## PIT-13: an IMPORTED target named like its artifact base name silently swallows the Makefile rule (2026-09-21)
 

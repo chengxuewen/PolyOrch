@@ -37,6 +37,64 @@ function(_polyorch_rust_must)
     endforeach()
 endfunction()
 
+# polyorch_rust_version_ok(<actual> <out-var> [VERSION <v> [EXACT]] [RANGE <min>..<max>])
+# Pure version predicate. No constraint => TRUE (any version is fine).
+# VERSION <v> is a floor (>=) unless EXACT pins equality; RANGE <min>..<max>
+# is inclusive on both ends. A malformed ACTUAL (nightly suffixes, garbage,
+# empty) is simply FALSE -- it never warns and never FATALs, because it is
+# machine output being tested, not an author mistake; malformed CONSTRAINT
+# arguments do FATAL (author-side).
+#
+# Adapted from corrosion (MIT, commit c4786e7): cmake/FindRust.cmake:38-71
+# (the _findrust_version_ok shape; the reference reads find_package globals,
+# this takes its inputs as arguments instead, per the no-find_package design).
+function(polyorch_rust_version_ok ACTUAL_VERSION OUT_IS_OK)
+    cmake_parse_arguments(PARSE_ARGV 2 V "EXACT" "VERSION;RANGE" "")
+    if(V_UNPARSED_ARGUMENTS)
+        message(FATAL_ERROR
+            "polyorch_rust_version_ok: unknown args: ${V_UNPARSED_ARGUMENTS}")
+    endif()
+    if(V_VERSION AND V_RANGE)
+        message(FATAL_ERROR
+            "polyorch_rust_version_ok: VERSION and RANGE are mutually exclusive")
+    endif()
+    set(_num "^[0-9]+(\\.[0-9]+)*$")
+    if(V_VERSION AND NOT V_VERSION MATCHES "${_num}")
+        message(FATAL_ERROR
+            "polyorch_rust_version_ok: VERSION must be a dotted numeric version, got '${V_VERSION}'")
+    endif()
+    set(_lo "")
+    set(_hi "")
+    if(V_RANGE)
+        if(NOT V_RANGE MATCHES "^([0-9]+(\\.[0-9]+)*)\\.\\.([0-9]+(\\.[0-9]+)*)$")
+            message(FATAL_ERROR
+                "polyorch_rust_version_ok: RANGE must be '<num>..<num>, got '${V_RANGE}'")
+        endif()
+        set(_lo "${CMAKE_MATCH_1}")
+        set(_hi "${CMAKE_MATCH_3}")
+    endif()
+    set(_ok FALSE)
+    if(NOT V_VERSION AND NOT V_RANGE)
+        set(_ok TRUE)   # no version requirement specified => always okay (find:67-70)
+    elseif(NOT ACTUAL_VERSION MATCHES "${_num}")
+        set(_ok FALSE)  # unusable actual never matches, silently
+    elseif(V_RANGE)
+        if("${ACTUAL_VERSION}" VERSION_GREATER_EQUAL "${_lo}"
+                AND "${ACTUAL_VERSION}" VERSION_LESS_EQUAL "${_hi}")
+            set(_ok TRUE)
+        endif()
+    else()
+        if(V_EXACT)
+            if("${ACTUAL_VERSION}" VERSION_EQUAL "${V_VERSION}")
+                set(_ok TRUE)
+            endif()
+        elseif("${ACTUAL_VERSION}" VERSION_GREATER_EQUAL "${V_VERSION}")
+            set(_ok TRUE)
+        endif()
+    endif()
+    set(${OUT_IS_OK} ${_ok} PARENT_SCOPE)
+endfunction()
+
 # Internal: object-family of a rust target triple.
 #   windows+msvc        -> msvc   (foo.exe / foo.lib / foo.dll + foo.dll.lib)
 #   windows+gnu|mingw   -> gnu    (foo.exe / libfoo.a / foo.dll + libfoo.dll.a)
@@ -318,6 +376,120 @@ pub fn add(left: usize, right: usize) -> usize { left + right }
     message(STATUS "polyorch_rust: staticlib native libs [${_libs}] (dirs [${_dirs}])")
 endfunction()
 
+# _polyorch_rust_parse_toolchain_list(TEXT OUT_NAMES OUT_PATHS OUT_HOST)
+# Pure parser over the `rustup toolchain list --verbose` text. Line grammar
+# (adapted from corrosion (MIT, commit c4786e7): cmake/FindRust.cmake:349-359):
+#   <name>[ (active)|(active, default)|(default) (override)|(default)|
+#          (override)] <toolchain-root-path>
+# Non-empty unparsable lines are dropped silently (this parser never raises;
+# the enumeration warns when nothing survives). The last line carrying a
+# default marker names OUT_HOST (the reference's last-wins loop shape,
+# find:357-359). The `(override)` dir/directory-override marker is parsed but
+# not acted on: PolyOrch selects via PolyOrch_RUST_TOOLCHAIN or the default
+# (deviation from find:361-363, recorded in the port ledger).
+function(_polyorch_rust_parse_toolchain_list TEXT OUT_NAMES OUT_PATHS OUT_HOST)
+    set(_names "")
+    set(_paths "")
+    set(_host "")
+    string(REPLACE "\r" "" _txt "${TEXT}")
+    string(REPLACE "\n" ";" _lines "${_txt}")
+    foreach(_line IN LISTS _lines)
+        # Strip first: tolerate indented lines (the reference's unanchored
+        # regex matches a name after leading whitespace the same way).
+        string(STRIP "${_line}" _line)
+        if(_line MATCHES "^([a-zA-Z0-9._-]+)[ \t]*(\\(active\\)|\\(active, default\\)|\\(default\\) \\(override\\)|\\(default\\)|\\(override\\))?[ \t]+(.+)$")
+            # Copy the groups first: the nested MATCHES below carries its own
+            # capture group and would clobber CMAKE_MATCH_1.
+            set(_nm "${CMAKE_MATCH_1}")
+            set(_mk "${CMAKE_MATCH_2}")
+            string(STRIP "${CMAKE_MATCH_3}" _pt)
+            list(APPEND _names "${_nm}")
+            list(APPEND _paths "${_pt}")
+            if(_mk MATCHES "\\((active, )?default\\)")
+                set(_host "${_nm}")
+            endif()
+        endif()
+    endforeach()
+    set(${OUT_NAMES} "${_names}" PARENT_SCOPE)
+    set(${OUT_PATHS} "${_paths}" PARENT_SCOPE)
+    set(${OUT_HOST} "${_host}" PARENT_SCOPE)
+endfunction()
+
+# Internal: enumerate the rustup-installed toolchains. Adapted from corrosion
+# (MIT, commit c4786e7): cmake/FindRust.cmake:336-421 (command + per-entry
+# `rustc --version` probe; entries whose rustc is missing or version-
+# unparseable are dropped, find:393-398, instead of the reference keeping
+# parallel NOTFOUND placeholders). Side effect: writes
+# POLYORCH_RUST_TOOLCHAIN_<name>_PATH / _VERSION cache entries; OUT_NAMES
+# receives the kept names (parallel to the cache entries), OUT_HOST the
+# default-toolchain name (empty when none carried a default marker, or when
+# the default entry itself was dropped).
+function(_polyorch_rust_enumerate_toolchains RUSTUP OUT_NAMES OUT_HOST)
+    execute_process(COMMAND "${RUSTUP}" toolchain list --verbose
+        RESULT_VARIABLE _rc OUTPUT_VARIABLE _raw ERROR_QUIET)
+    if(NOT _rc EQUAL 0)
+        set(_raw "")
+    endif()
+    _polyorch_rust_parse_toolchain_list("${_raw}" _names _paths _host)
+    set(_kept "")
+    list(LENGTH _names _ln)
+    if(_ln GREATER 0)
+        math(EXPR _last "${_ln} - 1")
+        set(_exe "")
+        if(CMAKE_HOST_WIN32)
+            set(_exe ".exe")
+        endif()
+        foreach(_i RANGE 0 ${_last})
+            list(GET _names ${_i} _nm)
+            list(GET _paths ${_i} _pt)
+            set(_rv "")
+            if(EXISTS "${_pt}/bin/rustc${_exe}")
+                execute_process(COMMAND "${_pt}/bin/rustc${_exe}" --version
+                    RESULT_VARIABLE _rc2 OUTPUT_VARIABLE _vo ERROR_QUIET)
+                if(_rc2 EQUAL 0 AND _vo MATCHES "rustc ([0-9]+)\\.([0-9]+)\\.([0-9]+)")
+                    set(_rv "${CMAKE_MATCH_1}.${CMAKE_MATCH_2}.${CMAKE_MATCH_3}")
+                endif()
+            endif()
+            if(_rv)
+                list(APPEND _kept "${_nm}")
+                set(POLYORCH_RUST_TOOLCHAIN_${_nm}_PATH "${_pt}"
+                    CACHE INTERNAL "PolyOrch rust toolchain (polyorch_rust_setup)")
+                set(POLYORCH_RUST_TOOLCHAIN_${_nm}_VERSION "${_rv}"
+                    CACHE INTERNAL "PolyOrch rust toolchain (polyorch_rust_setup)")
+            else()
+                message(AUTHOR_WARNING
+                    "polyorch_rust_setup: toolchain '${_nm}' at ${_pt} has no version-parseable "
+                    "${_pt}/bin/rustc; ignoring this toolchain")
+            endif()
+        endforeach()
+    endif()
+    if(_host AND NOT _host IN_LIST _kept)
+        set(_host "")
+    endif()
+    set(${OUT_NAMES} "${_kept}" PARENT_SCOPE)
+    set(${OUT_HOST} "${_host}" PARENT_SCOPE)
+endfunction()
+
+# _polyorch_rust_derive_target(OUT)
+# Selector for the cargo --target triple, shaped after the reference
+# derivation chain (corr:FindRust.cmake:659-791) reduced to the two links
+# that exist today: the explicit PolyOrch_RUST_CARGO_TARGET override, else
+# the rustc host triple recorded by the last successful setup. WP5b seam:
+# insert the Windows VS_PLATFORM/PROCESSOR/compiler-id chain and the
+# Android/OHOS ABI tables between the override and the host fallback
+# (reference find:662-780) -- the fallback line below consumes what they
+# would set (find:781-789). Not called by setup yet: the WP2 echo wiring
+# is unchanged until WP5b; shipped with its table test so the seam is
+# code, not a comment.
+function(_polyorch_rust_derive_target OUT)
+    if(PolyOrch_RUST_CARGO_TARGET)
+        set(${OUT} "${PolyOrch_RUST_CARGO_TARGET}" PARENT_SCOPE)
+        return()
+    endif()
+    # --- WP5b insertion point: platform-derived triple chains go above ---
+    set(${OUT} "${POLYORCH_RUST_HOST_TARGET}" PARENT_SCOPE)
+endfunction()
+
 # ------------------------------------------------------------------- setup ---
 
 # polyorch_rust_setup([FROM <system|pixi>] [REQUIRED] [NO_NATIVE_PROBE])
@@ -326,15 +498,35 @@ endfunction()
 #   POLYORCH_RUST_CARGO        absolute path to cargo
 #   POLYORCH_RUST_RUSTC        absolute path to rustc
 #   POLYORCH_RUST_VERSION      "cargo --version" version token
+#   POLYORCH_RUST_CARGO_VERSION  alias of POLYORCH_RUST_VERSION (the cargo
+#                               tool's own version, spelling matching the
+#                               reference's Rust_CARGO_VERSION)
 #   POLYORCH_RUST_RUSTC_VERSION "rustc -vV" release: token (rustc's own
 #                               version; may differ from cargo's in mixed
 #                               toolchains)
+#   POLYORCH_RUST_VERSION_MAJOR/MINOR/PATCH
+#                               normalized numeric triple parsed out of the
+#                               rustc release token (suffixes like -nightly
+#                               dropped) -- what the version comparisons
+#                               below operate on; empty when the release
+#                               token carries no numeric triple
 #   POLYORCH_RUST_HOST_TARGET  `rustc -vV` host triple (artifact naming key)
 #   POLYORCH_RUST_ROUTE        system | pixi (drives the PATH wrapper)
 #   POLYORCH_RUST_BIN_DIR      directory holding the cargo binary
 #   POLYORCH_RUST_CARGO_TARGET the --target triple selected for the build
 #                              (echo of PolyOrch_RUST_CARGO_TARGET; empty =
 #                              host default -- routing not implemented, WP5)
+#   POLYORCH_RUST_TOOLCHAINS   names of the toolchains the resolved rustup
+#                              install exposes, or the single entry `direct`
+#                              when no rustup was involved; per toolchain,
+#                              POLYORCH_RUST_TOOLCHAIN_<name>_PATH and _VERSION
+#                              cache entries carry the data; the rustup
+#                              default's name is POLYORCH_RUST_TOOLCHAIN_HOST
+#                              (also `direct` in a non-rustup world)
+# In PROJECT mode a successful setup also (re)creates the imported
+# executable handles PolyOrchRust::Rustc / PolyOrchRust::Cargo carrying
+# these binaries (re-setup replaces the IMPORTED_LOCATION; skipped under
+# cmake -P, where add_executable is not scriptable).
 # When the toolchain is found, setup also runs a one-shot native-static-libs
 # probe (a throwaway staticlib + `rustc --print=native-static-libs`) that fills
 #   POLYORCH_RUST_NATIVE_LIBS  system libs a Rust staticlib needs at final link
@@ -356,6 +548,21 @@ endfunction()
 # triple; as of WP2 it is only defined + echoed into
 # POLYORCH_RUST_CARGO_TARGET (a STATUS line when non-empty says routing is
 # NOT implemented yet -- WP5 consumes it; empty = build for the host).
+# PolyOrch_RUST_MIN_VERSION (cache string) floors the rustc version: empty
+# (default) enforces nothing -- measured-only floors stay the rule (the
+# deferred register stands); when set, a toolchain below the floor is a MISS
+# (FOUND=FALSE, or a FATAL naming found-vs-required with REQUIRED).
+# Reference equivalent: the find_package version predicate applied during
+# toolchain selection (corr:FindRust.cmake:38-71,439-463).
+# PolyOrch_RUST_TOOLCHAIN (cache string) pins a rustup toolchain by name:
+# exact match first, else the bare family retried as `<name>-<default host>`
+# via `rustup show`; an unknown name FATALs listing the available toolchains
+# (find:472-503 shape). When UNSET: a PATH-discovered rustc that answers the
+# RUSTUP_FORCE_ARG0=rustup proxy tell is descended into -- rustup beside it
+# resolves the DEFAULT toolchain to its concrete binaries (the reference's
+# contract: never hand back a proxy, find:7-9); a non-proxy rustc is used as
+# found, with NO rustup required (conda/pixi shape). The injection pair
+# outranks this knob per tool (WP2 contract preserved).
 # A miss without REQUIRED sets FOUND=FALSE and reports by STATUS only;
 # with REQUIRED it fails with the fix for that route. The pixi route first
 # requires the pixi side to be set up -- its error message names
@@ -380,6 +587,13 @@ function(polyorch_rust_setup)
             "polyorch_rust_setup: FROM must be system or pixi, got '${_from}'")
     endif()
 
+    # Drop the previous run's per-toolchain cache entries here (before the
+    # enumeration below writes fresh ones): the shared clear further down
+    # must not race entries a re-run of the same name just re-probed.
+    foreach(_old IN LISTS POLYORCH_RUST_TOOLCHAINS)
+        unset(POLYORCH_RUST_TOOLCHAIN_${_old}_PATH CACHE)
+        unset(POLYORCH_RUST_TOOLCHAIN_${_old}_VERSION CACHE)
+    endforeach()
     # Injection first (see the contract above): validate, then bypass the
     # route's find_program per tool. EXISTS only -- the same standard the
     # reference's user vars use; an unreadable-but-present path surfaces as
@@ -403,6 +617,129 @@ function(polyorch_rust_setup)
         endif()
         if(NOT _cargo OR NOT _rustc)
             set(_miss "no cargo/rustc on PATH")
+        endif()
+
+        # ---- rustup layer (WP3) ------------------------------------------------
+        # Two doors into rustup (reference shape find:237-321): the explicit
+        # PolyOrch_RUST_TOOLCHAIN knob looks for rustup first; otherwise a
+        # PATH-discovered rustc is proxy-tested and rustup is adopted only when
+        # it sits beside the proxy. Injection bypasses the proxy test entirely:
+        # the WP2 injection contract keeps the given path verbatim (deviation
+        # from find:296-307, which discards a proxy-pointing user compiler --
+        # recorded in the port ledger). A non-proxy toolchain needs NO rustup:
+        # the conda/pixi shape stays fully functional on this branch.
+        set(_tc_names "")
+        set(_tc_host "")
+        # Landmine (measured on 4.4.3): find_program(<v> ... NO_CACHE) SKIPS the
+        # search and leaves <v> untouched when <v> already exists as a regular
+        # variable in scope -- even when it was pre-set empty. Every
+        # NO_CACHE find below therefore writes a never-set result variable
+        # and the value is copied into the flow variable afterwards.
+        set(_rustup "")
+        if(PolyOrch_RUST_TOOLCHAIN)
+            find_program(_rup_a NAMES rustup NO_CACHE)
+            set(_rustup "${_rup_a}")
+            if(NOT _rustup)
+                message(WARNING
+                    "polyorch_rust_setup: PolyOrch_RUST_TOOLCHAIN='${PolyOrch_RUST_TOOLCHAIN}' "
+                    "requested but rustup was not found; resolving without rustup")
+            endif()
+        elseif(_rustc AND NOT _inj_rustc)
+            # The canonical proxy tell (adapted from find:279-312): rustup's
+            # proxies are rustup under another argv[0], and RUSTUP_FORCE_ARG0
+            # forces the tool identity -- a proxy answers --version as rustup,
+            # a real toolchain answers as itself. Verified against rustup's
+            # behavior on the validation host, not copied from docs.
+            execute_process(
+                COMMAND ${CMAKE_COMMAND} -E env RUSTUP_FORCE_ARG0=rustup
+                    "${_rustc}" --version
+                RESULT_VARIABLE _prc OUTPUT_VARIABLE _ppv ERROR_QUIET)
+            if(_prc EQUAL 0 AND _ppv MATCHES "rustup ([0-9]|$)")
+                get_filename_component(_proxdir "${_rustc}" DIRECTORY)
+                find_program(_rup_b NAMES rustup HINTS "${_proxdir}" NO_DEFAULT_PATH NO_CACHE)
+                set(_rustup "${_rup_b}")
+                if(NOT _rustup)
+                    message(WARNING
+                        "polyorch_rust_setup: '${_rustc}' is a rustup proxy but no rustup "
+                        "sits beside it; using the proxy binary directly")
+                endif()
+            endif()
+        endif()
+        if(_rustup)
+            _polyorch_rust_enumerate_toolchains("${_rustup}" _tc_names _tc_host)
+            if(_tc_names STREQUAL "")
+                message(WARNING
+                    "polyorch_rust_setup: `${_rustup} toolchain list --verbose` yielded no "
+                    "usable toolchains; falling back to the discovered binaries")
+                if(PolyOrch_RUST_TOOLCHAIN)
+                    message(FATAL_ERROR
+                        "polyorch_rust_setup: no usable rustup toolchain found for the "
+                        "requested '${PolyOrch_RUST_TOOLCHAIN}'")
+                endif()
+                set(_rustup "")
+            else()
+                # Selection: the knob wins over the rustup default; an exact
+                # miss is retried as `<knob>-<default host>` (rustup show
+                # expansion, find:472-503) before the FATAL that lists what IS
+                # available. Without the knob: the default, else the first
+                # kept entry (a lone manually-linked toolchain prints no marker).
+                set(_sel "")
+                if(PolyOrch_RUST_TOOLCHAIN)
+                    set(_want "${PolyOrch_RUST_TOOLCHAIN}")
+                    if(NOT _want IN_LIST _tc_names)
+                        execute_process(COMMAND "${_rustup}" show
+                            RESULT_VARIABLE _sres OUTPUT_VARIABLE _sraw ERROR_QUIET)
+                        if(NOT _sres EQUAL 0)
+                            message(FATAL_ERROR
+                                "polyorch_rust_setup: `${_rustup} show` failed (needed to expand "
+                                "toolchain '${_want}' to its host form)")
+                        endif()
+                        set(_defhost "")
+                        string(REPLACE "\r" "" _sraw "${_sraw}")
+                        string(REPLACE "\n" ";" _slines "${_sraw}")
+                        foreach(_sl IN LISTS _slines)
+                            if(_sl MATCHES "^Default host: *([^ ]+)")
+                                set(_defhost "${CMAKE_MATCH_1}")
+                            endif()
+                        endforeach()
+                        if(NOT _defhost)
+                            message(FATAL_ERROR
+                                "polyorch_rust_setup: could not parse \"Default host\" from "
+                                "`${_rustup} show` output")
+                        endif()
+                        if("${_want}-${_defhost}" IN_LIST _tc_names)
+                            set(_want "${_want}-${_defhost}")
+                        endif()
+                    endif()
+                    if(NOT _want IN_LIST _tc_names)
+                        set(_avail "")
+                        foreach(_t IN LISTS _tc_names)
+                            string(APPEND _avail "  ${_t}\n")
+                        endforeach()
+                        message(FATAL_ERROR
+                            "polyorch_rust_setup: Could not find toolchain '${PolyOrch_RUST_TOOLCHAIN}'. Available toolchains:\n${_avail}")
+                    endif()
+                    set(_sel "${_want}")
+                elseif(_tc_host)
+                    set(_sel "${_tc_host}")
+                else()
+                    list(GET _tc_names 0 _sel)
+                endif()
+                set(_tcbin "${POLYORCH_RUST_TOOLCHAIN_${_sel}_PATH}/bin")
+                if(NOT _inj_rustc)
+                    find_program(_res_r NAMES rustc HINTS "${_tcbin}" NO_DEFAULT_PATH NO_CACHE)
+                    set(_rustc "${_res_r}")
+                endif()
+                if(NOT _inj_cargo)
+                    find_program(_res_c NAMES cargo HINTS "${_tcbin}" NO_DEFAULT_PATH NO_CACHE)
+                    set(_cargo "${_res_c}")
+                endif()
+                if(_cargo AND _rustc)
+                    set(_miss "")
+                else()
+                    set(_miss "rustup toolchain '${_sel}' at ${_tcbin} ships no cargo/rustc (fix: set PolyOrch_RUST_CARGO_EXECUTABLE / PolyOrch_RUSTC_EXECUTABLE explicitly)")
+                endif()
+            endif()
         endif()
     else()
         if(NOT COMMAND polyorch_pixi_env_paths)
@@ -469,6 +806,33 @@ function(polyorch_rust_setup)
     endif()
 
     set(_found FALSE)
+    set(_rv_major "")
+    set(_rv_minor "")
+    set(_rv_patch "")
+    set(_rv_norm "")
+    if(_probe_ok)
+        # Normalized triple from the rustc release token (the reference parses
+        # the same out of `rustc --version --verbose`, find:620-624); suffixes
+        # like 1.99.0-nightly normalize to 1.99.0 for comparison.
+        if(_rustc_version MATCHES "^([0-9]+)\\.([0-9]+)\\.([0-9]+)")
+            set(_rv_major "${CMAKE_MATCH_1}")
+            set(_rv_minor "${CMAKE_MATCH_2}")
+            set(_rv_patch "${CMAKE_MATCH_3}")
+            set(_rv_norm "${_rv_major}.${_rv_minor}.${_rv_patch}")
+        endif()
+        if(PolyOrch_RUST_MIN_VERSION)
+            polyorch_rust_version_ok("${_rv_norm}" _floor_ok
+                VERSION "${PolyOrch_RUST_MIN_VERSION}")
+            if(NOT _floor_ok)
+                if(_rv_norm)
+                    set(_miss "PolyOrch_RUST_MIN_VERSION requires rustc at least ${PolyOrch_RUST_MIN_VERSION}, found rustc ${_rustc_version}")
+                else()
+                    set(_miss "PolyOrch_RUST_MIN_VERSION requires rustc at least ${PolyOrch_RUST_MIN_VERSION}, but rustc version '${_rustc_version}' has no numeric triple")
+                endif()
+                set(_probe_ok FALSE)
+            endif()
+        endif()
+    endif()
     if(_probe_ok)
         set(_found TRUE)
     endif()
@@ -477,9 +841,13 @@ function(polyorch_rust_setup)
     # stale paths behind.
     foreach(_v POLYORCH_RUST_FOUND POLYORCH_RUST_CARGO POLYORCH_RUST_RUSTC
                POLYORCH_RUST_VERSION POLYORCH_RUST_RUSTC_VERSION
+               POLYORCH_RUST_CARGO_VERSION
+               POLYORCH_RUST_VERSION_MAJOR POLYORCH_RUST_VERSION_MINOR
+               POLYORCH_RUST_VERSION_PATCH
                POLYORCH_RUST_HOST_TARGET
                POLYORCH_RUST_ROUTE POLYORCH_RUST_BIN_DIR
-               POLYORCH_RUST_CARGO_TARGET)
+               POLYORCH_RUST_CARGO_TARGET POLYORCH_RUST_TOOLCHAINS
+               POLYORCH_RUST_TOOLCHAIN_HOST)
         unset(${_v} CACHE)
     endforeach()
     # Probe results are cleared here so a configure that never reaches the probe
@@ -494,9 +862,46 @@ function(polyorch_rust_setup)
         set(POLYORCH_RUST_RUSTC "${_rustc}" CACHE INTERNAL "PolyOrch rust toolchain (polyorch_rust_setup)")
         set(POLYORCH_RUST_VERSION "${_version}" CACHE INTERNAL "PolyOrch rust toolchain (polyorch_rust_setup)")
         set(POLYORCH_RUST_RUSTC_VERSION "${_rustc_version}" CACHE INTERNAL "PolyOrch rust toolchain (polyorch_rust_setup)")
+        set(POLYORCH_RUST_CARGO_VERSION "${_version}" CACHE INTERNAL "PolyOrch rust toolchain (polyorch_rust_setup)")
+        set(POLYORCH_RUST_VERSION_MAJOR "${_rv_major}" CACHE INTERNAL "PolyOrch rust toolchain (polyorch_rust_setup)")
+        set(POLYORCH_RUST_VERSION_MINOR "${_rv_minor}" CACHE INTERNAL "PolyOrch rust toolchain (polyorch_rust_setup)")
+        set(POLYORCH_RUST_VERSION_PATCH "${_rv_patch}" CACHE INTERNAL "PolyOrch rust toolchain (polyorch_rust_setup)")
         set(POLYORCH_RUST_HOST_TARGET "${_host}" CACHE INTERNAL "PolyOrch rust toolchain (polyorch_rust_setup)")
         set(POLYORCH_RUST_ROUTE "${_from}" CACHE INTERNAL "PolyOrch rust toolchain (polyorch_rust_setup)")
         set(POLYORCH_RUST_BIN_DIR "${_bindir}" CACHE INTERNAL "PolyOrch rust toolchain (polyorch_rust_setup)")
+        if(_tc_names)
+            set(POLYORCH_RUST_TOOLCHAINS "${_tc_names}" CACHE INTERNAL "PolyOrch rust toolchain (polyorch_rust_setup)")
+            set(POLYORCH_RUST_TOOLCHAIN_HOST "${_tc_host}" CACHE INTERNAL "PolyOrch rust toolchain (polyorch_rust_setup)")
+        else()
+            # Direct single-entry record: the toolchain root is two levels
+            # above <root>/bin/rustc (find:526-530 shape); no rustup consulted.
+            set(POLYORCH_RUST_TOOLCHAINS "direct" CACHE INTERNAL "PolyOrch rust toolchain (polyorch_rust_setup)")
+            set(POLYORCH_RUST_TOOLCHAIN_HOST "direct" CACHE INTERNAL "PolyOrch rust toolchain (polyorch_rust_setup)")
+            get_filename_component(_droot "${_rustc}" DIRECTORY)
+            get_filename_component(_droot "${_droot}" DIRECTORY)
+            set(POLYORCH_RUST_TOOLCHAIN_direct_PATH "${_droot}" CACHE INTERNAL "PolyOrch rust toolchain (polyorch_rust_setup)")
+            set(POLYORCH_RUST_TOOLCHAIN_direct_VERSION "${_rv_norm}" CACHE INTERNAL "PolyOrch rust toolchain (polyorch_rust_setup)")
+        endif()
+        # Imported tool handles for consumers (custom commands, dependency
+        # edges): PolyOrchRust::Rustc / PolyOrchRust::Cargo carry the resolved
+        # binaries (reference find:902-915). Re-setup REPLACES the locations:
+        # the reference's if(NOT TARGET) guard alone would pin the first pair
+        # forever across a re-run with different knobs, so the property is
+        # updated every time and the if(NOT TARGET) around the add only
+        # prevents the duplicate-name error. Script mode has no target
+        # registry consumer and add_executable is not scriptable there
+        # (measured on 4.4.3), so creation is skipped exactly like the
+        # native-libs probe skips it.
+        if(NOT CMAKE_SCRIPT_MODE_FILE)
+            if(NOT TARGET PolyOrchRust::Rustc)
+                add_executable(PolyOrchRust::Rustc IMPORTED GLOBAL)
+            endif()
+            set_property(TARGET PolyOrchRust::Rustc PROPERTY IMPORTED_LOCATION "${_rustc}")
+            if(NOT TARGET PolyOrchRust::Cargo)
+                add_executable(PolyOrchRust::Cargo IMPORTED GLOBAL)
+            endif()
+            set_property(TARGET PolyOrchRust::Cargo PROPERTY IMPORTED_LOCATION "${_cargo}")
+        endif()
         # WP2 echo-only (ponytail: consumed by the WP5 cross-routing cluster;
         # until then nothing passes --target, so a non-empty value is inert).
         set(POLYORCH_RUST_CARGO_TARGET "${PolyOrch_RUST_CARGO_TARGET}" CACHE INTERNAL "PolyOrch rust toolchain (polyorch_rust_setup)")

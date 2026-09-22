@@ -107,6 +107,12 @@
 
 Brand casing on the CMake interface: cache variables and options are `PolyOrch_` (brand verbatim) + `UPPER_SNAKE` suffix (`PolyOrch_PIXI_MANIFEST`, `PolyOrch_BUILD_TESTS`); functions and package/import names lowercase `polyorch_*`; project-level targets `PolyOrch<PascalCase>` (`PolyOrchTest`, `PolyOrchExamplePixi*`). `POLYORCH_` remains a misspelling everywhere except ONE namespace: shell environment variables (`POLYORCH_TEST_E2E`), which follow the all-caps env convention and are deliberately exempted from the C1 scan scope (C1 scans content documents, not env names). A host's all-caps brand (e.g. a parent project's `*_ENABLE_PIXI`) is the same rule applied to that brand, not an exception. (user decision, 2026-09-21)
 
+Imported tool handles follow the same layering: `PolyOrchRust::<PascalCase>`
+(`PolyOrchRust::Rustc`, `PolyOrchRust::Cargo`) -- the namespaced-imported
+form of the project-target family, equivalent to the reference's
+`Rust::Rustc` / `Rust::Cargo` (corr:FindRust.cmake:902-915; port-ledger
+naming-map row; WP3, 2026-09-22).
+
 ## D12: pixi CMake API ships as one module; test/example opt-in defaults
 
 (1) All pixi functions -- read-only, build-time, explicit-mutating, tool-install and bootstrap -- live in `cmake/PolyOrchPixiHelpers.cmake` as a single module (~1500 lines). The split-by-timing-class sibling (PolyOrchPixiWorkspace.cmake) was merged away by user directive on 2026-09-21, consciously overriding the generic 800-line file guideline for this file; the section banners keep the timing classes visible. (2) Option defaults follow `PROJECT_IS_TOP_LEVEL`: tests ON when PolyOrch is configured standalone, OFF when embedded (a host's ctest surface never grows polyorch cases by accident); examples OFF both ways. Note that `polyorch_option` does not FORCE: a stale cache pins the old default -- changing a default requires delete-cache/reconfigure instructions to users. (3) The generator's built-in `test` target is directory-scoped and invisible to project-target UIs (CMakeTools dropdown, CMake outline); `PolyOrchTest` is the discoverable umbrella, and it runs `ctest --test-dir <its own dir>` so it never executes a host's suite. Corrosion (github.com/corrosion-rs/corrosion) is the naming/architecture reference for the future Rust wrappers.
