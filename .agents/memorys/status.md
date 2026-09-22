@@ -58,7 +58,7 @@
 ## Open Items
 
 - [x] **O1 RESOLVED** (2026-09-20, D10) -- validation repository is the sibling monorepo hosting this checkout; identity recorded only in the git-excluded plan zone per C6
-- [ ] **O6 REOPENED** (D10) -- the validation host is Linux/x86_64; macOS-only no longer holds, Linux enters scope at first experiment contact
+- [x] **O6 RESOLVED** (2026-09-22) -- Linux contact happened in force: every e2e/matrix leg (incl. the real musl cross route) ran on this Linux/x86_64 host; the CMake surface itself is host-agnostic, so no platform-specific amendment was needed
 - [x] **O9 RULED** (2026-09-22, D17) -- invariant 2 governs configuration, not artifact bytes; staged copy into standard dirs permitted, uniform path = layout convention, native paths may ride debug metadata; contracts amended same commit; unlocks full-port WP4
 - [ ] **Prototype not on this host** (D10.4) -- engine and environment manager are not installed and the prototype tree is absent; the first experiment re-implements the cargo bridge from the contract (plan zone S1-S2)
 - [ ] **Experiment-field coverage gaps stay open** (D10.3) -- npm bridge and O4 get zero coverage from the validation target; do not treat them as adjudicated
