@@ -12,7 +12,8 @@ include("${CMAKE_CURRENT_LIST_DIR}/../../cmake/PolyOrchRustHelpers.cmake")
 # Naming contract under test (gen:137-142 rationale):
 #   lib kinds:  handle = target name with dashes -> underscores -- cargo's own
 #               lib artifact name, version-proof (explicit lib names never had
-#               dashes; Rust >= 1.79 replaces inherited dashes too).
+#               dashes; the reference reports newer Rust normalises them --
+#               gen:139 + its issue 501).
 #   bin kinds:  handle = "<target>-exe" UNCONDITIONALLY (the bin artifact base
 #               equals the raw target name, so a bare handle would trip the
 #               PIT-13 collision guard); selector = raw name, dashes kept.

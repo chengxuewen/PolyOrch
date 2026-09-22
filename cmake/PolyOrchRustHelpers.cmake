@@ -940,7 +940,8 @@ endfunction()
 # Naming rules -- gen:137-142 is the dash->underscore rationale:
 #   * lib handles AND selectors: dashes replaced by underscores. Cargo names
 #     the lib ARTIFACT after the crate name: explicit lib targets never had
-#     dashes, and Rust >= 1.79 replaces inherited dashes too -- normalising
+#     dashes; per the reference's own note (gen:139, citing its issue 501)
+#     newer Rust normalises inherited dashes too -- normalising
 #     the metadata target name gives one version-proof handle + artifact name.
 #     The raw metadata name is NEVER trusted for the crate identity (no
 #     crate_name dependency); the normalization from target.name IS the

@@ -9,6 +9,10 @@ the build engines it drives or embeds, and the environment and package managers 
 
 The reason each document exists is its final section: **what PolyOrch should adopt, adapt, or avoid.**
 
+Root-level port records (not research profiles): `corrosion-ATTRIBUTION.md`,
+`corrosion-port-ledger.md`, `LICENSE.corrosion` -- the rust-face port's
+licence, scope, and per-mechanism fidelity ledger.
+
 ## Layout
 
 | Directory | Covers |
@@ -71,6 +75,7 @@ Starting facts for each profile. Confirm and extend these, but do not contradict
 | CMake | `gitlab.kitware.com/cmake/cmake` (GitHub mirror `github.com/Kitware/CMake`) | 4.4.3 (2026-08-25) | BSD-3-Clause | C/C++ | `CMakeLists.txt`, `CMakePresets.json` |
 | Meson | `github.com/mesonbuild/meson` | 1.12.0 (2026-08-10) | Apache-2.0 | Python | `meson.build`, `meson.options` |
 | Pixi | `github.com/prefix-dev/pixi` | v0.81.0 (2026-09-15) | BSD-3-Clause | Rust | `pixi.toml`, `pixi.lock` |
+| corrosion | `github.com/corrosion-rs/corrosion` | pinned `c4786e7` (2026-05-16) | MIT | Rust + CMake | `Cargo.toml`, `CMakeLists.txt` |
 | vcpkg | `github.com/microsoft/vcpkg` (tool: `github.com/microsoft/vcpkg-tool`) | rolling, date-stamped: ports 2026-07-29, tool 2026-07-27 | MIT (ported libraries keep their own licences) | C++ (the tool) | `vcpkg.json` manifest, ports, registries |
 | Conan | `github.com/conan-io/conan` | 2.32.0 (2026-08-31) | MIT | Python | `conanfile.py`, `conanfile.txt` |
 

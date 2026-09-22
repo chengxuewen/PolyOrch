@@ -54,6 +54,32 @@ byte-identity gate would encode the wrong invariant. Where a deviation is
 deliberate, the ledger says so; where it is accidental, the ledger is the bug
 report.
 
+## Modification statement (full-port execution, 2026-09-22)
+
+* **What was taken**: mechanisms only (command shapes, the property-carrier
+  architecture, ordering rules, naming contracts, test doctrines), always
+  re-expressed in PolyOrch naming and file layout. No source file was copied;
+  no CMake code was vendored.
+* **Where each mechanism is accounted**: `corrosion-port-ledger.md` maps
+  upstream lines to ours per function/knob, with the deviation stated.
+  Deviations are of two kinds, both registered: deliberate design choices
+  (configure-time stamp resolution on the host layer, kindless pair
+  dispatch, no umbrella glue, uppercase cc-rs keys, staging not applied by
+  default) and simplifications of deferred clusters (local rustflags,
+  file-sets, Windows/Android derive chains) -- never presented as parity.
+* **Fidelity corrections in flight**: brief-internal line anchors were
+  re-grepped at the pin; absent ones were registered rather than invented,
+  and one false 'absent' claim (hostbuild) was retracted -- the ledger's
+  audit sections keep the grep evidence for each event.
+* **Not ported by policy**: the reference's CI (PolyOrch runs the local
+  tests/matrix.sh stand-in), install(EXPORT) set machinery, per-CFG
+  import-file staging, and everything in the status.md deferred register
+  (including Rust_LLVM_VERSION, deliberately unmirrored: no gate uses it).
+* **Live-tool boundary**: cxxbridge/cbindgen e2e legs are gated on tool
+  presence + the crates.io capability; no `cargo install` has run (registry
+  egress was down at port time; the shared-state gate demands explicit
+  user authorization at the first live attempt, `cargo uninstall` rollback).
+
 ## Not covered here
 
 * The PolyOrch architecture record and the whitepaper describe PolyOrch's own
