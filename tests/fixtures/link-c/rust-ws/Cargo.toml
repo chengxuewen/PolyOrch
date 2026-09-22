@@ -1,0 +1,10 @@
+[package]
+name = "probe_staticlib"
+version = "0.1.0"
+edition = "2021"
+
+[workspace]
+
+[lib]
+name = "probe_staticlib"
+crate-type = ["staticlib"]

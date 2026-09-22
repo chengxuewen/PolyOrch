@@ -1,0 +1,18 @@
+[package]
+name = "greet-cli"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+name = "greet"
+path = "src/lib.rs"
+
+[[bin]]
+name = "greet-cli"
+path = "src/main.rs"
+
+[dependencies]
+
+# Standalone workspace root: without it cargo walks up and can pick an
+# enclosing workspace that does not list this package.
+[workspace]

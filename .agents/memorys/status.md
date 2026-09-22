@@ -46,11 +46,11 @@
 | English-only artifacts | see `conventions.md` C4 | pass (2026-09-18) |
 | vendored Xmake skills unmodified | see `conventions.md` C5 | pass (2026-09-20) |
 | design-doc separation (no cross-naming) | see `conventions.md` C6 | pass (2026-09-20) |
-| cmake unit suite | `bash tests/run.sh` | pass=32 fail=0 skip=7 (7 e2e driver-gated) offline; **39/39** with `POLYORCH_TEST_E2E=1` — no R-12 flake observed this run (2026-09-22) |
+| cmake unit suite | `bash tests/run.sh` | pass=32 fail=0 skip=7 (7 e2e driver-gated) offline; **39/39** with `POLYORCH_TEST_E2E=1` (2026-09-22, WP1: the four rust e2e legs rule-wiring/import-ws/link-c/install-e2e now run on `tests/fixtures/` static projects through `fixtures/_driver.cmake`; heredoc twins retired, counts unchanged) |
 | CTest registration | throwaway host x `-DPolyOrch_TEST_E2E=ON` + `ctest --test-dir <b>` | full ctest leg green in all 4 matrix cells (2026-09-22); **blocked standalone** -- root configure FATALs at PlatformSupport mkspec detection without host context (c79c4bf known state) -- re-run under the host or after mkspec fallback lands |
 | rust offline suite | `bash tests/run.sh` | rust cases 17/17 pass + 6 e2e-skip (2026-09-22) |
-| rust e2e (real cargo via pixi) | `POLYORCH_TEST_E2E=1 bash tests/run.sh` | pass incl. link-c + install-e2e + import-ws, all behind `# requires: pixi-rust` (2026-09-22) |
-| generator matrix | `bash tests/matrix.sh` | 4/4 cells {Makefiles,Ninja}x{Debug,Release}, right-reason greps; ctest leg now carries the SKIP veto (FAIL_REG) and marked-skip (SKIP_REG) properties (2026-09-22) |
+| rust e2e (real cargo via pixi) | `POLYORCH_TEST_E2E=1 bash tests/run.sh` | pass incl. link-c + install-e2e + import-ws, all behind `# requires: pixi-rust`; fixture-driver warm medians at parity with the retired heredoc twins (R-12 pixi-index spikes dominate the variance either way; negative legs now assert against the driver's raw `_configure.log`/`_build.log`, and the install-e2e/link-c crates take the pow exponent at runtime so the release profile cannot const-fold it away) (2026-09-22, WP1) |
+| generator matrix | `bash tests/matrix.sh` | 4/4 cells {Makefiles,Ninja}x{Debug,Release}, right-reason greps; ctest leg carries the WP0 SKIP veto (FAIL_REG) and marked-skip (SKIP_REG) properties; cells export `POLYORCH_TEST_GENERATOR` beside `POLYORCH_TEST_CONFIG` so the fixture-driver cases build on the cell's generator+config (2026-09-22, WP1) |
 | skip contract + self-lock | scratch-copy proofs (repo untouched): canary tripwire fires; executed==0 tripwire fires; unmarked ": SKIP (" vetoes in BOTH drivers; poisoned-HOME run -> 3 contract skips (run.sh skip count) / 3 ctest Skipped, rc=0 | pass (2026-09-22, D15) |
 | rust-basic umbrella chain | `cmake --build <host> --target PolyOrchExampleRustBasic` | configure(bootstrap env) -> greet-cargo -> run-greet prints `hello, world!` (2026-09-21, clean shell; see PIT-14) |
 

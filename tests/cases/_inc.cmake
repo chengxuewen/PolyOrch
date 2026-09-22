@@ -101,3 +101,26 @@ macro(ck_fail_rc v)
             "expected non-zero result, got 0 (line ${CMAKE_CURRENT_LIST_LINE})")
     endif()
 endmacro()
+
+# Helpers for the fixture-driver cases (tests/fixtures/_driver.cmake).
+# The driver reports on "DRIVER: ..." STATUS lines; the contract is documented
+# in the driver header. drv_echo re-prints them so run.sh logs and ctest -V
+# show the child's progress; drv_get extracts one "DRIVER: <key> <value>".
+macro(drv_echo text)
+    string(REPLACE "\r" "" _de_t "${${text}}")
+    string(REPLACE "\n" ";" _de_ls "${_de_t}")
+    foreach(_de_l IN LISTS _de_ls)
+        string(REGEX REPLACE "^-- " "" _de_l "${_de_l}")
+        if(_de_l MATCHES "^DRIVER: ")
+            message(STATUS "${_de_l}")
+        endif()
+    endforeach()
+endmacro()
+
+macro(drv_get text key out)
+    string(REGEX MATCH "DRIVER: ${key} ([^\r\n]+)" _drv_m "${${text}}")
+    string(STRIP "${CMAKE_MATCH_1}" ${out})
+    if("${${out}}" STREQUAL "")
+        message(FATAL_ERROR "drv_get: no 'DRIVER: ${key} <value>' line in driver output")
+    endif()
+endmacro()

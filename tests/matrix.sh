@@ -5,9 +5,12 @@
 # PlatformSupport mkspec detection - known state c79c4bf); the host only
 # wires cmake/ + tests/.
 #   usage: bash tests/matrix.sh          # ~1 min warm, network on cold cache
-# Each cell exports POLYORCH_TEST_CONFIG=<cfg> into ctest (children inherit),
-# so t-rust-profile-release asserts the cargo profile dir the cell's
-# CMAKE_BUILD_TYPE demands. The per-cell verdict additionally greps the
+# Each cell exports POLYORCH_TEST_CONFIG=<cfg> and POLYORCH_TEST_GENERATOR=<g>
+# into ctest (children inherit): t-rust-profile-release asserts the cargo
+# profile dir the cell's CMAKE_BUILD_TYPE demands, and the four fixture-driver
+# cases (rule-wiring/import-ws/link-c/install-e2e) forward both into
+# fixtures/_driver.cmake, so every fixture configure+build runs on the cell's
+# generator and config. The per-cell verdict additionally greps the
 # verbose re-run of that case for "(<Cfg> -> .cargo-target/<cfg>/" -- a
 # Release cell may not pass via a debug artifact (right-reason gate).
 set -u
@@ -34,7 +37,7 @@ for g in "Unix Makefiles" Ninja; do
         cl="$(echo "$c" | tr 'A-Z' 'a-z')"
         if cmake -S "$root/host" -B "$b" -G "$g" -DCMAKE_BUILD_TYPE="$c" \
                 -DPolyOrch_TEST_E2E=ON > "$b.log" 2>&1 \
-           && POLYORCH_TEST_E2E=1 POLYORCH_TEST_CONFIG="$c" ctest --test-dir "$b" --output-on-failure >> "$b.log" 2>&1 \
+           && POLYORCH_TEST_E2E=1 POLYORCH_TEST_CONFIG="$c" POLYORCH_TEST_GENERATOR="$g" ctest --test-dir "$b" --output-on-failure >> "$b.log" 2>&1 \
            && POLYORCH_TEST_CONFIG="$c" ctest --test-dir "$b" -R '^t-rust-profile-release$' -V >> "$b.log" 2>&1 \
            && grep -qE "\($c -> \.cargo-target/$cl/" "$b.log"; then
             echo "PASS [$g / $c]"

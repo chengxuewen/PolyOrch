@@ -174,3 +174,11 @@
 - **Solution**: enumerate the fixed line positions as explicit alternatives: `^# requires: ` OR `^#[^\n]*\n# requires: ` OR `^#[^\n]*\n#[^\n]*\n# requires: ` (or `OR` inside `if(... MATCHES)`).
 - **Verification**: write a script containing `set(_h "# requires: pixi\n")` + `string(REGEX MATCH "^(#[^\n]*\n){0,2}# requires: " _m "${_h}")` + `message(STATUS "[${_m}]")` and run it under `cmake -P` (done at `tests/CMakeLists.txt` making-time): prints `[]`. The same input matched by the three explicit `^#...` / `^#...\n#...` alternatives prints non-empty.
 - **Forbidden**: quantified groups `(x){n,m}` in any CMake regex (if(), string(REGEX), install/file(COPY) exclude patterns alike).
+
+## PIT-21: config propagation resurrects constant-folding — negative link legs must survive every profile (2026-09-21)
+
+- **Symptom**: after tests/matrix.sh began exporting the cell CONFIG into the fixture driver, the install-e2e/link-c negative legs (stripped stub must fail the C link) stopped biting in Release cells: `nm -u` showed the release archive had ZERO undefined `pow` refs vs one in debug — LLVM const-folded `pow(x, 2.0)` at -O3, silently deleting the very symbol whose absence the test asserted.
+- **Root cause**: PIT-18's compiler-fold class, second instance, entered through a new door: test hermeticity assumed the debug profile; harness-level config propagation changed the optimizer without changing the fixture.
+- **Solution**: exponent arrives at runtime (function argument), fold-proof at any profile; the assertion target (`pow` undefined in the archive) holds for debug AND release.
+- **Verification**: `nm -u` on the release archive shows the undefined ref; negative leg fails-to-link in both Release and Debug cells (matrix 4/4 green with vetoes live).
+- **Forbidden**: pinning negative-symbol tests to one optimization profile; any fixture whose proof-carrying symbol is computable at compile time.
