@@ -23,22 +23,12 @@ _polyorch_pixi_scratch(_s)
 
 # --- positive: build + run ---------------------------------------------------
 set(_b "${_s}/pos")
-set(_dargs "-DFIXTURE=${CMAKE_CURRENT_LIST_DIR}/../fixtures/features"
-           "-DBUILD=${_b}" "-DCONFIG=${_cfg}" "-DTARGETS=cargo-build-feat-on")
-if("$ENV{POLYORCH_TEST_GENERATOR}")
-    list(APPEND _dargs "-DGENERATOR=$ENV{POLYORCH_TEST_GENERATOR}")
-endif()
-execute_process(COMMAND "${CMAKE_COMMAND}" ${_dargs}
-    -P "${CMAKE_CURRENT_LIST_DIR}/../fixtures/_driver.cmake"
-    RESULT_VARIABLE _rc OUTPUT_VARIABLE _out ERROR_VARIABLE _err)
-set(_dlog "${_out}${_err}")
-drv_echo(_dlog)
-if(_dlog MATCHES "DRIVER: skip")
+drv_run(_dlog _rc SKIP_VAR _skip
+    FIXTURE "${CMAKE_CURRENT_LIST_DIR}/../fixtures/features"
+    BUILD "${_b}" CONFIG "${_cfg}" TARGETS cargo-build-feat-on)
+if(_skip)
     message(STATUS "t-rust-features : SKIP (fixture gate: capability absent at configure)")
     return()
-endif()
-if(NOT _rc EQUAL 0)
-    message(FATAL_ERROR "rust-features: positive driver failed (${_rc})\n${_dlog}")
 endif()
 
 drv_get(_dlog featbin _fb)

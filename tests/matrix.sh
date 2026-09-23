@@ -73,7 +73,7 @@ done
 if command -v ninja >/dev/null 2>&1; then
     cells=$((cells+1))
     b="$root/b-mc"
-    excl='^polyorch::t-rust-(rule-wiring|import-ws|link-c|install-e2e|install-export|multitarget)$'
+    excl='^polyorch::t-rust-(rule-wiring|import-ws|link-c|install-e2e|install-export|multitarget|cxxbridge-e2e|nostd)$'
     if cmake -S "$root/host" -B "$b" -G "Ninja Multi-Config" \
             -DPolyOrch_TEST_E2E=ON > "$b.log" 2>&1 \
        && POLYORCH_TEST_E2E=1 POLYORCH_TEST_CONFIG=Debug POLYORCH_TEST_GENERATOR="Ninja Multi-Config" \

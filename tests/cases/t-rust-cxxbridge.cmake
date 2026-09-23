@@ -85,25 +85,18 @@ if(NOT _cfg)
 endif()
 set(_b "${_s}/cbchild")
 set(_stubs "${CMAKE_CURRENT_LIST_DIR}/../fixtures/tool-stubs")
-set(_dargs "-DFIXTURE=${CMAKE_CURRENT_LIST_DIR}/../fixtures/cxxbridge"
-           "-DBUILD=${_b}" "-DCONFIG=${_cfg}"
-           "-DGENERATOR=Unix Makefiles"
-           "-DTARGETS=bridge-lib-cxx\\;cargo-build-bridge-lib-static"
 # (the mediator is built EXPLICITLY: a STATIC consumer does not propagate
 # the imported handle's auto-build edge -- that edge fires at final link;
 # nothing here links a binary on purpose, keeping the leg cargo-cheap).
-           "-DPASSTHROUGH=-DPOLYORCH_TEST_TOOL_PREFIX=${_stubs}\\;-DPOLYORCH_TEST_TOOL_VERSION=1.0.131")
-execute_process(COMMAND "${CMAKE_COMMAND}" ${_dargs}
-    -P "${CMAKE_CURRENT_LIST_DIR}/../fixtures/_driver.cmake"
-    RESULT_VARIABLE _rc OUTPUT_VARIABLE _out ERROR_VARIABLE _err)
-set(_dlog "${_out}${_err}")
-drv_echo(_dlog)
-if(_dlog MATCHES "DRIVER: skip")
+# PASSTHROUGH is a RAW list -- drv_run escapes ';' itself (P1 plan).
+drv_run(_dlog _rc SKIP_VAR _skip
+    FIXTURE "${CMAKE_CURRENT_LIST_DIR}/../fixtures/cxxbridge"
+    BUILD "${_b}" CONFIG "${_cfg}" GENERATOR "Unix Makefiles"
+    TARGETS bridge-lib-cxx cargo-build-bridge-lib-static
+    PASSTHROUGH -DPOLYORCH_TEST_TOOL_PREFIX=${_stubs} -DPOLYORCH_TEST_TOOL_VERSION=1.0.131)
+if(_skip)
     message(STATUS "t-rust-cxxbridge : SKIP (fixture gate: capability absent at configure)")
     return()
-endif()
-if(NOT _rc EQUAL 0)
-    message(FATAL_ERROR "t-rust-cxxbridge: driver failed (${_rc})\n${_dlog}")
 endif()
 
 # Generated tree (layout mirror of corr:1879-1900: include/<cxx_t>/,

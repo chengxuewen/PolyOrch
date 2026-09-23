@@ -124,3 +124,71 @@ macro(drv_get text key out)
         message(FATAL_ERROR "drv_get: no 'DRIVER: ${key} <value>' line in driver output")
     endif()
 endmacro()
+
+# drv_run(<out_log_var> <out_rc_var> [SKIP_VAR <var>] [EXPECT_FAIL]
+#         FIXTURE <dir> BUILD <dir> [CONFIG <cfg>] [GENERATOR <gen>]
+#         [TARGETS <t1;t2>] [PASSTHROUGH <raw-list>])
+#
+# One-call replacement for the per-case driver-invocation boilerplate
+# (P1 plan 2026-09-23-driver-macro; Momus + impl-reviewer conditioned PASS).
+#   1. Assemble -D args: FIXTURE/BUILD REQUIRED; CONFIG three-level
+#      (GIVEN -> $ENV{POLYORCH_TEST_CONFIG} -> Debug); GENERATOR dual
+#      semantics (GIVEN = forced literal, else the env probe); TARGETS;
+#      PASSTHROUGH RAW list, ';' escaped INSIDE.
+#   2-4. execute_process + drv_echo + SKIP_VAR + EXPECT_FAIL contract.
+# Internals carry the _drv_ prefix (macros share the caller's scope).
+macro(drv_run _drv_out_log _drv_out_rc)
+    cmake_parse_arguments(_drv "EXPECT_FAIL" "SKIP_VAR;FIXTURE;BUILD;CONFIG;GENERATOR" "TARGETS;PASSTHROUGH" ${ARGN})
+    if(_drv_UNPARSED_ARGUMENTS)
+        message(FATAL_ERROR "drv_run: unknown args: ${_drv_UNPARSED_ARGUMENTS}")
+    endif()
+    set(_drv_dargs "-DFIXTURE=${_drv_FIXTURE}" "-DBUILD=${_drv_BUILD}")
+    if(_drv_CONFIG)
+        set(_drv_cfg "${_drv_CONFIG}")
+    elseif(DEFINED ENV{POLYORCH_TEST_CONFIG})
+        set(_drv_cfg "$ENV{POLYORCH_TEST_CONFIG}")
+    else()
+        set(_drv_cfg Debug)
+    endif()
+    list(APPEND _drv_dargs "-DCONFIG=${_drv_cfg}")
+    if(_drv_GENERATOR)
+        list(APPEND _drv_dargs "-DGENERATOR=${_drv_GENERATOR}")
+    elseif(DEFINED ENV{POLYORCH_TEST_GENERATOR})
+        list(APPEND _drv_dargs "-DGENERATOR=$ENV{POLYORCH_TEST_GENERATOR}")
+    endif()
+    # TARGETS/PASSTHROUGH carry REAL semicolons; appending "-DK=${v}" to a
+    # list SPLITS at them (measured: list(APPEND "-DT=a;b") stores two
+    # elements). Escape BEFORE appending -- the old boilerplate avoided this
+    # by passing pre-escaped quoted literals.
+    if(_drv_TARGETS)
+        set(_drv_t "${_drv_TARGETS}")
+        string(REPLACE ";" "\\;" _drv_t "${_drv_t}")
+        list(APPEND _drv_dargs "-DTARGETS=${_drv_t}")
+    endif()
+    if(_drv_PASSTHROUGH)
+        set(_drv_pt "${_drv_PASSTHROUGH}")
+        string(REPLACE ";" "\\;" _drv_pt "${_drv_pt}")
+        list(APPEND _drv_dargs "-DPASSTHROUGH=${_drv_pt}")
+    endif()
+    execute_process(COMMAND "${CMAKE_COMMAND}" ${_drv_dargs}
+        -P "${CMAKE_CURRENT_LIST_DIR}/../fixtures/_driver.cmake"
+        RESULT_VARIABLE ${_drv_out_rc}
+        OUTPUT_VARIABLE ${_drv_out_log}
+        ERROR_VARIABLE ${_drv_out_log})
+    drv_echo(${_drv_out_log})
+    if(_drv_SKIP_VAR)
+        if("${${_drv_out_log}}" MATCHES "DRIVER: skip")
+            set(${_drv_SKIP_VAR} TRUE)
+        endif()
+    endif()
+    if(_drv_EXPECT_FAIL)
+        if(${_drv_out_rc} EQUAL 0)
+            message(FATAL_ERROR
+                "expected the driver to fail, got rc=0\n${${_drv_out_log}}")
+        endif()
+    else()
+        if(NOT ${_drv_out_rc} EQUAL 0)
+            message(FATAL_ERROR "driver failed (rc=${${_drv_out_rc}})\n${${_drv_out_log}}")
+        endif()
+    endif()
+endmacro()

@@ -50,24 +50,16 @@ endif()
 _polyorch_pixi_scratch(_s)
 set(_b "${_s}/b")
 
-# \; protect the TARGETS list: expanding ${_dargs} would re-split a ';'
-# element into three argv tokens (the t-rust-output-dir lesson).
-set(_dargs "-DFIXTURE=${CMAKE_CURRENT_LIST_DIR}/../fixtures/cross-musl"
-           "-DBUILD=${_b}" "-DCONFIG=${_cfg}" "-DGENERATOR=Unix Makefiles"
-           "-DTARGETS=m-bin-cargo\\;m-st-cargo\\;hb-bin-cargo"
-           "-DPASSTHROUGH=-DPolyOrch_RUST_CARGO_TARGET=${_tup}")
-
-execute_process(COMMAND "${CMAKE_COMMAND}" ${_dargs}
-    -P "${CMAKE_CURRENT_LIST_DIR}/../fixtures/_driver.cmake"
-    RESULT_VARIABLE _rc OUTPUT_VARIABLE _out ERROR_VARIABLE _err)
-set(_dlog "${_out}${_err}")
-drv_echo(_dlog)
-if(_dlog MATCHES "DRIVER: skip")
+# (TARGETS/PASSTHROUGH carry semicolons; drv_run takes them as multi-tokens
+# and escapes internally -- the old "\;" comment story now lives in the macro.)
+drv_run(_dlog _rc SKIP_VAR _skip
+    FIXTURE "${CMAKE_CURRENT_LIST_DIR}/../fixtures/cross-musl"
+    BUILD "${_b}" CONFIG "${_cfg}" GENERATOR "Unix Makefiles"
+    TARGETS m-bin-cargo m-st-cargo hb-bin-cargo
+    PASSTHROUGH -DPolyOrch_RUST_CARGO_TARGET=${_tup})
+if(_skip)
     message(STATUS "t-rust-musl : SKIP (fixture gate: capability absent at configure)")
     return()
-endif()
-if(NOT _rc EQUAL 0)
-    message(FATAL_ERROR "rust-musl: driver failed (${_rc})\n${_dlog}")
 endif()
 
 # --- the knob genuinely routed ----------------------------------------------

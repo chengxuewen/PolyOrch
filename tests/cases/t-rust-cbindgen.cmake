@@ -100,22 +100,16 @@ if(NOT _cfg)
 endif()
 set(_b "${_s}/cgchild")
 set(_stubs "${CMAKE_CURRENT_LIST_DIR}/../fixtures/tool-stubs")
-set(_dargs "-DFIXTURE=${CMAKE_CURRENT_LIST_DIR}/../fixtures/cbindgen"
-           "-DBUILD=${_b}" "-DCONFIG=${_cfg}"
-           "-DGENERATOR=Unix Makefiles"
-           "-DTARGETS=polyorch-cbindgen-cb-lib-bindings\\;polyorch-cbindgen-cb-manual-bindings"
-           "-DPASSTHROUGH=-DPOLYORCH_TEST_TOOL_PREFIX=${_stubs}")
-execute_process(COMMAND "${CMAKE_COMMAND}" ${_dargs}
-    -P "${CMAKE_CURRENT_LIST_DIR}/../fixtures/_driver.cmake"
-    RESULT_VARIABLE _rc OUTPUT_VARIABLE _out ERROR_VARIABLE _err)
-set(_dlog "${_out}${_err}")
-drv_echo(_dlog)
-if(_dlog MATCHES "DRIVER: skip")
+drv_run(_dlog _rc SKIP_VAR _skip
+    FIXTURE "${CMAKE_CURRENT_LIST_DIR}/../fixtures/cbindgen"
+    BUILD "${_b}"
+    CONFIG "${_cfg}"
+    GENERATOR "Unix Makefiles"
+    TARGETS polyorch-cbindgen-cb-lib-bindings\;polyorch-cbindgen-cb-manual-bindings
+    PASSTHROUGH -DPOLYORCH_TEST_TOOL_PREFIX=${_stubs})
+if(_skip)
     message(STATUS "t-rust-cbindgen : SKIP (fixture gate: capability absent at configure)")
     return()
-endif()
-if(NOT _rc EQUAL 0)
-    message(FATAL_ERROR "t-rust-cbindgen: driver failed (${_rc})\n${_dlog}")
 endif()
 
 # Functional env assertion through the stub header (auto leg): the host
