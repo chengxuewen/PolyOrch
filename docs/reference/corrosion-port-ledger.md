@@ -1,5 +1,10 @@
 # Corrosion Port Ledger
 
+> **ctest namespace note (2026-09-22)**: ctest view names are `polyorch::<stem>`
+> (`ff0217b`; CMP0110, floor 3.22) -- case-file stems and the run.sh SKIP-contract
+> tokens stay bare. Rationale: bare `t-*` names silently double-register when a host
+> tree registers its own (measured 2026-09-22). The WP9 table below uses stems.
+
 > Externally sourced record (C2): the mechanism-by-mechanism account of the
 > full port of corrosion's functionality and test machinery into PolyOrch's
 > CMake surface. Provenance, licence and drift policy:
