@@ -13,6 +13,13 @@
 | `rust-cross/` | `rustup target add x86_64-unknown-linux-musl` then `-DPolyOrch_RUST_CARGO_TARGET=<triple>` | cross-compiling in one graph: every handle routes through `--target` (artifacts nest under `.cargo-target/<triple>/`), while `polyorch_rust_set_hostbuild` opts one handle back OUT to the host layer -- device binary + build-machine binary, one configure |
 | `rust-basic/` | `cmake -S rust-basic -B build` | the rust helpers on the system route: `polyorch_rust_setup()` (no `FROM` -- cargo/rustc from `PATH`) selects the toolchain, `polyorch_rust_build()` exports the binary as the imported target `greet`, `polyorch_rust_test()` registers a non-default `cargo test` target, `polyorch_rust_run()` wires `--target run-greet`; the whole example is offline -- nothing here installs or pins the toolchain (pinning is an environment concern, and the pixi `FROM pixi` route is a covered mechanism, not an example need) |
 
+**Route matrix note**: every rust example carries BOTH routes -- the default
+configure is the system route, and adding `-DPolyOrch_EXAMPLE_PIXI=ON`
+(+ `-DPolyOrch_PIXI_MIRROR=cn` on a domestic network) re-runs the SAME
+example with the toolchain delivered by a pixi env (the umbrella targets
+`PolyOrchExampleRust*Pixi` encode this). A dedicated "pixi rust" example
+would duplicate the buttons; the route IS the option.
+
 The tool-only half of the cold start is its own entry point --
 `polyorch_pixi_tool_ensure([VERSION] [URL] [HASH] [NO_PRECHECK] [QUIET])` --
 locate/install/verify the pixi binary and nothing else (no manifest, no lock,
