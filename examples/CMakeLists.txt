@@ -47,4 +47,28 @@ add_custom_target(PolyOrchExampleRustBasic
     COMMAND ${CMAKE_COMMAND} --build
         "${CMAKE_CURRENT_BINARY_DIR}/standalone/rust-basic" --target run-greet
     COMMENT "rust-basic: system-cargo configure -> cargo build -> run (offline)")
-set_target_properties(PolyOrchExampleRustBasic PROPERTIES FOLDER ${PROJECT_NAME}/examples/rust-basic)
+set_target_properties(PolyOrchExampleRustBasic PROPERTIES FOLDER ${PROJECT_NAME}/examples)
+
+# P0 examples (dual-route/examples expansion, 2026-09-23): import an EXISTING
+# workspace, and the mixed C<->Rust link. Both offline, system route.
+add_custom_target(PolyOrchExampleRustImport
+    COMMAND ${CMAKE_COMMAND}
+        -S "${CMAKE_CURRENT_SOURCE_DIR}/rust-import"
+        -B "${CMAKE_CURRENT_BINARY_DIR}/standalone/rust-import"
+    COMMAND ${CMAKE_COMMAND} --build
+        "${CMAKE_CURRENT_BINARY_DIR}/standalone/rust-import" --target cargo-build-dash_ed
+    COMMAND ${CMAKE_COMMAND} --build
+        "${CMAKE_CURRENT_BINARY_DIR}/standalone/rust-import" --target run-say-hi-exe
+    COMMENT "rust-import: cargo metadata import -> build both members -> run (offline)")
+set_target_properties(PolyOrchExampleRustImport PROPERTIES FOLDER ${PROJECT_NAME}/examples)
+
+add_custom_target(PolyOrchExampleRustLinkC
+    COMMAND ${CMAKE_COMMAND}
+        -S "${CMAKE_CURRENT_SOURCE_DIR}/rust-link-c"
+        -B "${CMAKE_CURRENT_BINARY_DIR}/standalone/rust-link-c"
+    COMMAND ${CMAKE_COMMAND} --build
+        "${CMAKE_CURRENT_BINARY_DIR}/standalone/rust-link-c" --target app
+    COMMAND ${CMAKE_COMMAND} --build
+        "${CMAKE_CURRENT_BINARY_DIR}/standalone/rust-link-c" --target run-cli-user-tool
+    COMMENT "rust-link-c: C exe <- Rust staticlib, Rust bin <- C staticlib (offline)")
+set_target_properties(PolyOrchExampleRustLinkC PROPERTIES FOLDER ${PROJECT_NAME}/examples)
