@@ -46,6 +46,7 @@ set_target_properties(PolyOrchExamplePixiWorkspace PROPERTIES FOLDER ${PROJECT_N
 # Standalone configure + build: the example resolves cargo/rustc from PATH
 # (system route, no network, no environment install), then the two build
 # invocations compile and execute the artifact.
+if(PolyOrch_BUILD_RUST_EXAMPLES AND PolyOrchExample_cargo)
 add_custom_target(PolyOrchExampleRustBasic
     COMMAND ${CMAKE_COMMAND}
         -S "${CMAKE_CURRENT_SOURCE_DIR}/rust-basic"
@@ -56,6 +57,9 @@ add_custom_target(PolyOrchExampleRustBasic
         "${CMAKE_CURRENT_BINARY_DIR}/standalone/rust-basic" --target run-greet
     COMMENT "rust-basic: system-cargo configure -> cargo build -> run (offline)")
 set_target_properties(PolyOrchExampleRustBasic PROPERTIES FOLDER ${PROJECT_NAME}/examples)
+else()
+    message(STATUS "PolyOrch examples: PolyOrchExampleRustBasic not registered -- set PolyOrch_BUILD_RUST_EXAMPLES=ON (and have cargo on PATH)")
+endif()
 
 # P0 examples (dual-route/examples expansion, 2026-09-23): import an EXISTING
 # workspace, and the mixed C<->Rust link. GATED registration (matrix pixi-cell
@@ -81,7 +85,7 @@ foreach(_pair "Import:rust-import:cargo-build-dash_ed:run-say-hi-exe"
     list(GET _p 1 _dir)
     list(GET _p 2 _t1)
     list(GET _p 3 _t2)
-    if(PolyOrchExample_cargo)
+    if(PolyOrchExample_cargo AND PolyOrch_BUILD_RUST_EXAMPLES)
         add_custom_target(PolyOrchExampleRust${_name}
             COMMAND ${CMAKE_COMMAND}
                 -S "${CMAKE_CURRENT_SOURCE_DIR}/${_dir}"
@@ -94,7 +98,11 @@ foreach(_pair "Import:rust-import:cargo-build-dash_ed:run-say-hi-exe"
         set_target_properties(PolyOrchExampleRust${_name} PROPERTIES
             FOLDER ${PROJECT_NAME}/examples)
     else()
-        message(STATUS "PolyOrch examples: PolyOrchExampleRust${_name} not registered -- no cargo on PATH")
+        if(NOT PolyOrch_BUILD_RUST_EXAMPLES)
+            message(STATUS "PolyOrch examples: PolyOrchExampleRust${_name} not registered -- set PolyOrch_BUILD_RUST_EXAMPLES=ON")
+        else()
+            message(STATUS "PolyOrch examples: PolyOrchExampleRust${_name} not registered -- no cargo on PATH")
+        endif()
     endif()
     if(PolyOrchExample_pixi AND PolyOrch_BUILD_PIXI_EXAMPLES)
         add_custom_target(PolyOrchExampleRust${_name}Pixi
@@ -115,6 +123,7 @@ foreach(_pair "Import:rust-import:cargo-build-dash_ed:run-say-hi-exe"
 endforeach()
 
 # P1: the five-knob steering example (profile/features/env/rustflags/flags).
+if(PolyOrch_BUILD_RUST_EXAMPLES AND PolyOrchExample_cargo)
 add_custom_target(PolyOrchExampleRustProfileFeatures
     COMMAND ${CMAKE_COMMAND}
         -S "${CMAKE_CURRENT_SOURCE_DIR}/rust-profile-features"
@@ -125,8 +134,12 @@ add_custom_target(PolyOrchExampleRustProfileFeatures
         "${CMAKE_CURRENT_BINARY_DIR}/standalone/rust-profile-features" --target cargo-build-demo-rel
     COMMENT "rust-profile-features: debug+features+env vs release+rustflags+cargo-flags (offline)")
 set_target_properties(PolyOrchExampleRustProfileFeatures PROPERTIES FOLDER ${PROJECT_NAME}/examples)
+else()
+    message(STATUS "PolyOrch examples: PolyOrchExampleRustProfileFeatures not registered -- set PolyOrch_BUILD_RUST_EXAMPLES=ON (cargo on PATH)")
+endif()
 
 # P1: install/export producer-consumer chain.
+if(PolyOrch_BUILD_RUST_EXAMPLES AND PolyOrchExample_cargo)
 add_custom_target(PolyOrchExampleRustInstallExport
     COMMAND ${CMAKE_COMMAND}
         -S "${CMAKE_CURRENT_SOURCE_DIR}/rust-install-export/producer"
@@ -144,6 +157,9 @@ add_custom_target(PolyOrchExampleRustInstallExport
         "${CMAKE_CURRENT_BINARY_DIR}/standalone/rust-install-export-consumer"
     COMMENT "rust-install-export: build -> install(EXPORT) -> find_package consumer (offline)")
 set_target_properties(PolyOrchExampleRustInstallExport PROPERTIES FOLDER ${PROJECT_NAME}/examples)
+else()
+    message(STATUS "PolyOrch examples: PolyOrchExampleRustInstallExport not registered -- set PolyOrch_BUILD_RUST_EXAMPLES=ON (cargo on PATH)")
+endif()
 
 # P1: the "what pixi buys you" demo -- materialize an env, run its tools.
 if(NOT PolyOrch_BUILD_PIXI_EXAMPLES)
@@ -164,6 +180,7 @@ endif()
 
 # P1: the cross-compilation example. Registered ONLY when the demo musl
 # target is installed (rustup target list) -- otherwise the note explains.
+if(PolyOrch_BUILD_RUST_EXAMPLES AND PolyOrchExample_cargo)
 add_custom_target(PolyOrchExampleRustCross
     COMMAND ${CMAKE_COMMAND}
         -S "${CMAKE_CURRENT_SOURCE_DIR}/rust-cross"
@@ -175,3 +192,6 @@ add_custom_target(PolyOrchExampleRustCross
         "${CMAKE_CURRENT_BINARY_DIR}/standalone/rust-cross" --target run-host-tool-bin
     COMMENT "rust-cross: --target musl route + hostbuild escape (needs the musl target installed)")
 set_target_properties(PolyOrchExampleRustCross PROPERTIES FOLDER ${PROJECT_NAME}/examples)
+else()
+    message(STATUS "PolyOrch examples: PolyOrchExampleRustCross not registered -- set PolyOrch_BUILD_RUST_EXAMPLES=ON (cargo on PATH)")
+endif()
