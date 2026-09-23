@@ -121,9 +121,10 @@ python3 -m json.tool .opencode/opencode.json > /dev/null && echo "config valid"
   the memory claimed the tree was "everything untracked" while 219 of 223 entries were staged — a
   claim that would have made `git clean -fd` look safe when it would have deleted the four
   genuinely-untracked files. Check `git log` and `git status` before any git recovery action.
-- **Both former design blockers are resolved.** (1) PolyOrch's implementation language is
-  **Lua**, shipped as an Xmake addon (D3). (2) Xmake is the **engine**, not an adapter — its dual
-  role is settled in `docs/architecture.md` under `Superseded From The Whitepaper`.
+- **Design-form blockers are resolved.** (1) The delivery form is the **CMake helper surface**
+  (D16; D3 amended 2026-09-23 by user ruling: the Lua/Xmake-addon form is retired, not deferred).
+  (2) Xmake is the **engine**, not an adapter — its dual role is settled in `docs/architecture.md`
+  under `Superseded From The Whitepaper`.
 - **`.agents/rules/` and `.agents/skills/` are ported toolchain, not project opinions.** Only
   `rules/common`, `rules/*` language sets, and 8 generic skills survived the port; 14 domain
   skills and 2 disguised-domain rules (`platform.md`, `docker.md`) were removed. A 9th generic
