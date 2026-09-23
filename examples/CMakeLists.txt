@@ -112,3 +112,22 @@ add_custom_target(PolyOrchExampleRustProfileFeatures
         "${CMAKE_CURRENT_BINARY_DIR}/standalone/rust-profile-features" --target cargo-build-demo-rel
     COMMENT "rust-profile-features: debug+features+env vs release+rustflags+cargo-flags (offline)")
 set_target_properties(PolyOrchExampleRustProfileFeatures PROPERTIES FOLDER ${PROJECT_NAME}/examples)
+
+# P1: install/export producer-consumer chain.
+add_custom_target(PolyOrchExampleRustInstallExport
+    COMMAND ${CMAKE_COMMAND}
+        -S "${CMAKE_CURRENT_SOURCE_DIR}/rust-install-export/producer"
+        -B "${CMAKE_CURRENT_BINARY_DIR}/standalone/rust-install-export"
+    COMMAND ${CMAKE_COMMAND} --build
+        "${CMAKE_CURRENT_BINARY_DIR}/standalone/rust-install-export" --target cargo-build-mathkit
+    COMMAND ${CMAKE_COMMAND} --install
+        "${CMAKE_CURRENT_BINARY_DIR}/standalone/rust-install-export"
+        --prefix "${CMAKE_CURRENT_BINARY_DIR}/standalone/rust-install-export-stage"
+    COMMAND ${CMAKE_COMMAND}
+        -S "${CMAKE_CURRENT_SOURCE_DIR}/rust-install-export/consumer"
+        -B "${CMAKE_CURRENT_BINARY_DIR}/standalone/rust-install-export-consumer"
+        -DCMAKE_PREFIX_PATH=${CMAKE_CURRENT_BINARY_DIR}/standalone/rust-install-export-stage
+    COMMAND ${CMAKE_COMMAND} --build
+        "${CMAKE_CURRENT_BINARY_DIR}/standalone/rust-install-export-consumer"
+    COMMENT "rust-install-export: build -> install(EXPORT) -> find_package consumer (offline)")
+set_target_properties(PolyOrchExampleRustInstallExport PROPERTIES FOLDER ${PROJECT_NAME}/examples)
