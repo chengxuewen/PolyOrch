@@ -25,7 +25,7 @@ lines never share a configure:
 ```bash
 cmake -S . -B build-system -DPolyOrch_BUILD_TESTS=ON -DPolyOrch_TEST_E2E=ON
 cmake -S . -B build-pixi   -DPolyOrch_BUILD_TESTS=ON -DPolyOrch_TEST_E2E=ON \
-                          -DPolyOrch_TEST_RUST_FROM=pixi
+                          -DPolyOrch_TEST_ROUTE=pixi
 # per-tree umbrellas (IDE target UIs, hyphen names -- :: is illegal in targets):
 cmake --build build-system --target polyorch-tests-system   # ctest -L system
 cmake --build build-pixi   --target polyorch-tests-pixi     # ctest -L pixi

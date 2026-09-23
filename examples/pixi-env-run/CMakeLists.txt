@@ -4,7 +4,7 @@
 # CMake custom targets -- no PATH games, no global installs.
 #
 #   # standalone:
-#   cmake -S examples/pixi-env-run -B build -DPolyOrch_EXAMPLE_PIXI=ON
+#   cmake -S examples/pixi-env-run -B build -DPolyOrch_EXAMPLE_ROUTE=pixi
 #   cmake --build build                       # two demo targets
 #
 # The first configure solves + installs (network; add
@@ -17,9 +17,10 @@ project(pixi-env-run-example LANGUAGES NONE)
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_LIST_DIR}/../../cmake")
 include(PolyOrchPixiHelpers)
 
-option(PolyOrch_EXAMPLE_PIXI "Materialize the pixi env and run its tools" OFF)
-if(NOT PolyOrch_EXAMPLE_PIXI)
-    message(STATUS "pixi-env-run: skipped (opt in with -DPolyOrch_EXAMPLE_PIXI=ON; first configure solves)")
+set(PolyOrch_EXAMPLE_ROUTE "" CACHE STRING
+    "example route: empty = skip this pixi-only demo; 'pixi' = materialize + run")
+if(NOT PolyOrch_EXAMPLE_ROUTE STREQUAL "pixi")
+    message(STATUS "pixi-env-run: skipped (opt in with -DPolyOrch_EXAMPLE_ROUTE=pixi; first configure solves)")
     return()
 endif()
 

@@ -92,7 +92,7 @@ else
 fi
 # --- pixi-route cell (dual-route plan WP4) ----------------------------------
 # The sixth cell proves the pixi ROUTE inside the matrix: same host tree,
-# configured with the route bud -DPolyOrch_TEST_RUST_FROM=pixi, ctest run
+# configured with the route bud -DPolyOrch_TEST_ROUTE=pixi, ctest run
 # with the matching env bud, -L pixi filtering the pixi-family legs. The
 # fixture (route-pixi) materializes its own env and is the loud leg; the
 # keeper rides its own materializer. SKIP-NOTE form (like the generator
@@ -101,7 +101,7 @@ if command -v pixi >/dev/null 2>&1 || [ -x "$HOME/.pixi/bin/pixi" ]; then
     cells=$((cells+1))
     b="$root/b-pixi"
     if cmake -S "$root/host" -B "$b" -G "Unix Makefiles" \
-            -DPolyOrch_TEST_E2E=ON -DPolyOrch_TEST_RUST_FROM=pixi > "$b.log" 2>&1 \
+            -DPolyOrch_TEST_E2E=ON -DPolyOrch_TEST_ROUTE=pixi > "$b.log" 2>&1 \
        && POLYORCH_TEST_E2E=1 POLYORCH_TEST_RUST_FROM=pixi \
           ctest --test-dir "$b" -L pixi --output-on-failure >> "$b.log" 2>&1; then
         echo "PASS [pixi / Unix Makefiles]"

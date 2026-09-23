@@ -14,17 +14,17 @@
 #   cmake --build build --target run-say-hi-exe         # build + run the binary
 #
 #   # embedded in a host that has PolyOrch_BUILD_EXAMPLES=ON:
-#   gated by PolyOrch_RUST_EXAMPLES (same as rust-basic)
+#   gated by PolyOrch_BUILD_RUST_EXAMPLES (same as rust-basic)
 cmake_minimum_required(VERSION 3.22)
 
 if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
     set(_rust_standalone TRUE)
 else()
     set(_rust_standalone FALSE)
-    option(PolyOrch_RUST_EXAMPLES
+    option(PolyOrch_BUILD_RUST_EXAMPLES
         "Include the rust examples (build with the system cargo on PATH)" OFF)
 endif()
-if(NOT _rust_standalone AND NOT PolyOrch_RUST_EXAMPLES)
+if(NOT _rust_standalone AND NOT PolyOrch_BUILD_RUST_EXAMPLES)
     return()
 endif()
 
@@ -38,8 +38,11 @@ include(PolyOrchRustHelpers)
 #   EXAMPLE_PIXI=ON pixi route: this manifest declares rust; the env is
 #                  materialized HERE (explicit, may reach the network once)
 # Domestic network? add -DPolyOrch_PIXI_MIRROR=cn (TUNA conda-forge mirror)
-option(PolyOrch_EXAMPLE_PIXI "Configure this example for the pixi route" OFF)
-if(PolyOrch_EXAMPLE_PIXI)
+set(PolyOrch_EXAMPLE_ROUTE "" CACHE STRING
+    "example toolchain route: empty/'system' = system PATH, 'pixi' = pixi env (domestic network: also -DPolyOrch_PIXI_MIRROR=cn)")
+    # note: set() inside the example would shadow the user's -D; use the cache
+    # value directly -- empty means system.
+    if(PolyOrch_EXAMPLE_ROUTE STREQUAL "pixi")
     set(POLYORCH_PIXI_ENVIRONMENTS_DIR "${CMAKE_BINARY_DIR}/pixi-envs")
     polyorch_pixi_setup(MANIFEST "${CMAKE_CURRENT_LIST_DIR}/pixi.toml" ENVIRONMENT rust)
     polyorch_pixi_dependency(DEPENDS rust FEATURE rust NO_INSTALL)

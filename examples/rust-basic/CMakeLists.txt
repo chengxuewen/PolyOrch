@@ -12,7 +12,7 @@
 #   cmake --build build --target greet-test      # cargo test
 #
 #   # embedded in a host that has PolyOrch_BUILD_EXAMPLES=ON:
-#   cmake ... -DPolyOrch_RUST_EXAMPLES=ON        # otherwise this file returns early
+#   cmake ... -DPolyOrch_BUILD_RUST_EXAMPLES=ON        # otherwise this file returns early
 cmake_minimum_required(VERSION 3.22)
 
 # --- opt-in gate (runs before project()) -----------------------------------
@@ -24,10 +24,10 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
     set(_rust_standalone TRUE)
 else()
     set(_rust_standalone FALSE)
-    option(PolyOrch_RUST_EXAMPLES
+    option(PolyOrch_BUILD_RUST_EXAMPLES
         "Include the rust-basic example (builds with the system cargo on PATH)" OFF)
 endif()
-if(NOT _rust_standalone AND NOT PolyOrch_RUST_EXAMPLES)
+if(NOT _rust_standalone AND NOT PolyOrch_BUILD_RUST_EXAMPLES)
     return()
 endif()
 

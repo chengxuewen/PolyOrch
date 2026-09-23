@@ -57,9 +57,9 @@ set_target_properties(PolyOrchExampleRustBasic PROPERTIES FOLDER ${PROJECT_NAME}
 # a standalone `cmake -S` without the toolchain SHOULD fail loudly (the
 # user's own environment, with the fix in the message).
 # The pixi-route buttons materialize envs and may solve (network on first
-# run) -- opt-in, symmetric with PolyOrch_RUST_EXAMPLES. Registered only
+# run) -- opt-in, symmetric with PolyOrch_BUILD_RUST_EXAMPLES. Registered only
 # when this option is set AND the pixi tool is reachable.
-option(PolyOrch_PIXI_EXAMPLES
+option(PolyOrch_BUILD_PIXI_EXAMPLES
     "Register the pixi-route example buttons (PolyOrchExampleRust*Pixi, PixiEnvRun)" OFF)
 find_program(PolyOrchExample_cargo NAMES cargo
     PATHS "$ENV{HOME}/.cargo/bin" "$ENV{CARGO_HOME}/bin")
@@ -88,12 +88,12 @@ foreach(_pair "Import:rust-import:cargo-build-dash_ed:run-say-hi-exe"
     else()
         message(STATUS "PolyOrch examples: PolyOrchExampleRust${_name} not registered -- no cargo on PATH")
     endif()
-    if(PolyOrchExample_pixi AND PolyOrch_PIXI_EXAMPLES)
+    if(PolyOrchExample_pixi AND PolyOrch_BUILD_PIXI_EXAMPLES)
         add_custom_target(PolyOrchExampleRust${_name}Pixi
             COMMAND ${CMAKE_COMMAND}
                 -S "${CMAKE_CURRENT_SOURCE_DIR}/${_dir}"
                 -B "${CMAKE_CURRENT_BINARY_DIR}/standalone/${_dir}-pixi"
-                -DPolyOrch_EXAMPLE_PIXI=ON
+                -DPolyOrch_EXAMPLE_ROUTE=ON
             COMMAND ${CMAKE_COMMAND} --build
                 "${CMAKE_CURRENT_BINARY_DIR}/standalone/${_dir}-pixi" --target "${_t1}"
             COMMAND ${CMAKE_COMMAND} --build
@@ -138,8 +138,8 @@ add_custom_target(PolyOrchExampleRustInstallExport
 set_target_properties(PolyOrchExampleRustInstallExport PROPERTIES FOLDER ${PROJECT_NAME}/examples)
 
 # P1: the "what pixi buys you" demo -- materialize an env, run its tools.
-if(NOT PolyOrch_PIXI_EXAMPLES)
-    message(STATUS "PolyOrch examples: PolyOrchExamplePixiEnvRun not registered -- set PolyOrch_PIXI_EXAMPLES=ON")
+if(NOT PolyOrch_BUILD_PIXI_EXAMPLES)
+    message(STATUS "PolyOrch examples: PolyOrchExamplePixiEnvRun not registered -- set PolyOrch_BUILD_PIXI_EXAMPLES=ON")
 elseif(NOT PolyOrchExample_pixi)
     message(STATUS "PolyOrch examples: PolyOrchExamplePixiEnvRun not registered -- no pixi tool")
 else()
@@ -147,7 +147,7 @@ add_custom_target(PolyOrchExamplePixiEnvRun
     COMMAND ${CMAKE_COMMAND}
         -S "${CMAKE_CURRENT_SOURCE_DIR}/pixi-env-run"
         -B "${CMAKE_CURRENT_BINARY_DIR}/standalone/pixi-env-run"
-        -DPolyOrch_EXAMPLE_PIXI=ON
+        -DPolyOrch_EXAMPLE_ROUTE=ON
     COMMAND ${CMAKE_COMMAND} --build
         "${CMAKE_CURRENT_BINARY_DIR}/standalone/pixi-env-run" --target pixi-cmake-smoke
     COMMENT "pixi-env-run: materialize env -> run env tools (first run solves)")

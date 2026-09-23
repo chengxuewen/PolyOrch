@@ -106,8 +106,8 @@ foreach(_case IN LISTS _cases)
     # Dual-route bud (WP2): cache -D wins, then the env var, so both the
     # ctest.sh env path and the matrix -D path light the same bud.
     set(_env "TMPDIR=${_scratch};TEMP=${_scratch}")
-    if(PolyOrch_TEST_RUST_FROM)
-        set(_from "${PolyOrch_TEST_RUST_FROM}")
+    if(PolyOrch_TEST_ROUTE)
+        set(_from "${PolyOrch_TEST_ROUTE}")
     elseif(DEFINED ENV{POLYORCH_TEST_RUST_FROM})
         set(_from "$ENV{POLYORCH_TEST_RUST_FROM}")
     endif()
