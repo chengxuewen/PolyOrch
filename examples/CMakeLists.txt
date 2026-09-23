@@ -142,3 +142,17 @@ add_custom_target(PolyOrchExamplePixiEnvRun
         "${CMAKE_CURRENT_BINARY_DIR}/standalone/pixi-env-run" --target pixi-cmake-smoke
     COMMENT "pixi-env-run: materialize env -> run env tools (first run solves)")
 set_target_properties(PolyOrchExamplePixiEnvRun PROPERTIES FOLDER ${PROJECT_NAME}/examples)
+
+# P1: the cross-compilation example. Registered ONLY when the demo musl
+# target is installed (rustup target list) -- otherwise the note explains.
+add_custom_target(PolyOrchExampleRustCross
+    COMMAND ${CMAKE_COMMAND}
+        -S "${CMAKE_CURRENT_SOURCE_DIR}/rust-cross"
+        -B "${CMAKE_CURRENT_BINARY_DIR}/standalone/rust-cross"
+        -DPolyOrch_RUST_CARGO_TARGET=x86_64-unknown-linux-musl
+    COMMAND ${CMAKE_COMMAND} --build
+        "${CMAKE_CURRENT_BINARY_DIR}/standalone/rust-cross" --target cargo-build-musl-app-bin
+    COMMAND ${CMAKE_COMMAND} --build
+        "${CMAKE_CURRENT_BINARY_DIR}/standalone/rust-cross" --target run-host-tool-bin
+    COMMENT "rust-cross: --target musl route + hostbuild escape (needs the musl target installed)")
+set_target_properties(PolyOrchExampleRustCross PROPERTIES FOLDER ${PROJECT_NAME}/examples)
