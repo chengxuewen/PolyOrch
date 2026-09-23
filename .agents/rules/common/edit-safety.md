@@ -239,3 +239,11 @@ grep -c "duplicate-pattern" <file>    # expect 1; >1 = edit inserted duplicates
 **Rule**: ad-hoc retyped gate probes (different skip-list, different scope dirs, `-q` predicate slips) reported false FAILs and consumed a debug round each. Copy the canonical command blocks from `.agents/memorys/conventions.md` character-for-character; if a check must be extended, extend the convention, then run it.
 **Verification**: a gate verdict must be reproducible by pasting the same command from conventions.md into a clean shell.
 **Blocking condition**: reporting a gate FAIL that a canonical re-run does not reproduce.
+
+### 20. Generators are written with the write tool, never heredoc-inside-shell-inside-f-string (2026-09-22)
+
+**Rule**: When producing a generator script (python that rewrites another file's regions), write its source with the `write` tool directly. Forbidden: composing python source inside a bash heredoc inside an f-string (or any two-level quoting) -- escape layers multiply silently and the generated regex/pattern is corrupted (two failed rounds this session: gate-gen.py's region regexes never matched the real file). Regex anchors against generated text use `re.escape(literal)` copied from the actual file bytes, never hand-typed escape sequences.
+
+**Verification**: after writing a generator, run it TWICE (must be idempotent: second run = zero diff) and `bash -n`/`ast.parse` the artifact it produced.
+
+**Blocking condition**: debugging a generator's regex by hand-escaping instead of re-escaping via `re.escape` from file bytes; generating a generator via nested heredoc/f-string.

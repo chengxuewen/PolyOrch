@@ -199,3 +199,15 @@
 - **Solution**: do not fight it -- the wrapper's load-bearing line is the include(); where relocatability is needed derive from CMAKE_CURRENT_LIST_DIR under our OWN variable name (the -rust.cmake stub already does this).
 - **Verification**: t-rust-install-export consumer chain green; ledger row records the measurement.
 - **Forbidden**: defining/overwriting CMake-reserved config variables (PACKAGE_PREFIX_DIR et al.) in hand-written package files.
+
+## PIT-24: a failed multi-block registration batch + an unchained commit = silent record loss (2026-09-22)
+- **Symptom**: status.md and a commit message cited decision D20; decisions.md had no D20 entry. Caught by the Momus plan review, not by any gate.
+- **Root cause**: the recording python batch died on an unrelated anchor assertion BEFORE its append ran (PIT-84 family), while the follow-on commit went through because the shell chain was newline-separated, not `&&`-joined -- record-write and record-commit must be one atomic chain.
+- **Solution**: registration ops (memory/decision writes + their commits) are chained: `python3 ... && git add ... && git commit ...`; a batch that asserts MUST abort the commit. D20 re-registered with the incident noted.
+- **Verification**: `grep -c "## D20" .agents/memorys/decisions.md` must be 1; every commit citing a D/PIT number finds it: `for n in $(git log -p --since=2026-09-20 | grep -o 'D[0-9]\+' | sort -u | tr -d 'D'); do grep -q "^## D$n\b" .agents/memorys/decisions.md || echo "DANGLING D$n"; done`.
+
+## PIT-25: session memory promotes planned artifacts into phantom facts (2026-09-22)
+- **Symptom**: the namespace plan and the session summary referenced `docs/reference/corrosion-test-map.md` as a committed file; it never existed in git -- the test-map function lives in the port-ledger's WP9 section. A registration edit failed on the phantom path.
+- **Root cause**: WP9's plan line ("ledger gains the test map") was remembered as a landed file; status.md's history prose carried the phantom forward across sessions.
+- **Solution**: before editing/registering against any cited path: `git ls-files <path>` (or `test -f`); if absent, grep the ledger/README for which file actually carries the function, and fix the phantom reference in the same commit.
+- **Verification**: `git ls-files docs/reference/corrosion-test-map.md` -> empty; the namespace note lives at `docs/reference/corrosion-port-ledger.md` head.
