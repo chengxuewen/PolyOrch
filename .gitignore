@@ -121,3 +121,6 @@ examples/*/pixi.ps1
 # in-source configure accidents (suites always build out-of-tree)
 CMakeCache.txt
 CMakeFiles/
+
+# ctest drops Testing/Temporary logs when run from a source dir (standard hygiene)
+/Testing/

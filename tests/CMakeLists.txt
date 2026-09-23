@@ -29,6 +29,11 @@ file(GLOB _cases CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/cases/t-*.cmake"
 list(SORT _cases)
 foreach(_case IN LISTS _cases)
     get_filename_component(_name "${_case}" NAME_WE)
+    # ctest namespace pilot (plan 2026-09-22-test-namespace.md): the ctest
+    # view name is polyorch::<stem>; case file stems and the run.sh SKIP
+    # contract lines stay bare. CMP0110 (3.19+) allows '::' in the name;
+    # our floor is 3.22. Revert = delete this one line.
+    set(_tname "polyorch::${_name}")
     file(READ "${_case}" _head LIMIT 400)
 
     if(_head MATCHES "^# e2e: required(\n|$)|^#[^\n]*\n# e2e: required(\n|$)")
@@ -40,16 +45,16 @@ foreach(_case IN LISTS _cases)
         continue()
     endif()
 
-    add_test(NAME "${_name}" COMMAND ${CMAKE_COMMAND} -P "${_case}")
-    set_tests_properties("${_name}" PROPERTIES
+    add_test(NAME "${_tname}" COMMAND ${CMAKE_COMMAND} -P "${_case}")
+    set_tests_properties("${_tname}" PROPERTIES
         ENVIRONMENT "TMPDIR=${_scratch};TEMP=${_scratch}")
     if(_head MATCHES "^# expect: fail(\n|$)")
-        set_tests_properties("${_name}" PROPERTIES WILL_FAIL TRUE)
+        set_tests_properties("${_tname}" PROPERTIES WILL_FAIL TRUE)
     else()
         # expect-log / expect-no-log: first line, optional second line.
         set(_fail_rx "")
         if(_head MATCHES "^# expect-log ([^\n]*)\n")
-            set_tests_properties("${_name}" PROPERTIES
+            set_tests_properties("${_tname}" PROPERTIES
                 PASS_REGULAR_EXPRESSION "${CMAKE_MATCH_1}")
         endif()
         if(_head MATCHES "^#[^\n]*\n# expect-no-log ([^\n]*)\n")
@@ -65,20 +70,20 @@ foreach(_case IN LISTS _cases)
             set(_has_req OFF)
         endif()
         if(_has_req)
-            set_tests_properties("${_name}" PROPERTIES
+            set_tests_properties("${_tname}" PROPERTIES
                 SKIP_REGULAR_EXPRESSION ": SKIP \\(")
         else()
             list(APPEND _fail_rx ": SKIP \\(")
         endif()
         if(_fail_rx)
-            set_tests_properties("${_name}" PROPERTIES
+            set_tests_properties("${_tname}" PROPERTIES
                 FAIL_REGULAR_EXPRESSION "${_fail_rx}")
         endif()
     endif()
     if(_is_e2e)
-        set_tests_properties("${_name}" PROPERTIES LABELS e2e TIMEOUT 600)
+        set_tests_properties("${_tname}" PROPERTIES LABELS e2e TIMEOUT 600)
     else()
-        set_tests_properties("${_name}" PROPERTIES TIMEOUT 120)
+        set_tests_properties("${_tname}" PROPERTIES TIMEOUT 120)
     endif()
 endforeach()
 

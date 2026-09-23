@@ -53,7 +53,7 @@ for g in "Unix Makefiles" Ninja; do
         if cmake -S "$root/host" -B "$b" -G "$g" -DCMAKE_BUILD_TYPE="$c" \
                 -DPolyOrch_TEST_E2E=ON > "$b.log" 2>&1 \
            && POLYORCH_TEST_E2E=1 POLYORCH_TEST_CONFIG="$c" POLYORCH_TEST_GENERATOR="$g" ctest --test-dir "$b" --output-on-failure >> "$b.log" 2>&1 \
-           && POLYORCH_TEST_CONFIG="$c" ctest --test-dir "$b" -R '^t-rust-profile-release$' -V >> "$b.log" 2>&1 \
+           && POLYORCH_TEST_CONFIG="$c" ctest --test-dir "$b" -R '^polyorch::t-rust-profile-release$' -V >> "$b.log" 2>&1 \
            && grep -qE "\($c -> \.cargo-target/$cl/" "$b.log"; then
             echo "PASS [$g / $c]"
         else
@@ -73,14 +73,14 @@ done
 if command -v ninja >/dev/null 2>&1; then
     cells=$((cells+1))
     b="$root/b-mc"
-    excl='^t-rust-(rule-wiring|import-ws|link-c|install-e2e|install-export|multitarget)$'
+    excl='^polyorch::t-rust-(rule-wiring|import-ws|link-c|install-e2e|install-export|multitarget)$'
     if cmake -S "$root/host" -B "$b" -G "Ninja Multi-Config" \
             -DPolyOrch_TEST_E2E=ON > "$b.log" 2>&1 \
        && POLYORCH_TEST_E2E=1 POLYORCH_TEST_CONFIG=Debug POLYORCH_TEST_GENERATOR="Ninja Multi-Config" \
               ctest --test-dir "$b" -C Debug -E "$excl" --output-on-failure >> "$b.log" 2>&1 \
        && POLYORCH_TEST_E2E=1 POLYORCH_TEST_CONFIG=Release POLYORCH_TEST_GENERATOR="Ninja Multi-Config" \
               ctest --test-dir "$b" -C Release -E "$excl" --output-on-failure >> "$b.log" 2>&1 \
-       && POLYORCH_TEST_CONFIG=Release ctest --test-dir "$b" -C Release -R '^t-rust-output-dir$' -V >> "$b.log" 2>&1 \
+       && POLYORCH_TEST_CONFIG=Release ctest --test-dir "$b" -C Release -R '^polyorch::t-rust-output-dir$' -V >> "$b.log" 2>&1 \
        && grep -qE "MC-Debug cargo=.*\.cargo-target/debug/" "$b.log" \
        && grep -qE "MC-Release cargo=.*\.cargo-target/release/" "$b.log"; then
         echo "PASS [Ninja Multi-Config]"
