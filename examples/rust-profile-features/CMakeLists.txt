@@ -17,6 +17,35 @@ endif()
 if(NOT _rust_standalone AND NOT PolyOrch_BUILD_RUST_EXAMPLES)
     return()
 endif()
+# Opt-in ON but the tool unreachable in THIS configure's PATH (a GUI-launched
+# IDE does not inherit the shell's ~/.cargo/bin): degrade to a note, never
+# FATAL -- same philosophy as the umbrella registration layer. Standalone
+# keeps setup(REQUIRED): the user explicitly ran THIS example, so a missing
+# cargo is their environment's problem, with the fix in the message.
+if(NOT _rust_standalone)
+    # Probe what setup actually accepts: PATH *plus* the cargo-home
+    # locations (find_program would union them anyway -- the mismatch was
+    # that setup's system route in THIS configure sees a PATH without them;
+    # the honest gate mirrors the umbrella: tool reachable at all?)
+    find_program(PolyOrchExample_gate_cargo NAMES cargo
+        PATHS "$ENV{HOME}/.cargo/bin" "$ENV{CARGO_HOME}/bin"
+        NO_DEFAULT_PATH)
+    if(NOT PolyOrchExample_gate_cargo)
+        message(STATUS
+            "rust-profile-features: needs cargo; not on PATH or in ~/.cargo/bin -- example skipped "
+            "(standalone runs still get the loud REQUIRED error)")
+        return()
+    endif()
+    # Found OUTSIDE PATH: feed setup the injection pair (WP2 knobs), because
+    # the system route's own discovery only trusts PATH in this configure.
+    get_filename_component(PolyOrchExample_gate_bin "${PolyOrchExample_gate_cargo}" DIRECTORY)
+    # CACHE: setup() is a function -- plain variables are invisible there;
+    # the injection pair is documented as cache entries anyway.
+    set(PolyOrch_RUST_CARGO_EXECUTABLE "${PolyOrchExample_gate_cargo}" CACHE FILEPATH
+        "example gate: cargo found outside PATH" FORCE)
+    set(PolyOrch_RUSTC_EXECUTABLE "${PolyOrchExample_gate_bin}/rustc" CACHE FILEPATH
+        "example gate: rustc beside the gated cargo" FORCE)
+endif()
 
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/../../cmake")
 include(PolyOrchRustHelpers)
