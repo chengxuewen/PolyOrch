@@ -33,9 +33,23 @@ endif()
 project(rust-link-c LANGUAGES C)   # the C half is a first-class citizen here
 
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/../../cmake")
+include(PolyOrchPixiHelpers)
 include(PolyOrchRustHelpers)
 
-polyorch_rust_setup(REQUIRED)
+# Route selection: same build graph on either route (see rust-import for the
+# long form). system = default (PATH); EXAMPLE_PIXI=ON materializes the pixi
+# env declared in pixi.toml and switches the route (explicit, once).
+# Domestic network? add -DPolyOrch_PIXI_MIRROR=cn (TUNA conda-forge mirror)
+option(PolyOrch_EXAMPLE_PIXI "Configure this example for the pixi route" OFF)
+if(PolyOrch_EXAMPLE_PIXI)
+    set(POLYORCH_PIXI_ENVIRONMENTS_DIR "${CMAKE_BINARY_DIR}/pixi-envs")
+    polyorch_pixi_setup(MANIFEST "${CMAKE_CURRENT_LIST_DIR}/pixi.toml" ENVIRONMENT rust)
+    polyorch_pixi_dependency(DEPENDS rust FEATURE rust NO_INSTALL)
+    polyorch_pixi_install(ENVIRONMENT rust)
+    polyorch_rust_setup(FROM pixi REQUIRED)
+else()
+    polyorch_rust_setup(REQUIRED)
+endif()
 
 # --- direction 1: Rust staticlib -> C executable ---------------------------
 polyorch_rust_build(

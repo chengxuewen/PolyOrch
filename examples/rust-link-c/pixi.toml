@@ -1,0 +1,10 @@
+[project]
+name = "rust-link-c-example"
+channels = ["conda-forge"]
+platforms = ["linux-64", "linux-aarch64"]  # add your platform (osx-*/win-64) as needed
+
+[environments]
+rust = { features = ["rust"], solve-group = "default" }
+
+[feature.rust.dependencies]
+rust = "*"

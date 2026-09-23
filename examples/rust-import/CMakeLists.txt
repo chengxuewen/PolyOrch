@@ -29,10 +29,25 @@ if(NOT _rust_standalone AND NOT PolyOrch_RUST_EXAMPLES)
 endif()
 
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/../../cmake")
+include(PolyOrchPixiHelpers)
 include(PolyOrchRustHelpers)
 
-# [1/3] System route: cargo/rustc from PATH (offline; no install, no pin).
-polyorch_rust_setup(REQUIRED)
+# Route selection (dual-route examples, 2026-09-23): the SAME 30 lines of
+# build logic below run on EITHER route -- the mode is a single option.
+#   default        system route: cargo/rustc from PATH (offline, no install)
+#   EXAMPLE_PIXI=ON pixi route: this manifest declares rust; the env is
+#                  materialized HERE (explicit, may reach the network once)
+# Domestic network? add -DPolyOrch_PIXI_MIRROR=cn (TUNA conda-forge mirror)
+option(PolyOrch_EXAMPLE_PIXI "Configure this example for the pixi route" OFF)
+if(PolyOrch_EXAMPLE_PIXI)
+    set(POLYORCH_PIXI_ENVIRONMENTS_DIR "${CMAKE_BINARY_DIR}/pixi-envs")
+    polyorch_pixi_setup(MANIFEST "${CMAKE_CURRENT_LIST_DIR}/pixi.toml" ENVIRONMENT rust)
+    polyorch_pixi_dependency(DEPENDS rust FEATURE rust NO_INSTALL)
+    polyorch_pixi_install(ENVIRONMENT rust)
+    polyorch_rust_setup(FROM pixi REQUIRED)
+else()
+    polyorch_rust_setup(REQUIRED)
+endif()
 
 # [2/3] Import the whole workspace. Handles:
 #         dash-ed  staticlib -> imported target `dash_ed`   (+ cargo-build-dash_ed mediator)
