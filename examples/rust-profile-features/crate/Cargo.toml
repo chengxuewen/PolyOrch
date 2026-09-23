@@ -1,0 +1,11 @@
+[package]
+name = "feature-demo"
+version = "0.1.0"
+edition = "2021"
+
+[workspace]
+
+[features]
+# Opt-in compile-time knobs -- the setters below flip these from CMake.
+greet-loud = []
+greet-formal = []

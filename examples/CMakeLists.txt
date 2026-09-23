@@ -50,25 +50,65 @@ add_custom_target(PolyOrchExampleRustBasic
 set_target_properties(PolyOrchExampleRustBasic PROPERTIES FOLDER ${PROJECT_NAME}/examples)
 
 # P0 examples (dual-route/examples expansion, 2026-09-23): import an EXISTING
-# workspace, and the mixed C<->Rust link. Both offline, system route.
-add_custom_target(PolyOrchExampleRustImport
-    COMMAND ${CMAKE_COMMAND}
-        -S "${CMAKE_CURRENT_SOURCE_DIR}/rust-import"
-        -B "${CMAKE_CURRENT_BINARY_DIR}/standalone/rust-import"
-    COMMAND ${CMAKE_COMMAND} --build
-        "${CMAKE_CURRENT_BINARY_DIR}/standalone/rust-import" --target cargo-build-dash_ed
-    COMMAND ${CMAKE_COMMAND} --build
-        "${CMAKE_CURRENT_BINARY_DIR}/standalone/rust-import" --target run-say-hi-exe
-    COMMENT "rust-import: cargo metadata import -> build both members -> run (offline)")
-set_target_properties(PolyOrchExampleRustImport PROPERTIES FOLDER ${PROJECT_NAME}/examples)
+# workspace, and the mixed C<->Rust link. GATED registration (matrix pixi-cell
+# philosophy): each route's button only exists when that route's toolchain is
+# reachable -- a missing cargo/pixi degrades to a STATUS note, never a FATAL
+# in the host's configure. The example dirs themselves keep setup(REQUIRED):
+# a standalone `cmake -S` without the toolchain SHOULD fail loudly (the
+# user's own environment, with the fix in the message).
+find_program(PolyOrchExample_cargo NAMES cargo
+    PATHS "$ENV{HOME}/.cargo/bin" "$ENV{CARGO_HOME}/bin")
+find_program(PolyOrchExample_pixi NAMES pixi
+    PATHS "$ENV{HOME}/.pixi/bin" "$ENV{PIXI_HOME}/bin")
 
-add_custom_target(PolyOrchExampleRustLinkC
+foreach(_pair "Import:rust-import:cargo-build-dash_ed:run-say-hi-exe"
+              "LinkC:rust-link-c:app:run-cli-user-tool")
+    string(REPLACE ":" ";" _p "${_pair}")
+    list(GET _p 0 _name)
+    list(GET _p 1 _dir)
+    list(GET _p 2 _t1)
+    list(GET _p 3 _t2)
+    if(PolyOrchExample_cargo)
+        add_custom_target(PolyOrchExampleRust${_name}
+            COMMAND ${CMAKE_COMMAND}
+                -S "${CMAKE_CURRENT_SOURCE_DIR}/${_dir}"
+                -B "${CMAKE_CURRENT_BINARY_DIR}/standalone/${_dir}"
+            COMMAND ${CMAKE_COMMAND} --build
+                "${CMAKE_CURRENT_BINARY_DIR}/standalone/${_dir}" --target "${_t1}"
+            COMMAND ${CMAKE_COMMAND} --build
+                "${CMAKE_CURRENT_BINARY_DIR}/standalone/${_dir}" --target "${_t2}"
+            COMMENT "rust-${_name}: system-route configure -> build -> run (offline)")
+        set_target_properties(PolyOrchExampleRust${_name} PROPERTIES
+            FOLDER ${PROJECT_NAME}/examples)
+    else()
+        message(STATUS "PolyOrch examples: PolyOrchExampleRust${_name} not registered -- no cargo on PATH")
+    endif()
+    if(PolyOrchExample_pixi)
+        add_custom_target(PolyOrchExampleRust${_name}Pixi
+            COMMAND ${CMAKE_COMMAND}
+                -S "${CMAKE_CURRENT_SOURCE_DIR}/${_dir}"
+                -B "${CMAKE_CURRENT_BINARY_DIR}/standalone/${_dir}-pixi"
+                -DPolyOrch_EXAMPLE_PIXI=ON
+            COMMAND ${CMAKE_COMMAND} --build
+                "${CMAKE_CURRENT_BINARY_DIR}/standalone/${_dir}-pixi" --target "${_t1}"
+            COMMAND ${CMAKE_COMMAND} --build
+                "${CMAKE_CURRENT_BINARY_DIR}/standalone/${_dir}-pixi" --target "${_t2}"
+            COMMENT "rust-${_name} (pixi route): materialize env -> build -> run (first run solves)")
+        set_target_properties(PolyOrchExampleRust${_name}Pixi PROPERTIES
+            FOLDER ${PROJECT_NAME}/examples)
+    else()
+        message(STATUS "PolyOrch examples: PolyOrchExampleRust${_name}Pixi not registered -- no pixi tool")
+    endif()
+endforeach()
+
+# P1: the five-knob steering example (profile/features/env/rustflags/flags).
+add_custom_target(PolyOrchExampleRustProfileFeatures
     COMMAND ${CMAKE_COMMAND}
-        -S "${CMAKE_CURRENT_SOURCE_DIR}/rust-link-c"
-        -B "${CMAKE_CURRENT_BINARY_DIR}/standalone/rust-link-c"
+        -S "${CMAKE_CURRENT_SOURCE_DIR}/rust-profile-features"
+        -B "${CMAKE_CURRENT_BINARY_DIR}/standalone/rust-profile-features"
     COMMAND ${CMAKE_COMMAND} --build
-        "${CMAKE_CURRENT_BINARY_DIR}/standalone/rust-link-c" --target app
+        "${CMAKE_CURRENT_BINARY_DIR}/standalone/rust-profile-features" --target cargo-build-demo
     COMMAND ${CMAKE_COMMAND} --build
-        "${CMAKE_CURRENT_BINARY_DIR}/standalone/rust-link-c" --target run-cli-user-tool
-    COMMENT "rust-link-c: C exe <- Rust staticlib, Rust bin <- C staticlib (offline)")
-set_target_properties(PolyOrchExampleRustLinkC PROPERTIES FOLDER ${PROJECT_NAME}/examples)
+        "${CMAKE_CURRENT_BINARY_DIR}/standalone/rust-profile-features" --target cargo-build-demo-rel
+    COMMENT "rust-profile-features: debug+features+env vs release+rustflags+cargo-flags (offline)")
+set_target_properties(PolyOrchExampleRustProfileFeatures PROPERTIES FOLDER ${PROJECT_NAME}/examples)
