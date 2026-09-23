@@ -4,6 +4,14 @@
 # its documented entry command, mirroring PolyOrchExamplePixiBootstrap. The
 # add_subdirectory calls below still prove the nested-embedding path; the
 # targets prove the plain `cmake -S`/`-P` entry points and are offline-safe.
+# Route-group opt-ins, declared centrally (polyorch_option UI: cache type
+# stamp + consistent help). The per-example files CONSUME these (plain if +
+# return); they no longer declare their own options.
+polyorch_option(PolyOrch_BUILD_RUST_EXAMPLES
+    "Include the rust examples (build with the system cargo on PATH)" OFF)
+polyorch_option(PolyOrch_BUILD_PIXI_EXAMPLES
+    "Register the pixi-route example buttons (may solve; see PolyOrch_PIXI_MIRROR)" OFF)
+
 add_subdirectory(pixi-configure)
 add_subdirectory(pixi-workspace)
 add_subdirectory(rust-basic)

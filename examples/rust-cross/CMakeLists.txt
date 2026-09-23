@@ -22,8 +22,6 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
     set(_rust_standalone TRUE)
 else()
     set(_rust_standalone FALSE)
-    option(PolyOrch_BUILD_RUST_EXAMPLES
-        "Include the rust examples (build with the system cargo on PATH)" OFF)
 endif()
 if(NOT _rust_standalone AND NOT PolyOrch_BUILD_RUST_EXAMPLES)
     return()
