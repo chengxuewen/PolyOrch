@@ -1,0 +1,13 @@
+[project]
+name = "pixi-env-run-example"
+channels = ["conda-forge"]
+platforms = ["linux-64", "linux-aarch64"]
+
+[environments]
+tools = { features = ["tools"], solve-group = "default" }
+
+[feature.tools.dependencies]
+# Any conda-forge package works -- this example uses `cmake` as the demo tool
+# precisely because it is NOT the compiler toolchain: the point is "pixi envs
+# deliver ANY tool, and CMake can run things inside them".
+cmake = "*"

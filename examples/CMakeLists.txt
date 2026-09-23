@@ -131,3 +131,14 @@ add_custom_target(PolyOrchExampleRustInstallExport
         "${CMAKE_CURRENT_BINARY_DIR}/standalone/rust-install-export-consumer"
     COMMENT "rust-install-export: build -> install(EXPORT) -> find_package consumer (offline)")
 set_target_properties(PolyOrchExampleRustInstallExport PROPERTIES FOLDER ${PROJECT_NAME}/examples)
+
+# P1: the "what pixi buys you" demo -- materialize an env, run its tools.
+add_custom_target(PolyOrchExamplePixiEnvRun
+    COMMAND ${CMAKE_COMMAND}
+        -S "${CMAKE_CURRENT_SOURCE_DIR}/pixi-env-run"
+        -B "${CMAKE_CURRENT_BINARY_DIR}/standalone/pixi-env-run"
+        -DPolyOrch_EXAMPLE_PIXI=ON
+    COMMAND ${CMAKE_COMMAND} --build
+        "${CMAKE_CURRENT_BINARY_DIR}/standalone/pixi-env-run" --target pixi-cmake-smoke
+    COMMENT "pixi-env-run: materialize env -> run env tools (first run solves)")
+set_target_properties(PolyOrchExamplePixiEnvRun PROPERTIES FOLDER ${PROJECT_NAME}/examples)
