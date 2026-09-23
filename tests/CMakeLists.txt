@@ -64,7 +64,26 @@ foreach(_case IN LISTS _cases)
         # unmarked ones get the ": SKIP (" veto folded into the FAIL regex.
         # (CMake regex cannot quantify a group with {0,2} -- measured; the
         # three explicit line-position alternatives are the portable form.)
-        if(_head MATCHES "^# requires: " OR _head MATCHES "^#[^\n]*\n# requires: " OR _head MATCHES "^#[^\n]*\n#[^\n]*\n# requires: ")
+        # Route labels (dual-route testing, plan 2026-09-23): derive from the
+        # requires TOKEN, not a raw string grep (a bare 'pixi' grep would
+        # miss 'pixi-rust' family members). CMake regex: extract the token
+        # after '# requires: ' from the same three line positions as above.
+        set(_req_tok "")
+        # 'requires:' appears exactly once per case header (driver contract);
+        # an unanchored single match is the portable form (the three
+        # line-position variants and \n escaping of the sibling blocks are
+        # only needed for anchored validation, not for token extraction).
+        if(_head MATCHES "# requires: ([a-z-]+)")
+            set(_req_tok "${CMAKE_MATCH_1}")
+        endif()
+        set(_labels "")
+        if(_req_tok MATCHES "^system-rust")
+            list(APPEND _labels system)
+        endif()
+        if(_req_tok MATCHES "^pixi")
+            list(APPEND _labels pixi)
+        endif()
+        if(_head MATCHES "^# requires: " OR _head MATCHES "^#[^\\n]*\\n# requires: " OR _head MATCHES "^#[^\\n]*\\n#[^\\n]*\\n# requires: ")
             set(_has_req ON)
         else()
             set(_has_req OFF)
@@ -80,10 +99,25 @@ foreach(_case IN LISTS _cases)
                 FAIL_REGULAR_EXPRESSION "${_fail_rx}")
         endif()
     endif()
+    # Route labels ride every leg (dual-route plan WP1).
+    if(_labels)
+        set_tests_properties("${_tname}" PROPERTIES LABELS "${_labels}")
+    endif()
+    # Dual-route bud (WP2): cache -D wins, then the env var, so both the
+    # ctest.sh env path and the matrix -D path light the same bud.
+    set(_env "TMPDIR=${_scratch};TEMP=${_scratch}")
+    if(PolyOrch_TEST_RUST_FROM)
+        set(_from "${PolyOrch_TEST_RUST_FROM}")
+    elseif(DEFINED ENV{POLYORCH_TEST_RUST_FROM})
+        set(_from "$ENV{POLYORCH_TEST_RUST_FROM}")
+    endif()
+    if(_from)
+        string(APPEND _env ";POLYORCH_TEST_RUST_FROM=${_from}")
+    endif()
     if(_is_e2e)
-        set_tests_properties("${_tname}" PROPERTIES LABELS e2e TIMEOUT 600)
+        set_tests_properties("${_tname}" PROPERTIES ENVIRONMENT "${_env}" TIMEOUT 600)
     else()
-        set_tests_properties("${_tname}" PROPERTIES TIMEOUT 120)
+        set_tests_properties("${_tname}" PROPERTIES ENVIRONMENT "${_env}" TIMEOUT 120)
     endif()
 endforeach()
 
@@ -98,3 +132,16 @@ add_custom_target(PolyOrchTest
         --output-on-failure
     COMMENT "Running the PolyOrch cmake -P test suite via CTest")
 set_target_properties(PolyOrchTest PROPERTIES FOLDER ${PROJECT_NAME}/tests)
+# Per-route umbrellas (dual-route plan WP1): the ctest tree of THIS build
+# dir was configured with ONE route, so the umbrellas filter by LABEL --
+# no product-code coupling. Hyphen names: '::' is illegal in target names
+# (alias syntax, measured); the ctest namespace keeps polyorch::t-*.
+foreach(_route system pixi)
+    add_custom_target(polyorch-tests-${_route}
+        COMMAND ${CMAKE_CTEST_COMMAND}
+            --test-dir "${CMAKE_CURRENT_BINARY_DIR}"
+            --output-on-failure -L ${_route}
+        COMMENT "PolyOrch tests: ${_route}-route legs via CTest")
+    set_target_properties(polyorch-tests-${_route} PROPERTIES
+        FOLDER ${PROJECT_NAME}/tests)
+endforeach()
