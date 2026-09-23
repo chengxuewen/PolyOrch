@@ -90,5 +90,26 @@ if command -v ninja >/dev/null 2>&1; then
 else
     echo "NOTE Ninja Multi-Config cell skipped: ninja not on PATH"
 fi
+# --- pixi-route cell (dual-route plan WP4) ----------------------------------
+# The sixth cell proves the pixi ROUTE inside the matrix: same host tree,
+# configured with the route bud -DPolyOrch_TEST_RUST_FROM=pixi, ctest run
+# with the matching env bud, -L pixi filtering the pixi-family legs. The
+# fixture (route-pixi) materializes its own env and is the loud leg; the
+# keeper rides its own materializer. SKIP-NOTE form (like the generator
+# cell): no pixi tool -> note, no cell, no rc pollution.
+if command -v pixi >/dev/null 2>&1 || [ -x "$HOME/.pixi/bin/pixi" ]; then
+    cells=$((cells+1))
+    b="$root/b-pixi"
+    if cmake -S "$root/host" -B "$b" -G "Unix Makefiles" \
+            -DPolyOrch_TEST_E2E=ON -DPolyOrch_TEST_RUST_FROM=pixi > "$b.log" 2>&1 \
+       && POLYORCH_TEST_E2E=1 POLYORCH_TEST_RUST_FROM=pixi \
+          ctest --test-dir "$b" -L pixi --output-on-failure >> "$b.log" 2>&1; then
+        echo "PASS [pixi / Unix Makefiles]"
+    else
+        echo "FAIL [pixi / Unix Makefiles] (log: $b.log)"; tail -n 15 "$b.log"; rc_all=1
+    fi
+else
+    echo "NOTE pixi cell skipped: no pixi tool on PATH"
+fi
 echo "matrix: $cells cell(s), rc=$rc_all"
 exit $rc_all
