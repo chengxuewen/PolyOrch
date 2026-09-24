@@ -29,10 +29,25 @@ string(REGEX MATCH "n=([0-9]+)" _ "${_src}")
 set(_n "${CMAKE_MATCH_1}")
 ck(_n GREATER 0)
 ck(_src MATCHES "lib\\.rs")
-ck(NOT _srcs MATCHES "Cargo\\.toml")   # metadata lists sources, not the manifest
+ck(_src MATCHES "Cargo\\.toml")        # the mount adds the manifest explicitly (dep edits live there)
 string(REGEX MATCH "nos=([0-9]+)" _ "${_src}")
 ck(CMAKE_MATCH_1 STREQUAL "0")
 message(STATUS "ide-sources: OK (${_n} files mounted; NO_SOURCES opt-out empty)")
+
+# verb-node parity (debug-workflow symmetry): run + test carry the same set
+# capture into named vars (the file's existing CMAKE_MATCH pattern -- the
+# magic var resolves unpredictably inside the ck macro's nested ${ARGN} deref)
+string(REGEX MATCH "run=(.*)" _ "${_src}")
+set(_run1 "${CMAKE_MATCH_1}")
+string(REGEX MATCH "test=(.*)" _ "${_src}")
+set(_test1 "${CMAKE_MATCH_1}")
+foreach(_leg run test)
+    set(_v "${_${_leg}1}")
+    ck(_v MATCHES "lib\\.rs")
+    ck(_v MATCHES "Cargo\\.toml")
+    ck(_v MATCHES "Cargo\\.lock")
+endforeach()
+message(STATUS "ide-sources: verb-node mount parity OK")
 
 # build the mediator: the mount must not perturb the chain
 execute_process(COMMAND "${CMAKE_COMMAND}" --build "${_b}" --target sm-build

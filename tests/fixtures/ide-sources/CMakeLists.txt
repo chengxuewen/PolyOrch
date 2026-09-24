@@ -33,14 +33,22 @@ polyorch_rust_build(TARGET sm-nos PACKAGE ide-src CRATE ide-src
     MANIFEST "${CMAKE_CURRENT_LIST_DIR}/rs/Cargo.toml"
     BASE_DIR "${CMAKE_BINARY_DIR}/ns")
 
+# verb nodes must carry the same display mount (debug-workflow symmetry)
+polyorch_rust_test(PACKAGE ide-src NAME sm-test TARGET sm)
+polyorch_rust_run(TARGET sm)
+
 get_property(_srcs TARGET sm-build PROPERTY SOURCES)
 list(LENGTH _srcs _n)
 list(JOIN _srcs ";" _srcs_j)
 get_property(_srcs2 TARGET sm-nos-build PROPERTY SOURCES)
 list(LENGTH _srcs2 _n2)
+get_property(_srcs3 TARGET sm-run PROPERTY SOURCES)
+get_property(_srcs4 TARGET sm-test PROPERTY SOURCES)
+list(JOIN _srcs3 ";" _t3)
+list(JOIN _srcs4 ";" _t4)
 # properties channel (NOT artifacts.txt -- the driver asserts those are paths)
 file(WRITE "${CMAKE_BINARY_DIR}/sources.txt"
-    "n=${_n}\nfiles=${_srcs_j}\nnos=${_n2}\n")
+    "n=${_n}\nfiles=${_srcs_j}\nnos=${_n2}\nrun=${_t3}\ntest=${_t4}\n")
 set(POLYORCH_FIXTURE_ARTIFACTS
     "manifest=${CMAKE_CURRENT_LIST_DIR}/rs/Cargo.toml")   # driver asserts existence
 string(JOIN "\n" _af ${POLYORCH_FIXTURE_ARTIFACTS})

@@ -88,8 +88,9 @@ polyorch_rust_build(
 
 # [3/4] test + run wrappers for the same crate.
 polyorch_rust_test(
-    PACKAGE greet-cli 
-    NAME greet-test)
+    PACKAGE greet-cli
+    NAME greet-test
+    TARGET greet)
     
 polyorch_rust_run(
     TARGET greet)

@@ -604,32 +604,7 @@ function(polyorch_rust_build)
     # the AUTHORITATIVE list) join the mediator as HEADER_FILE_ONLY sources --
     # cosmetic for IDE trees, never compile inputs. NO_SOURCES opts out.
     if(NOT B_NO_SOURCES)
-        _polyorch_rust_metadata_sources("${B_MANIFEST}" "${B_CRATE}" _rs_files)
-        # metadata lists compile targets only; the manifest itself (and its
-        # lockfile, once generated) are where dependency/feature edits live,
-        # so they join the display list explicitly.
-        list(APPEND _rs_files "${B_MANIFEST}")
-        get_filename_component(_root "${B_MANIFEST}" DIRECTORY)
-        if(EXISTS "${_root}/Cargo.lock")
-            list(APPEND _rs_files "${_root}/Cargo.lock")
-        endif()
-        if(_rs_files)
-            # HEADER_FILE_ONLY marks them "not compiled here" for CMake; some
-            # IDE versions fold header-class entries away in target trees, so
-            # PolyOrch_RUST_SOURCES_PLAIN=ON serves them as plain sources for
-            # experiments. Either way they are display-only: cargo owns the
-            # real compile inputs.
-            if(PolyOrch_RUST_SOURCES_PLAIN)
-                set_source_files_properties(${_rs_files} PROPERTIES
-                    HEADER_FILE_ONLY OFF)
-            else()
-                set_source_files_properties(${_rs_files} PROPERTIES
-                    HEADER_FILE_ONLY ON)   # IDE display, never compile inputs
-            endif()
-            list(REMOVE_DUPLICATES _rs_files)   # manifest may appear twice (glob + explicit)
-            set_property(TARGET "${_med}" APPEND PROPERTY
-                SOURCES ${_rs_files})
-        endif()
+        _polyorch_rust_mount_sources("${_med}" "${B_MANIFEST}" "${B_CRATE}")
     endif()
     # DEPRECATED: attaches extra prerequisites to the mediator; the
     # auto-build edge below already orders it for every consumer.
@@ -1331,7 +1306,75 @@ endfunction()
 # completes the mod files metadata does not list. Cached per absolute
 # manifest (metadata runs once per manifest per configure). OUT receives a
 # semicolon list of absolute paths.
+# _polyorch_rust_mount_verb_targets(HANDLE TGT)
+# run/test verb nodes reuse the manifest/CRATE stamps left by build/import
+# on the handle (POLYORCH_RUST_MANIFEST, POLYORCH_RUST_PACKAGE) and on the
+# mediator (POLYORCH_RUST_CRATE). Silent skip when no manifest stamp is
+# readable -- display-only features never fail a configure.
+function(_polyorch_rust_mount_verb_targets HANDLE TGT)
+    get_target_property(_mf "${HANDLE}" POLYORCH_RUST_MANIFEST)
+    if(NOT _mf OR _mf STREQUAL "NOTFOUND")
+        return()
+    endif()
+    get_target_property(_cr "${HANDLE}-build" POLYORCH_RUST_CRATE)
+    if(NOT _cr OR _cr STREQUAL "NOTFOUND")
+        get_target_property(_cr "${HANDLE}" POLYORCH_RUST_PACKAGE)
+    endif()
+    if(NOT _cr OR _cr STREQUAL "NOTFOUND")
+        return()
+    endif()
+    _polyorch_rust_mount_sources("${TGT}" "${_mf}" "${_cr}" SOFT)
+endfunction()
+
+# _polyorch_rust_mount_sources(TGT MANIFEST CRATE)
+# Attach the crate's display files (metadata-authoritative sources, the
+# manifest, the lockfile) to TGT's SOURCES so IDE target trees show and
+# open them at every verb node (build mediator, -run, -test). COSMETIC
+# ONLY: cargo owns the real compile inputs. Shared by build (its
+# mediator) and run/test (mounted via the handle's stamps) -- one
+# metadata run per manifest per configure thanks to the cache below.
+# SOFT = display-only caller (verb nodes): unreadable manifest skips the
+# mount instead of failing the configure. build() calls it HARD: a manifest
+# it stamped must be readable (a stale stamp is a configuration error).
+function(_polyorch_rust_mount_sources TGT MANIFEST CRATE)
+    cmake_parse_arguments(PARSE_ARGV 3 MM "SOFT" "" "")
+    if(MM_SOFT)
+        _polyorch_rust_metadata_sources("${MANIFEST}" "${CRATE}" _rs_files SOFT)
+    else()
+        _polyorch_rust_metadata_sources("${MANIFEST}" "${CRATE}" _rs_files)
+    endif()
+    if(NOT _rs_files)
+        return()
+    endif()
+    # metadata lists compile targets only; the manifest itself (and its
+    # lockfile, once generated) are where dependency/feature edits live,
+    # so they join the display list explicitly.
+    list(APPEND _rs_files "${MANIFEST}")
+    get_filename_component(_root "${MANIFEST}" DIRECTORY)
+    if(EXISTS "${_root}/Cargo.lock")
+        list(APPEND _rs_files "${_root}/Cargo.lock")
+    endif()
+    list(REMOVE_DUPLICATES _rs_files)
+    # HEADER_FILE_ONLY marks them "not compiled here" for CMake; some
+    # IDE versions fold header-class entries away in target trees, so
+    # PolyOrch_RUST_SOURCES_PLAIN=ON serves them as plain sources for
+    # experiments. Either way they are display-only: cargo owns the
+    # real compile inputs.
+    if(PolyOrch_RUST_SOURCES_PLAIN)
+        set_source_files_properties(${_rs_files} PROPERTIES
+            HEADER_FILE_ONLY OFF)
+    else()
+        set_source_files_properties(${_rs_files} PROPERTIES
+            HEADER_FILE_ONLY ON)   # IDE display, never compile inputs
+    endif()
+    set_property(TARGET "${TGT}" APPEND PROPERTY SOURCES ${_rs_files})
+endfunction()
+
 function(_polyorch_rust_metadata_sources MANIFEST CRATE OUT)
+    cmake_parse_arguments(PARSE_ARGV 3 MS "SOFT" "" "")
+    if(DEFINED MS_UNPARSED_ARGUMENTS)
+        message(FATAL_ERROR "_polyorch_rust_metadata_sources: extra args: ${MS_UNPARSED_ARGUMENTS}")
+    endif()
     get_filename_component(_abs "${MANIFEST}" ABSOLUTE)
     get_filename_component(_abs "${_abs}" REALPATH)
     if(DEFINED _polyorch_meta_srcs_${_abs})
@@ -1347,6 +1390,12 @@ function(_polyorch_rust_metadata_sources MANIFEST CRATE OUT)
     execute_process(COMMAND ${_cmd}
         RESULT_VARIABLE _rc OUTPUT_VARIABLE _json ERROR_VARIABLE _err)
     if(NOT _rc EQUAL 0)
+        if(MS_SOFT)
+            # display-only caller (verb-node mount): a stale or unreadable
+            # manifest must never fail the configure -- skip the mount.
+            set(${OUT} "" PARENT_SCOPE)
+            return()
+        endif()
         message(FATAL_ERROR
             "polyorch_rust_build: cargo metadata failed (rc=${_rc}) -- "
             "IDE source list unavailable:\n${_err}")
@@ -1650,7 +1699,7 @@ endfunction()
 # time, never at configure time.
 function(polyorch_rust_test)
     set(_opts ALL)
-    set(_one PACKAGE NAME MANIFEST BASE_DIR FOLDER)
+    set(_one PACKAGE NAME MANIFEST BASE_DIR FOLDER TARGET)
     set(_multi ARGS)
     cmake_parse_arguments(PARSE_ARGV 0 T "${_opts}" "${_one}" "${_multi}")
     if(T_UNPARSED_ARGUMENTS)
@@ -1703,6 +1752,11 @@ function(polyorch_rust_test)
         COMMENT "cargo test ${T_PACKAGE}"
         ${_uterm}
         VERBATIM)
+    # IDE parity: with TARGET <handle> the test node mounts the same display
+    # files as the build mediator (breakpoint workflow entry symmetry).
+    if(T_TARGET)
+        _polyorch_rust_mount_verb_targets("${T_TARGET}" "${_name}")
+    endif()
     set(_fold "${T_FOLDER}")
     if(NOT _fold)
         cmake_path(RELATIVE_PATH CMAKE_CURRENT_LIST_DIR
@@ -1741,6 +1795,11 @@ function(polyorch_rust_run)
     add_custom_target("${R_TARGET}-run"
         COMMAND ${_emu} $<TARGET_FILE:${R_TARGET}>
         COMMENT "run $<TARGET_FILE:${R_TARGET}>")
+    # IDE parity with the build mediator: the run node carries the same
+    # display files (the future debug workflow opens sources right where it
+    # launches). Stamps ride the handle (MANIFEST/PACKAGE) and the mediator
+    # (CRATE, falling back to PACKAGE when they differ nothing to mount).
+    _polyorch_rust_mount_verb_targets("${R_TARGET}" "${R_TARGET}-run")
     if(TARGET "${_med}")
         add_dependencies("${R_TARGET}-run" "${_med}")
     endif()
