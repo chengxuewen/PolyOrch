@@ -618,6 +618,7 @@ function(polyorch_rust_build)
                 set_source_files_properties(${_rs_files} PROPERTIES
                     HEADER_FILE_ONLY ON)   # IDE display, never compile inputs
             endif()
+            list(REMOVE_DUPLICATES _rs_files)   # manifest may appear twice (glob + explicit)
             set_property(TARGET "${_med}" APPEND PROPERTY
                 SOURCES ${_rs_files})
         endif()
