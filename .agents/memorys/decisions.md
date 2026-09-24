@@ -157,3 +157,25 @@ One grammar for every user-facing cache variable, decided 2026-09-23 when the ex
 * `PolyOrch_*_ROUTE` -- "which toolchain route the graph uses" (PolyOrch_RUST_FROM remains the product-face route; PolyOrch_EXAMPLE_ROUTE system|pixi steers an example; PolyOrch_TEST_ROUTE buds the route into test children). ROUTE values are explicit enums -- boolean ROUTE options are rejected.
 * external resources name the resource (PolyOrch_PIXI_MIRROR, PolyOrch_PIXI_CONFIG_FILE); test-surface knobs keep their TEST_ head (PolyOrch_TEST_E2E).
 The rename this decision records (all born this session, zero external users): PolyOrch_RUST_EXAMPLES->BUILD_RUST_EXAMPLES, PolyOrch_PIXI_EXAMPLES->BUILD_PIXI_EXAMPLES, PolyOrch_EXAMPLE_PIXI->PolyOrch_EXAMPLE_ROUTE (boolean->enum), PolyOrch_TEST_RUST_FROM->PolyOrch_TEST_ROUTE. New variables must resolve their category word against this table before landing.
+
+
+## D23: VSCode debug surface shape (2026-09-24, user-ruled item-by-item)
+
+Run-targets only (1A: cargo fingerprint-hashes test binaries -- unknowable at
+configure; per-`#[test]` debugging is rust-analyzer's lens, NOT reinvented;
+1C whole-package-glob deferred pending a CodeLLDB program-glob measurement).
+Tasks ARE generated (2A: preLaunchTask -> `<handle>-build` mediator; F5 =
+incremental build of the REAL orchestrated artifact; the defaultBuildTask
+alternative could build the whole ALL set). Default OFF at the library,
+per-example opt-in (3B': a build system never rewrites a host's editor
+settings unasked -- the xmake `project -k` explicit-generator precedent --
+while examples demonstrate F5 out of the box); landing rule =
+`<CMAKE_SOURCE_DIR>/.vscode` with `PolyOrch_RUST_VSCODE_DIR` as the
+workspace-mismatch escape hatch (explicit over implicit, the same stance as
+the rejected `FROM auto`). Scope nails: CodeLLDB only (cppvsdbg deferred),
+cross-routed handles skip (remote debug deferred), managed-region writes
+with a never-rewrite `.polyorch-new` fallback for markerless files.
+Reference: plan `.omo/plans/2026-09-24-vscode-debug.md` (Momus OKAY, zero
+MUST-FIX); product fixes the plan did not foresee: the latent never-defined
+`_med` run-order edge, the CMP0219 macro-backslash policy need in cases, and
+the MC genex-in-location expansion.
