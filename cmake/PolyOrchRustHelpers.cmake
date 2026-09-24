@@ -606,8 +606,18 @@ function(polyorch_rust_build)
     if(NOT B_NO_SOURCES)
         _polyorch_rust_metadata_sources("${B_MANIFEST}" "${B_CRATE}" _rs_files)
         if(_rs_files)
-            set_source_files_properties(${_rs_files} PROPERTIES
-                HEADER_FILE_ONLY ON)   # IDE display, never compile inputs
+            # HEADER_FILE_ONLY marks them "not compiled here" for CMake; some
+            # IDE versions fold header-class entries away in target trees, so
+            # PolyOrch_RUST_SOURCES_PLAIN=ON serves them as plain sources for
+            # experiments. Either way they are display-only: cargo owns the
+            # real compile inputs.
+            if(PolyOrch_RUST_SOURCES_PLAIN)
+                set_source_files_properties(${_rs_files} PROPERTIES
+                    HEADER_FILE_ONLY OFF)
+            else()
+                set_source_files_properties(${_rs_files} PROPERTIES
+                    HEADER_FILE_ONLY ON)   # IDE display, never compile inputs
+            endif()
             set_property(TARGET "${_med}" APPEND PROPERTY
                 SOURCES ${_rs_files})
         endif()
