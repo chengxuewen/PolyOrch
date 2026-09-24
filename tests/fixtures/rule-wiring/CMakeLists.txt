@@ -30,7 +30,7 @@ polyorch_rust_setup(REQUIRED NO_NATIVE_PROBE)
 
 # The mediator, not the IMPORTED handle -- building "greet" itself is exactly
 # the silently-no-op case PIT-13 describes. The case asks the driver to build
-# the legacy mediator name "greet-cargo" (the rename to cargo-build-<T> must
+# the legacy mediator name "greet-cargo" (the rename to <T>-build must
 # not break it).
 polyorch_rust_build(TARGET greet PACKAGE greet-cli CRATE greet-cli BINARY
     MANIFEST "${CMAKE_CURRENT_LIST_DIR}/rust-ws/Cargo.toml")

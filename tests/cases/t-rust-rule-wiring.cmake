@@ -6,7 +6,7 @@ include("${CMAKE_CURRENT_LIST_DIR}/_requires.cmake")
 # The systemic PIT-13 net, fixture-driver edition: proves the producing rule
 # SURVIVES generation. Drives tests/fixtures/rule-wiring through
 # tests/fixtures/_driver.cmake (configure + build of the legacy mediator name
-# greet-cargo -- the rename to cargo-build-<T> must not break it) and asserts
+# greet-cargo -- the pre-rename shim is retired) and asserts
 # the contract-anchored artifact the driver verified: the naming-table path
 # exists and is non-empty. CMAKE_BUILD_TYPE follows
 # $ENV{POLYORCH_TEST_CONFIG} (unset => Debug), so the matrix cells drive this
@@ -26,7 +26,7 @@ _polyorch_pixi_scratch(_s)
 
 drv_run(_dlog _rc SKIP_VAR _skip
     FIXTURE "${CMAKE_CURRENT_LIST_DIR}/../fixtures/rule-wiring"
-    BUILD "${_s}/b" CONFIG "${_cfg}" TARGETS cargo-build-greet)
+    BUILD "${_s}/b" CONFIG "${_cfg}" TARGETS greet-build)
 if(_skip)
     message(STATUS "t-rust-rule-wiring : SKIP (fixture gate: capability absent at configure)")
     return()

@@ -51,8 +51,8 @@ foreach(_x dash-ed say-hi dash_ed-exe dash-ed-exe lib_a)
         message(FATAL_ERROR "import: unexpected handle '${_x}' exists")
     endif()
 endforeach()
-if(NOT TARGET cargo-build-dash_ed OR NOT TARGET cargo-build-say-hi-exe)
-    message(FATAL_ERROR "import: mediators cargo-build-dash_ed / cargo-build-say-hi-exe missing")
+if(NOT TARGET dash_ed-build OR NOT TARGET say-hi-exe-build)
+    message(FATAL_ERROR "import: mediators dash_ed-build / say-hi-exe-build missing")
 endif()
 
 # Registry property + FOLDER pass-through evidence.

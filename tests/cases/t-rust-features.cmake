@@ -25,7 +25,7 @@ _polyorch_pixi_scratch(_s)
 set(_b "${_s}/pos")
 drv_run(_dlog _rc SKIP_VAR _skip
     FIXTURE "${CMAKE_CURRENT_LIST_DIR}/../fixtures/features"
-    BUILD "${_b}" CONFIG "${_cfg}" TARGETS cargo-build-feat-on)
+    BUILD "${_b}" CONFIG "${_cfg}" TARGETS feat-on-build)
 if(_skip)
     message(STATUS "t-rust-features : SKIP (fixture gate: capability absent at configure)")
     return()
@@ -45,7 +45,7 @@ endif()
 # --- negative: defaults left ON must break the build --------------------------
 set(_b2 "${_s}/neg")
 set(_dargs2 "-DFIXTURE=${CMAKE_CURRENT_LIST_DIR}/../fixtures/features"
-            "-DBUILD=${_b2}" "-DCONFIG=${_cfg}" "-DTARGETS=cargo-build-feat-off")
+            "-DBUILD=${_b2}" "-DCONFIG=${_cfg}" "-DTARGETS=feat-off-build")
 if("$ENV{POLYORCH_TEST_GENERATOR}")
     list(APPEND _dargs2 "-DGENERATOR=$ENV{POLYORCH_TEST_GENERATOR}")
 endif()

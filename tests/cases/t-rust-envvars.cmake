@@ -25,7 +25,7 @@ _polyorch_pixi_scratch(_s)
 set(_b "${_s}/pos")
 drv_run(_dlog _rc SKIP_VAR _skip
     FIXTURE "${CMAKE_CURRENT_LIST_DIR}/../fixtures/env-var"
-    BUILD "${_b}" CONFIG "${_cfg}" TARGETS cargo-build-ev-on)
+    BUILD "${_b}" CONFIG "${_cfg}" TARGETS ev-on-build)
 if(_skip)
     message(STATUS "t-rust-envvars : SKIP (fixture gate: capability absent at configure)")
     return()
@@ -43,7 +43,7 @@ endif()
 # --- negative: no env vars -> the build script panics ------------------------
 set(_b2 "${_s}/neg")
 set(_dargs2 "-DFIXTURE=${CMAKE_CURRENT_LIST_DIR}/../fixtures/env-var"
-            "-DBUILD=${_b2}" "-DCONFIG=${_cfg}" "-DTARGETS=cargo-build-ev-off")
+            "-DBUILD=${_b2}" "-DCONFIG=${_cfg}" "-DTARGETS=ev-off-build")
 if("$ENV{POLYORCH_TEST_GENERATOR}")
     list(APPEND _dargs2 "-DGENERATOR=$ENV{POLYORCH_TEST_GENERATOR}")
 endif()

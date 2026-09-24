@@ -1338,7 +1338,7 @@ endfunction()
 #                     [BASE_DIR <td>] [FOLDER <ide>] [PREBUILD <t>])
 # Registers <TARGET> as an IMPORTED target pointing at the cargo artifact
 # built into ${CMAKE_BINARY_DIR}/.cargo-target/<profile>/, plus the
-# cargo-build-<TARGET> custom mediator that owns the rule. Linking <TARGET>
+# <TARGET>-build custom mediator that owns the rule. Linking <TARGET>
 # suffices: the auto-build edge propagates the mediator ordering to every
 # consumer. The legacy <TARGET>-cargo name is a compatibility shim. A bare
 # cmake --build reaches the artifacts through the polyorch-rust-all

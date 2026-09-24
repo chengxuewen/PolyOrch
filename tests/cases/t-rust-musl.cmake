@@ -55,7 +55,7 @@ set(_b "${_s}/b")
 drv_run(_dlog _rc SKIP_VAR _skip
     FIXTURE "${CMAKE_CURRENT_LIST_DIR}/../fixtures/cross-musl"
     BUILD "${_b}" CONFIG "${_cfg}" GENERATOR "Unix Makefiles"
-    TARGETS cargo-build-m-bin cargo-build-m-st cargo-build-hb-bin
+    TARGETS m-bin-build m-st-build hb-bin-build
     PASSTHROUGH -DPolyOrch_RUST_CARGO_TARGET=${_tup})
 if(_skip)
     message(STATUS "t-rust-musl : SKIP (fixture gate: capability absent at configure)")

@@ -3,7 +3,7 @@ include("${CMAKE_CURRENT_LIST_DIR}/../../cmake/PolyOrchRustHelpers.cmake")
 
 # Setter family (Task 3): polyorch_rust_set_features / set_env_vars /
 # add_cargo_flags / add_rustflags. Keyed by the USER-FACING declared target
-# name, mutating the cargo-build-<TARGET> mediator's POLYORCH_RUST_* props.
+# name, mutating the <TARGET>-build mediator's POLYORCH_RUST_* props.
 #
 # Two assertion layers:
 #  1. FATAL identities through ck_call_fail — same double-assert semantics as
@@ -111,7 +111,7 @@ if(NOT _rc EQUAL 0)
 endif()
 
 foreach(_t greet-bin greet-lib)
-    set(_mk "${_ok}/b/CMakeFiles/cargo-build-${_t}.dir/build.make")
+    set(_mk "${_ok}/b/CMakeFiles/${_t}-build.dir/build.make")
     ck_file("${_mk}")
     file(READ "${_mk}" _txt)
     # Make may fold long recipe lines with backslash continuations: rejoin.
@@ -123,13 +123,13 @@ endforeach()
 macro(mk_has t tok)
     string(REPLACE "-" "_" _mkv "_mk_${t}")
     if(NOT "${${_mkv}}" MATCHES "${tok}")
-        message(FATAL_ERROR "build.make of cargo-build-${t} lacks [${tok}]")
+        message(FATAL_ERROR "build.make of ${t}-build lacks [${tok}]")
     endif()
 endmacro()
 macro(mk_lacks t tok)
     string(REPLACE "-" "_" _mkv "_mk_${t}")
     if("${${_mkv}}" MATCHES "${tok}")
-        message(FATAL_ERROR "build.make of cargo-build-${t} must NOT contain [${tok}]")
+        message(FATAL_ERROR "build.make of ${t}-build must NOT contain [${tok}]")
     endif()
 endmacro()
 
@@ -164,7 +164,7 @@ set(POLYORCH_RUST_ROUTE "system" CACHE INTERNAL "")
 set(POLYORCH_RUST_BIN_DIR "" CACHE INTERNAL "")
 polyorch_rust_build(TARGET greet-bin PACKAGE greet CRATE greet-cli BINARY)
 # the MEDIATOR name must be rejected: setters take the declared handle only
-polyorch_rust_set_features(TARGET cargo-build-greet-bin FEATURES alpha)
+polyorch_rust_set_features(TARGET greet-bin-build FEATURES alpha)
 ]==])
 configure_file("${_bad}/CMakeLists.txt" "${_bad}/CMakeLists.txt.tmp" @ONLY)
 file(RENAME "${_bad}/CMakeLists.txt.tmp" "${_bad}/CMakeLists.txt")
@@ -174,7 +174,7 @@ string(REGEX REPLACE "[ \r\n\t]+" " " _txt "${_out}${_err}")
 if(_rc EQUAL 0)
     message(FATAL_ERROR "no-mediator probe: configure unexpectedly succeeded")
 endif()
-set(_rx "target 'cargo-build-greet-bin' was not declared by polyorch_rust_build")
+set(_rx "target 'greet-bin-build' was not declared by polyorch_rust_build")
 if(NOT _txt MATCHES "${_rx}")
     message(FATAL_ERROR "no-mediator probe: output lacks [${_rx}]: ${_txt}")
 endif()

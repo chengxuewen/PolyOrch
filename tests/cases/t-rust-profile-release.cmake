@@ -8,7 +8,7 @@ include("${CMAKE_CURRENT_LIST_DIR}/../../cmake/PolyOrchRustHelpers.cmake")
 # configures examples/rust-basic standalone with -DCMAKE_BUILD_TYPE=<cfg>
 # where <cfg> comes from $ENV{POLYORCH_TEST_CONFIG} (unset => Debug), builds
 # the mediator THROUGH THE BACK-COMPAT NAME (greet-cargo -- the rename to
-# cargo-build-<T> must not break it), and asserts the cargo profile
+# <T>-build must not break it), and asserts the cargo profile
 # directory the artifact actually landed in:
 #   Debug / unset  -> .cargo-target/debug/<bin>
 #   anything else  -> .cargo-target/release/<bin>   (corr:762 semantics)
@@ -47,7 +47,7 @@ if(NOT _rc EQUAL 0)
     message(FATAL_ERROR "rust-profile-release: child configure failed (${_rc})\n${_out}${_err}")
 endif()
 
-execute_process(COMMAND "${CMAKE_COMMAND}" --build "${_b}" --target cargo-build-greet
+execute_process(COMMAND "${CMAKE_COMMAND}" --build "${_b}" --target greet-build
     ENVIRONMENT "PATH=${_cpath}"
     RESULT_VARIABLE _rc OUTPUT_VARIABLE _out ERROR_VARIABLE _err)
 if(NOT _rc EQUAL 0)

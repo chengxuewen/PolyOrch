@@ -92,7 +92,7 @@ set(_stubs "${CMAKE_CURRENT_LIST_DIR}/../fixtures/tool-stubs")
 drv_run(_dlog _rc SKIP_VAR _skip
     FIXTURE "${CMAKE_CURRENT_LIST_DIR}/../fixtures/cxxbridge"
     BUILD "${_b}" CONFIG "${_cfg}" GENERATOR "Unix Makefiles"
-    TARGETS bridge-lib-cxx cargo-build-bridge-lib-static
+    TARGETS bridge-lib-cxx bridge-lib-static-build
     PASSTHROUGH -DPOLYORCH_TEST_TOOL_PREFIX=${_stubs} -DPOLYORCH_TEST_TOOL_VERSION=1.0.131)
 if(_skip)
     message(STATUS "t-rust-cxxbridge : SKIP (fixture gate: capability absent at configure)")

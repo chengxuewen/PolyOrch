@@ -38,7 +38,7 @@ endif()
 _polyorch_pixi_scratch(_s)
 set(_fx "${CMAKE_CURRENT_LIST_DIR}/../fixtures/output-dir")
 set(_drv "${CMAKE_CURRENT_LIST_DIR}/../fixtures/_driver.cmake")
-set(_tg "cargo-build-od-bin;cargo-build-od-static;cargo-build-od-shared")
+set(_tg "od-bin-build;od-static-build;od-shared-build")
 
 # Host triple (same mapping as t-rust-profile-release) for the naming table.
 if(CMAKE_HOST_SYSTEM_NAME STREQUAL "Darwin")

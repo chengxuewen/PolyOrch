@@ -49,7 +49,7 @@ set(_b "${_s}/cbx")
 drv_run(_dlog _rc SKIP_VAR _skip
     FIXTURE "${CMAKE_CURRENT_LIST_DIR}/../fixtures/cxxbridge"
     BUILD "${_b}" CONFIG "${_cfg}"
-    TARGETS bridge-lib-cxx cargo-build-bridge-lib-static
+    TARGETS bridge-lib-cxx bridge-lib-static-build
     PASSTHROUGH -DPOLYORCH_TEST_TOOL_VERSION=${_ver})
 if(_skip)
     message(STATUS "t-rust-cxxbridge-e2e : SKIP (fixture gate: capability absent at configure)")

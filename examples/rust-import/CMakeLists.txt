@@ -11,7 +11,7 @@
 #   cmake -S examples/rust-import -B build
 #   cmake --build build --target cargo-build-dash_ed    # build the staticlib member
 #   cmake --build build --target cargo-build-say-hi-exe # build the bin member
-#   cmake --build build --target run-say-hi-exe         # build + run the binary
+#   cmake --build build --target say-run-hi-exe         # build + run the binary
 #
 #   # embedded in a host that has PolyOrch_BUILD_EXAMPLES=ON:
 #   gated by PolyOrch_BUILD_RUST_EXAMPLES (same as rust-basic)

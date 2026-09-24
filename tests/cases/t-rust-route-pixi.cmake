@@ -18,7 +18,7 @@ _polyorch_pixi_scratch(_s)
 set(_b "${_s}/rp")
 drv_run(_dlog _rc SKIP_VAR _skip
     FIXTURE "${CMAKE_CURRENT_LIST_DIR}/../fixtures/route-pixi"
-    BUILD "${_b}" CONFIG "${_cfg}" TARGETS cargo-build-rp-probe)
+    BUILD "${_b}" CONFIG "${_cfg}" TARGETS rp-probe-build)
 if(_skip)
     message(STATUS "t-rust-route-pixi : SKIP (fixture gate: no pixi tool)")
     return()

@@ -29,7 +29,7 @@ drv_run(_dlog _rc SKIP_VAR _skip
     FIXTURE "${CMAKE_CURRENT_LIST_DIR}/../fixtures/gensource"
     BUILD "${_b}"
     CONFIG "${_cfg}"
-    TARGETS cargo-build-gs-bin)
+    TARGETS gs-bin-build)
 if(_skip)
     message(STATUS "t-rust-gensource : SKIP (fixture gate: capability absent at configure)")
     return()
@@ -62,7 +62,7 @@ set(_rpath "$ENV{PATH}")
 if(EXISTS "$ENV{HOME}/.cargo/bin")
     set(_rpath "$ENV{HOME}/.cargo/bin:${_rpath}")
 endif()
-execute_process(COMMAND "${CMAKE_COMMAND}" --build "${_b}" --target cargo-build-gs-bin
+execute_process(COMMAND "${CMAKE_COMMAND}" --build "${_b}" --target gs-bin-build
     ENVIRONMENT "PATH=${_rpath}"
     RESULT_VARIABLE _r2 OUTPUT_VARIABLE _r2out ERROR_VARIABLE _r2err)
 if(NOT _r2 EQUAL 0)

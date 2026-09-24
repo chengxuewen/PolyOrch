@@ -8,7 +8,7 @@
 #   # standalone:
 #   cmake -S examples/rust-basic -B build
 #   cmake --build build --target greet-cargo     # cargo build  -> .../greet-cli
-#   cmake --build build --target run-greet       # execute the artifact
+#   cmake --build build --target greet-run       # execute the artifact
 #   cmake --build build --target greet-test      # cargo test
 #
 #   # embedded in a host that has PolyOrch_BUILD_EXAMPLES=ON:
@@ -76,7 +76,7 @@ polyorch_rust_setup(REQUIRED)
 #         EMBEDDED MODE = GRAPH FUSION (2026-09-23 pilot): when included by
 #         the examples umbrella with the opt-in ON and the tool reachable,
 #         these calls run RIGHT HERE -- cargo-build-greet / greet-test /
-#         run-greet become real targets in the HOST build graph (clickable
+#         greet-run become real targets in the HOST build graph (clickable
 #         individually, DEPENDS-able from host targets). The umbrella
 #         PolyOrchExampleRustBasic target stays as the standalone-tree demo.
 polyorch_rust_build(

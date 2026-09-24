@@ -24,7 +24,7 @@ _polyorch_pixi_scratch(_s)
 
 set(_b "${_s}/pos")
 set(_dargs "-DFIXTURE=${CMAKE_CURRENT_LIST_DIR}/../fixtures/rustflags"
-           "-DBUILD=${_b}" "-DCONFIG=${_cfg}" "-DTARGETS=cargo-build-rf-on")
+           "-DBUILD=${_b}" "-DCONFIG=${_cfg}" "-DTARGETS=rf-on-build")
 if("$ENV{POLYORCH_TEST_GENERATOR}")
     list(APPEND _dargs "-DGENERATOR=$ENV{POLYORCH_TEST_GENERATOR}")
 endif()
@@ -53,7 +53,7 @@ endif()
 # --- negative: no rustflags -> the dependency guard error ------------------
 set(_b2 "${_s}/neg")
 set(_dargs2 "-DFIXTURE=${CMAKE_CURRENT_LIST_DIR}/../fixtures/rustflags"
-            "-DBUILD=${_b2}" "-DCONFIG=${_cfg}" "-DTARGETS=cargo-build-rf-off")
+            "-DBUILD=${_b2}" "-DCONFIG=${_cfg}" "-DTARGETS=rf-off-build")
 if("$ENV{POLYORCH_TEST_GENERATOR}")
     list(APPEND _dargs2 "-DGENERATOR=$ENV{POLYORCH_TEST_GENERATOR}")
 endif()

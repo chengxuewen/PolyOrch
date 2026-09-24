@@ -4,7 +4,7 @@
 #   # standalone:
 #   cmake -S examples/rust-profile-features -B build
 #   cmake --build build --target demo-debug     # no features, env var, debug
-#   cmake --build build --target run-demo-debug     # -> profile=debug env=hey
+#   cmake --build build --target demo-run-debug     # -> profile=debug env=hey
 #   cmake --build build --target demo-release   # --release + feature + rustflag
 #   ./build/.cargo-target-release/release/feature-demo
 cmake_minimum_required(VERSION 3.22)

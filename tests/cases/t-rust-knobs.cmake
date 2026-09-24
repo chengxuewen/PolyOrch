@@ -105,7 +105,7 @@ function(knobs_make dir gen skf)
 endfunction()
 
 macro(knobs_mk_read dir tgt out)
-    set(_mkf "${dir}/b/CMakeFiles/cargo-build-${tgt}.dir/build.make")
+    set(_mkf "${dir}/b/CMakeFiles/${tgt}-build.dir/build.make")
     ck_file("${_mkf}")
     file(READ "${_mkf}" _mkt)
     string(REPLACE "\\\n" " " _mkt "${_mkt}")   # rejoin folded recipe lines

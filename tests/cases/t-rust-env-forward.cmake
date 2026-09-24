@@ -113,7 +113,7 @@ execute_process(COMMAND "${CMAKE_COMMAND}" -G "Unix Makefiles"
 if(NOT _rc EQUAL 0)
     message(FATAL_ERROR "envfwd child configure failed (${_rc})\n${_out}${_err}")
 endif()
-set(_mk "${_src}/b/CMakeFiles/cargo-build-greet-bin.dir/build.make")
+set(_mk "${_src}/b/CMakeFiles/greet-bin-build.dir/build.make")
 ck_file("${_mk}")
 file(READ "${_mk}" _txt)
 string(REPLACE "\\\n" " " _txt "${_txt}")

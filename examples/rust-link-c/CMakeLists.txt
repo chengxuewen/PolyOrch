@@ -16,7 +16,7 @@
 #   cmake -S examples/rust-link-c -B build
 #   cmake --build build --target app            # C exe <- Rust staticlib
 #   ./build/app
-#   cmake --build build --target run-cli-user   # Rust bin <- C staticlib
+#   cmake --build build --target cli-run-user   # Rust bin <- C staticlib
 cmake_minimum_required(VERSION 3.22)
 
 if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)

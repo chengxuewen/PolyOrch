@@ -28,7 +28,7 @@ set(_b "${_s}/b")
 # waiting, not corruption).
 drv_run(_dlog _rc SKIP_VAR _skip
     FIXTURE "${CMAKE_CURRENT_LIST_DIR}/../fixtures/multitarget"
-    BUILD "${_b}" CONFIG "${_cfg}" TARGETS cargo-build-bin1-exe cargo-build-bin2-exe)
+    BUILD "${_b}" CONFIG "${_cfg}" TARGETS bin1-exe-build bin2-exe-build)
 if(_skip)
     message(STATUS "t-rust-multitarget : SKIP (fixture gate: capability absent at configure)")
     return()

@@ -118,8 +118,8 @@ polyorch_rust_build(TARGET greet-bin PACKAGE greet CRATE greet BINARY
 if(NOT TARGET greet-bin)
     message(FATAL_ERROR "e2e: polyorch_rust_build created no IMPORTED target greet-bin")
 endif()
-if(NOT TARGET cargo-build-greet-bin)
-    message(FATAL_ERROR "e2e: no cargo-build-<TARGET> mediator target to build")
+if(NOT TARGET greet-bin-build)
+    message(FATAL_ERROR "e2e: no <TARGET>-build mediator target to build")
 endif()
 
 polyorch_rust_test(PACKAGE greet NAME greet-rusttest)
@@ -141,7 +141,7 @@ if(NOT _rc EQUAL 0)
 endif()
 
 execute_process(COMMAND "${CMAKE_COMMAND}" --build "${_r}/b"
-    --target cargo-build-greet-bin
+    --target greet-bin-build
     RESULT_VARIABLE _rc OUTPUT_VARIABLE _out ERROR_VARIABLE _err)
 if(NOT _rc EQUAL 0)
     message(FATAL_ERROR "rust-e2e: child build failed (${_rc})\n${_out}${_err}")

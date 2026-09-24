@@ -10,7 +10,7 @@
 # Artifacts are named by the target triple's object family (msvc / gnu /
 # macho / elf), never by the host: the same table serves host builds and
 # (later) cross builds. Libraries enter the build tree as IMPORTED targets
-# backed by the cargo-build-<TARGET> mediator custom target; an auto-build
+# backed by the <TARGET>-build mediator custom target; an auto-build
 # edge (add_dependencies on the IMPORTED target, propagated to its linkers)
 # makes every consumer order the mediator before linking.
 # The legacy <TARGET>-cargo name survives as a compatibility shim target.
@@ -396,7 +396,7 @@ function(polyorch_rust_build)
     # keeps the equals form as one KEY=VAL argument, so its property is a
     # plain STRING (a ';' list would split mid-value;
     # polyorch_rust_add_rustflags joins with spaces).
-    set(_med "cargo-build-${B_TARGET}")
+    set(_med "${B_TARGET}-build")
     # WP9 fidelity fix (corr:702-727): the reference wraps every deferred
     # build-input property read in GENEX_EVAL, so a generator expression a
     # user stores INSIDE the property value -- the app_features and
@@ -843,7 +843,7 @@ function(_polyorch_rust_finalize_deferred target triple xtup kind crate td prof 
     # honored. TRUE falls the whole path resolution back to the host layer
     # (host file-name family, no .cargo-target/<tup>/ segment); the default
     # under a cross triple is the cross layer.
-    get_target_property(_hb "cargo-build-${target}" POLYORCH_RUST_HOST_BUILD)
+    get_target_property(_hb "${target}-build" POLYORCH_RUST_HOST_BUILD)
     set(_eff "${triple}")
     set(_seg "")
     if(xtup AND NOT _hb)
@@ -908,7 +908,7 @@ function(_polyorch_rust_finalize_deferred target triple xtup kind crate td prof 
         endif()
         set_property(TARGET "${target}" PROPERTY "${_iprop}" "${_last}")
         if(_srcs)
-            add_custom_command(TARGET "cargo-build-${target}" POST_BUILD
+            add_custom_command(TARGET "${target}-build" POST_BUILD
                 COMMAND ${CMAKE_COMMAND} -E make_directory ${_dirs}
                 COMMAND ${CMAKE_COMMAND} -E copy_if_different ${_srcs} ${_dirs}
                 BYPRODUCTS ${_byps}
@@ -1267,7 +1267,7 @@ endfunction()
 
 # Internal: resolve the user-facing declared target name to its mediator.
 # The setters key on the name given in polyorch_rust_build(TARGET ..); the
-# build inputs live on the cargo-build-<TARGET> mediator, which is a
+# build inputs live on the <TARGET>-build mediator, which is a
 # directory-scoped target -- so every setter must be called from the scope
 # that declared it (or a child scope), like the build call itself.
 function(_polyorch_rust_mediator CALLER T OUT)
@@ -1275,12 +1275,12 @@ function(_polyorch_rust_mediator CALLER T OUT)
         message(FATAL_ERROR
             "${CALLER}: no target '${T}' (declare it with polyorch_rust_build first)")
     endif()
-    set(_med "cargo-build-${T}")
+    set(_med "${T}-build")
     if(NOT TARGET "${_med}")
         message(FATAL_ERROR
             "${CALLER}: target '${T}' was not declared by polyorch_rust_build "
             "(no mediator '${_med}' carries its build inputs; setters take the "
-            "declared TARGET name, not the cargo-build-<TARGET> mediator)")
+            "declared TARGET name, not the <TARGET>-build mediator)")
     endif()
     set(${OUT} "${_med}" PARENT_SCOPE)
 endfunction()
@@ -1622,14 +1622,14 @@ function(polyorch_rust_run)
     if(POLYORCH_RUST_CARGO_TARGET AND CMAKE_CROSSCOMPILING_EMULATOR)
         set(_emu ${CMAKE_CROSSCOMPILING_EMULATOR})
     endif()
-    add_custom_target("run-${R_TARGET}"
+    add_custom_target("${R_TARGET}-run"
         COMMAND ${_emu} $<TARGET_FILE:${R_TARGET}>
         COMMENT "run $<TARGET_FILE:${R_TARGET}>")
     if(TARGET "${_med}")
-        add_dependencies("run-${R_TARGET}" "${_med}")
+        add_dependencies("${R_TARGET}-run" "${_med}")
     endif()
     if(R_FOLDER)
-        set_target_properties("run-${R_TARGET}" PROPERTIES FOLDER "${R_FOLDER}")
+        set_target_properties("${R_TARGET}-run" PROPERTIES FOLDER "${R_FOLDER}")
     endif()
 endfunction()
 
@@ -1927,7 +1927,7 @@ function(polyorch_rust_install)
     # Pass 2: plan + stage + serialize. Every handle was validated in the
     # pre-pass, so only the kind lookup and the implib literal remain.
     foreach(_h IN LISTS A_TARGETS)
-        set(_med "cargo-build-${_h}")
+        set(_med "${_h}-build")
         get_target_property(_kind "${_med}" POLYORCH_RUST_KIND)
         set(_plext ${_extra})
         if(_kind STREQUAL "shared")
@@ -2319,7 +2319,7 @@ function(polyorch_rust_cbindgen)
         # The reference's triple switch (corr:2113-2114): hostbuild flips
         # to HOST; otherwise the routed triple, which in the host layer
         # IS the host (PolyOrch empty-cross convention).
-        set(_hb "$<BOOL:$<TARGET_PROPERTY:cargo-build-${CN_TARGET},POLYORCH_RUST_HOST_BUILD>>")
+        set(_hb "$<BOOL:$<TARGET_PROPERTY:${CN_TARGET}-build,POLYORCH_RUST_HOST_BUILD>>")
         set(_not_hb "${POLYORCH_RUST_CARGO_TARGET}")
         if(NOT _not_hb)
             set(_not_hb "${POLYORCH_RUST_HOST_TARGET}")
@@ -2435,6 +2435,6 @@ function(polyorch_rust_cbindgen)
         # corr:2261-2263: the cargo build of the crate waits for fresh
         # headers (the annotations the generator reads are the source of
         # truth in both directions).
-        add_dependencies("cargo-build-${CN_TARGET}" "${_agg}")
+        add_dependencies("${CN_TARGET}-build" "${_agg}")
     endif()
 endfunction()

@@ -54,7 +54,7 @@ add_custom_target(PolyOrchExampleRustBasic
     COMMAND ${CMAKE_COMMAND} --build
         "${CMAKE_CURRENT_BINARY_DIR}/standalone/rust-basic" --target cargo-build-greet
     COMMAND ${CMAKE_COMMAND} --build
-        "${CMAKE_CURRENT_BINARY_DIR}/standalone/rust-basic" --target run-greet
+        "${CMAKE_CURRENT_BINARY_DIR}/standalone/rust-basic" --target greet-run
     COMMENT "rust-basic: system-cargo configure -> cargo build -> run (offline)")
 set_target_properties(PolyOrchExampleRustBasic PROPERTIES FOLDER ${PROJECT_NAME}/examples)
 else()
@@ -78,8 +78,8 @@ find_program(PolyOrchExample_cargo NAMES cargo
 find_program(PolyOrchExample_pixi NAMES pixi
     PATHS "$ENV{HOME}/.pixi/bin" "$ENV{PIXI_HOME}/bin")
 
-foreach(_pair "Import:rust-import:cargo-build-dash_ed:run-say-hi-exe"
-              "LinkC:rust-link-c:app:run-cli-user-tool")
+foreach(_pair "Import:rust-import:cargo-build-dash_ed:say-run-hi-exe"
+              "LinkC:rust-link-c:app:cli-run-user-tool")
     string(REPLACE ":" ";" _p "${_pair}")
     list(GET _p 0 _name)
     list(GET _p 1 _dir)
@@ -189,7 +189,7 @@ add_custom_target(PolyOrchExampleRustCross
     COMMAND ${CMAKE_COMMAND} --build
         "${CMAKE_CURRENT_BINARY_DIR}/standalone/rust-cross" --target cargo-build-musl-app-bin
     COMMAND ${CMAKE_COMMAND} --build
-        "${CMAKE_CURRENT_BINARY_DIR}/standalone/rust-cross" --target run-host-tool-bin
+        "${CMAKE_CURRENT_BINARY_DIR}/standalone/rust-cross" --target host-run-tool-bin
     COMMENT "rust-cross: --target musl route + hostbuild escape (needs the musl target installed)")
 set_target_properties(PolyOrchExampleRustCross PROPERTIES FOLDER ${PROJECT_NAME}/examples)
 else()

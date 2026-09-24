@@ -24,7 +24,7 @@ set(_b "${_s}/b")
 
 drv_run(_dlog _rc SKIP_VAR _skip
     FIXTURE "${CMAKE_CURRENT_LIST_DIR}/../fixtures/cargo-flags"
-    BUILD "${_b}" CONFIG "${_cfg}" TARGETS cargo-build-cf-flags cargo-build-cf-timings)
+    BUILD "${_b}" CONFIG "${_cfg}" TARGETS cf-flags-build cf-timings-build)
 if(_skip)
     message(STATUS "t-rust-cargoflags : SKIP (fixture gate: capability absent at configure)")
     return()

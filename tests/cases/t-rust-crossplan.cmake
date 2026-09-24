@@ -189,7 +189,7 @@ function(xplat_make dir xt hb)
 endfunction()
 
 macro(xplat_mk_read dir out)
-    set(_mkf "${dir}/b/CMakeFiles/cargo-build-xp-bin.dir/build.make")
+    set(_mkf "${dir}/b/CMakeFiles/xp-bin-build.dir/build.make")
     ck_file("${_mkf}")
     file(READ "${_mkf}" _mkt)
     string(REPLACE "\\\n" " " _mkt "${_mkt}")   # rejoin folded recipe lines

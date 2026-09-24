@@ -15,7 +15,7 @@
 #       -DPolyOrch_RUST_CARGO_TARGET=x86_64-unknown-linux-musl
 #   cmake --build build --target cargo-build-musl-app-bin
 #   file build/.cargo-target/x86_64-unknown-linux-musl/debug/musl-app  # ELF, statically linked
-#   cmake --build build --target run-host-tool-bin                     # runs on THIS machine
+#   cmake --build build --target host-run-tool-bin                     # runs on THIS machine
 cmake_minimum_required(VERSION 3.22)
 
 if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)

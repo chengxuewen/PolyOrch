@@ -27,7 +27,7 @@ set(_b "${_s}/b")
 
 drv_run(_dlog _rc SKIP_VAR _skip
     FIXTURE "${CMAKE_CURRENT_LIST_DIR}/../fixtures/config-disc"
-    BUILD "${_b}" CONFIG "${_cfg}" TARGETS cargo-build-cd-bin)
+    BUILD "${_b}" CONFIG "${_cfg}" TARGETS cd-bin-build)
 if(_skip)
     message(STATUS "t-rust-configdisc : SKIP (fixture gate: capability absent at configure)")
     return()

@@ -25,7 +25,7 @@ set(_b "${_s}/b")
 
 drv_run(_dlog _rc SKIP_VAR _skip
     FIXTURE "${CMAKE_CURRENT_LIST_DIR}/../fixtures/custom-profiles"
-    BUILD "${_b}" CONFIG "${_cfg}" TARGETS cargo-build-cp-debug cargo-build-cp-release cargo-build-cp-nodbg cargo-build-cp-dev)
+    BUILD "${_b}" CONFIG "${_cfg}" TARGETS cp-debug-build cp-release-build cp-nodbg-build cp-dev-build)
 if(_skip)
     message(STATUS "t-rust-customprofiles : SKIP (fixture gate: capability absent at configure)")
     return()
@@ -68,10 +68,10 @@ if(_p_debug STREQUAL _p_nodbg OR _p_dev STREQUAL _p_debug OR _p_release STREQUAL
 endif()
 
 # --- argv pin (Makefiles cells): --profile dev / --profile nodbg in the rule -
-if(EXISTS "${_b}/CMakeFiles/cargo-build-cp-nodbg.dir/build.make")
-    file(READ "${_b}/CMakeFiles/cargo-build-cp-nodbg.dir/build.make" _mk1)
-    file(READ "${_b}/CMakeFiles/cargo-build-cp-dev.dir/build.make" _mk2)
-    file(READ "${_b}/CMakeFiles/cargo-build-cp-debug.dir/build.make" _mk3)
+if(EXISTS "${_b}/CMakeFiles/cp-nodbg-build.dir/build.make")
+    file(READ "${_b}/CMakeFiles/cp-nodbg-build.dir/build.make" _mk1)
+    file(READ "${_b}/CMakeFiles/cp-dev-build.dir/build.make" _mk2)
+    file(READ "${_b}/CMakeFiles/cp-debug-build.dir/build.make" _mk3)
     if(NOT _mk1 MATCHES "%2D%2Dprofile nodbg|--profile nodbg")
         message(FATAL_ERROR "rust-customprofiles: nodbg rule lacks --profile nodbg")
     endif()
