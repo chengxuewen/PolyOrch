@@ -69,3 +69,18 @@ CMake Tools + the CodeLLDB extension.
 - **Embedded hosts** get the block at the host root only when they actually
   build the rust examples — configuring examples means you want them, debug
   included; a host that never pulls an example sees nothing.
+
+### The tree Debug button: `<handle>-dbg` shadow targets
+
+CMake Tools only puts Debug/Run buttons on codemodel EXECUTABLE targets —
+and a cargo artifact can never be one (imported handles are absent from the
+codemodel outright). With the debug surface on, `polyorch_rust_run` also
+adopts the artifact: a `<handle>-dbg` target (a 3-line C stub + a
+POST_BUILD copy of the cargo bytes) appears beside the verb nodes, so the
+native tree gesture "generate and debug" works — building it runs the real
+`<handle>-build` mediator first, and the debugger launches exactly the
+orchestrated artifact (byte-identical, verified by tests). Requirements:
+a C compiler in the tree (the examples declare `project(... LANGUAGES C)`
+for the stub). Multi-config generators skip the shadow (single-config only
+in v0); the launch.json path above is unaffected either way. The shadow
+target is EXCLUDE_FROM_ALL: a plain build never adopts it.
