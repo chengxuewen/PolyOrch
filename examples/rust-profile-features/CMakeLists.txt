@@ -54,8 +54,7 @@ polyorch_rust_setup(REQUIRED)
 set(_fl "${PROJECT_NAME}/examples/rust-profile-features")
 
 # --- handle A: the kitchen-sink debug build ---------------------------------
-polyorch_rust_build(
-    FOLDER ${_fl} TARGET demo PACKAGE feature-demo CRATE feature-demo
+polyorch_rust_build( TARGET demo PACKAGE feature-demo CRATE feature-demo
     BINARY PROFILE debug
     MANIFEST "${CMAKE_CURRENT_LIST_DIR}/crate/Cargo.toml")
 
@@ -67,8 +66,7 @@ polyorch_rust_set_features(TARGET demo FEATURES greet-loud greet-formal)
 polyorch_rust_set_env_vars(TARGET demo POLYORCH_DEMO_GREETING=hey)
 
 # --- handle B: the release build, rustflags + cargo flags -------------------
-polyorch_rust_build(
-    FOLDER ${_fl} TARGET demo-rel PACKAGE feature-demo CRATE feature-demo
+polyorch_rust_build( TARGET demo-rel PACKAGE feature-demo CRATE feature-demo
     BINARY PROFILE release
     MANIFEST "${CMAKE_CURRENT_LIST_DIR}/crate/Cargo.toml")
 
@@ -80,5 +78,5 @@ polyorch_rust_add_rustflags(TARGET demo-rel FLAGS -C debuginfo=0)
 # CARGO_FLAGS: extra cargo command-line flags on this handle's builds.
 polyorch_rust_add_cargo_flags(TARGET demo-rel FLAGS --quiet)
 
-polyorch_rust_run(FOLDER ${_fl} TARGET demo)
-polyorch_rust_run(FOLDER ${_fl} TARGET demo-rel)
+polyorch_rust_run(TARGET demo)
+polyorch_rust_run(TARGET demo-rel)

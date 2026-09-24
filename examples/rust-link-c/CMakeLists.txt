@@ -83,7 +83,6 @@ endif()
 
 # --- direction 1: Rust staticlib -> C executable ---------------------------
 polyorch_rust_build(
-    FOLDER  "${PROJECT_NAME}/examples/rust-link-c"
     TARGET  geometry
     PACKAGE geometry
     CRATE   geometry
@@ -100,11 +99,10 @@ add_library(c_triple STATIC c_fn.c)
 # named like its output file makes the Makefile generator silently swallow
 # the producing rule (PIT-13 -- the configure FATALs to teach this).
 polyorch_rust_build(
-    FOLDER  "${PROJECT_NAME}/examples/rust-link-c"
     TARGET  cli-user-tool
     PACKAGE cli-user
     CRATE   cli-user
     BINARY
     MANIFEST "${CMAKE_CURRENT_LIST_DIR}/rs/bin/Cargo.toml")
 polyorch_rust_link_libraries(TARGET cli-user-tool c_triple)
-polyorch_rust_run(FOLDER "${PROJECT_NAME}/examples/rust-link-c" TARGET cli-user-tool)
+polyorch_rust_run(TARGET cli-user-tool)

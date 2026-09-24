@@ -85,7 +85,6 @@ endif()
 #       SKIPPED_TARGETS catches members polyorch cannot map (e.g. plain libs
 #       with no C-ABI) so one odd member never breaks the import.
 polyorch_rust_import(
-    FOLDER "${PROJECT_NAME}/examples/rust-import"
     MANIFEST "${CMAKE_CURRENT_LIST_DIR}/ws-rs/Cargo.toml"
     IMPORTED_TARGETS imported_handles
     SKIPPED_TARGETS skipped_handles)
@@ -96,4 +95,4 @@ message(STATUS "rust-import: skipped = ${skipped_handles}")
 
 # [3/3] Consume like any CMake target: polyorch_rust_run registers the
 #         `run-<handle>` wrapper (build + execute), the lib links by name.
-polyorch_rust_run(FOLDER "${PROJECT_NAME}/examples/rust-import" TARGET say-hi-exe)
+polyorch_rust_run(TARGET say-hi-exe)

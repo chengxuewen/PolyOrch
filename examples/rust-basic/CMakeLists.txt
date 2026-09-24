@@ -80,7 +80,6 @@ polyorch_rust_setup(REQUIRED)
 #         individually, DEPENDS-able from host targets). The umbrella
 #         PolyOrchExampleRustBasic target stays as the standalone-tree demo.
 polyorch_rust_build(
-    FOLDER  "${PROJECT_NAME}/examples/rust-basic"
     TARGET  greet
     PACKAGE greet-cli
     CRATE   greet-cli
@@ -88,9 +87,7 @@ polyorch_rust_build(
 
 # [3/4] test + run wrappers for the same crate.
 polyorch_rust_test(
-    FOLDER "${PROJECT_NAME}/examples/rust-basic"
     PACKAGE greet-cli 
     NAME greet-test)
 polyorch_rust_run(
-    FOLDER "${PROJECT_NAME}/examples/rust-basic"
     TARGET greet)

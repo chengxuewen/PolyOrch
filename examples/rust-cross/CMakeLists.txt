@@ -71,7 +71,6 @@ polyorch_rust_setup(REQUIRED)
 # The DEVICE binary: routed to the target triple (default when the cache var
 # is set). Static musl output is the classic cross first-run.
 polyorch_rust_build(
-    FOLDER "${PROJECT_NAME}/examples/rust-cross"
     TARGET musl-app-bin PACKAGE musl-app CRATE musl-app BINARY
     MANIFEST "${CMAKE_CURRENT_LIST_DIR}/crates/musl-app/Cargo.toml")
 
@@ -79,9 +78,8 @@ polyorch_rust_build(
 # route is active the setter suppresses --target for this handle only and
 # its artifacts land in the host layer instead of the <triple> nesting.
 polyorch_rust_build(
-    FOLDER "${PROJECT_NAME}/examples/rust-cross"
     TARGET host-tool-bin PACKAGE host-tool CRATE host-tool BINARY
     MANIFEST "${CMAKE_CURRENT_LIST_DIR}/crates/host-tool/Cargo.toml")
 polyorch_rust_set_hostbuild(TARGET host-tool-bin)
 
-polyorch_rust_run(FOLDER "${PROJECT_NAME}/examples/rust-cross" TARGET host-tool-bin)
+polyorch_rust_run(TARGET host-tool-bin)

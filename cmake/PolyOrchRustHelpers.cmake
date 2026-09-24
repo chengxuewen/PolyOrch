@@ -704,12 +704,17 @@ function(polyorch_rust_build)
         add_custom_target(polyorch-rust-all)
     endif()
     add_dependencies(polyorch-rust-all "${_med}")
-    if(B_FOLDER)
-        # all three handles join the same IDE folder: the imported target
-        # consumers link, the mediator that owns the rule, and the shim.
-        set_target_properties("${B_TARGET}" "${_med}"
-            PROPERTIES FOLDER "${B_FOLDER}")
+    # IDE folder: explicit FOLDER wins; default = the calling directory
+    # relative to the source root ("where you call it is where it lives").
+    set(_fold "${B_FOLDER}")
+    if(NOT _fold)
+        cmake_path(RELATIVE_PATH CMAKE_CURRENT_LIST_DIR
+            BASE_DIRECTORY "${CMAKE_SOURCE_DIR}" OUTPUT_VARIABLE _fold)
     endif()
+    # all three handles join the same IDE folder: the imported target
+    # consumers link, the mediator that owns the rule.
+    set_target_properties("${B_TARGET}" "${_med}"
+        PROPERTIES FOLDER "${_fold}")
     # WP4 deferred finalize: late-read the output-directory properties and
     # re-shape the IMPORTED locations (per-CFG on multi-config), staging a
     # POST_BUILD copy into any expressed output dir. Reference shape
@@ -1135,6 +1140,10 @@ function(polyorch_rust_import)
     set(_foldkw "")
     if(A_FOLDER)
         set(_foldkw FOLDER "${A_FOLDER}")
+    else()
+        cmake_path(RELATIVE_PATH CMAKE_CURRENT_LIST_DIR
+            BASE_DIRECTORY "${CMAKE_SOURCE_DIR}" OUTPUT_VARIABLE _folddef)
+        set(_foldkw FOLDER "${_folddef}")
     endif()
 
     set(_imps "")
@@ -1590,9 +1599,12 @@ function(polyorch_rust_test)
         COMMENT "cargo test ${T_PACKAGE}"
         ${_uterm}
         VERBATIM)
-    if(T_FOLDER)
-        set_target_properties("${_name}" PROPERTIES FOLDER "${T_FOLDER}")
+    set(_fold "${T_FOLDER}")
+    if(NOT _fold)
+        cmake_path(RELATIVE_PATH CMAKE_CURRENT_LIST_DIR
+            BASE_DIRECTORY "${CMAKE_SOURCE_DIR}" OUTPUT_VARIABLE _fold)
     endif()
+    set_target_properties("${_name}" PROPERTIES FOLDER "${_fold}")
 endfunction()
 
 # polyorch_rust_run(TARGET <imported> [FOLDER <ide>])
@@ -1628,9 +1640,12 @@ function(polyorch_rust_run)
     if(TARGET "${_med}")
         add_dependencies("${R_TARGET}-run" "${_med}")
     endif()
-    if(R_FOLDER)
-        set_target_properties("${R_TARGET}-run" PROPERTIES FOLDER "${R_FOLDER}")
+    set(_fold "${R_FOLDER}")
+    if(NOT _fold)
+        cmake_path(RELATIVE_PATH CMAKE_CURRENT_LIST_DIR
+            BASE_DIRECTORY "${CMAKE_SOURCE_DIR}" OUTPUT_VARIABLE _fold)
     endif()
+    set_target_properties("${R_TARGET}-run" PROPERTIES FOLDER "${_fold}")
 endfunction()
 
 # polyorch_rust_clean([NAME <t>] [BASE_DIR <td>] [FOLDER <ide>])
@@ -1651,9 +1666,13 @@ function(polyorch_rust_clean)
     add_custom_target("${_name}"
         COMMAND ${CMAKE_COMMAND} -E rm -rf "${_td}"
         COMMENT "removing cargo target directory ${_td}")
-    if(C_FOLDER)
-        set_target_properties("${_name}" PROPERTIES FOLDER "${C_FOLDER}")
+    set(_fold "${C_FOLDER}")
+    if(NOT _fold)
+        cmake_path(RELATIVE_PATH CMAKE_CURRENT_LIST_DIR
+            BASE_DIRECTORY "${CMAKE_SOURCE_DIR}" OUTPUT_VARIABLE _fold)
     endif()
+    set_target_properties("${_name}" PROPERTIES FOLDER "${_fold}")
+
 endfunction()
 
 
