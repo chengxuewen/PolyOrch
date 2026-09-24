@@ -65,7 +65,7 @@ set(POLYORCH_RUST_CARGO_TARGET "" CACHE INTERNAL "")
 @PRE@
 polyorch_rust_build(TARGET pair PACKAGE hello CRATE pair)
 foreach(h @HANDLES@)
-    if(TARGET ${h} AND TARGET cargo-build-${h} AND TARGET ${h}-cargo)
+    if(TARGET ${h} AND TARGET cargo-build-${h})
         message(STATUS "KIND ${h} OK")
     endif()
 endforeach()

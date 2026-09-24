@@ -52,7 +52,7 @@ add_custom_target(PolyOrchExampleRustBasic
         -S "${CMAKE_CURRENT_SOURCE_DIR}/rust-basic"
         -B "${CMAKE_CURRENT_BINARY_DIR}/standalone/rust-basic"
     COMMAND ${CMAKE_COMMAND} --build
-        "${CMAKE_CURRENT_BINARY_DIR}/standalone/rust-basic" --target greet-cargo
+        "${CMAKE_CURRENT_BINARY_DIR}/standalone/rust-basic" --target cargo-build-greet
     COMMAND ${CMAKE_COMMAND} --build
         "${CMAKE_CURRENT_BINARY_DIR}/standalone/rust-basic" --target run-greet
     COMMENT "rust-basic: system-cargo configure -> cargo build -> run (offline)")

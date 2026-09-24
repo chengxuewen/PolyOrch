@@ -584,11 +584,6 @@ function(polyorch_rust_build)
             VERBATIM)
         add_custom_target("${_med}" DEPENDS "${_artifact}")
     endif()
-    # Compatibility shim for the pre-rename <TARGET>-cargo name (existing
-    # callers and IDE muscle memory keep working). A real target, not an
-    # ALIAS: add_custom_target(x ALIAS y) configures but generates a rule
-    # that runs the literal word ALIAS (rc=2, measured on cmake 4.4.3).
-    add_custom_target("${B_TARGET}-cargo" DEPENDS "${_med}")
     # DEPRECATED: attaches extra prerequisites to the mediator; the
     # auto-build edge below already orders it for every consumer.
     if(B_DEPENDS)
@@ -712,7 +707,7 @@ function(polyorch_rust_build)
     if(B_FOLDER)
         # all three handles join the same IDE folder: the imported target
         # consumers link, the mediator that owns the rule, and the shim.
-        set_target_properties("${B_TARGET}" "${_med}" "${B_TARGET}-cargo"
+        set_target_properties("${B_TARGET}" "${_med}"
             PROPERTIES FOLDER "${B_FOLDER}")
     endif()
     # WP4 deferred finalize: late-read the output-directory properties and
@@ -1285,7 +1280,7 @@ function(_polyorch_rust_mediator CALLER T OUT)
         message(FATAL_ERROR
             "${CALLER}: target '${T}' was not declared by polyorch_rust_build "
             "(no mediator '${_med}' carries its build inputs; setters take the "
-            "declared TARGET name, not the mediator or the <-cargo shim)")
+            "declared TARGET name, not the cargo-build-<TARGET> mediator)")
     endif()
     set(${OUT} "${_med}" PARENT_SCOPE)
 endfunction()
@@ -1630,8 +1625,8 @@ function(polyorch_rust_run)
     add_custom_target("run-${R_TARGET}"
         COMMAND ${_emu} $<TARGET_FILE:${R_TARGET}>
         COMMENT "run $<TARGET_FILE:${R_TARGET}>")
-    if(TARGET "${R_TARGET}-cargo")
-        add_dependencies("run-${R_TARGET}" "${R_TARGET}-cargo")
+    if(TARGET "${_med}")
+        add_dependencies("run-${R_TARGET}" "${_med}")
     endif()
     if(R_FOLDER)
         set_target_properties("run-${R_TARGET}" PROPERTIES FOLDER "${R_FOLDER}")

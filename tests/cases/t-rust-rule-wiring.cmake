@@ -26,7 +26,7 @@ _polyorch_pixi_scratch(_s)
 
 drv_run(_dlog _rc SKIP_VAR _skip
     FIXTURE "${CMAKE_CURRENT_LIST_DIR}/../fixtures/rule-wiring"
-    BUILD "${_s}/b" CONFIG "${_cfg}" TARGETS greet-cargo)
+    BUILD "${_s}/b" CONFIG "${_cfg}" TARGETS cargo-build-greet)
 if(_skip)
     message(STATUS "t-rust-rule-wiring : SKIP (fixture gate: capability absent at configure)")
     return()

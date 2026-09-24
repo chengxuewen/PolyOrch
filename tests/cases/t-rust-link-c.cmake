@@ -29,7 +29,7 @@ set(_b "${_s}/b")
 
 drv_run(_dlog _rc SKIP_VAR _skip
     FIXTURE "${CMAKE_CURRENT_LIST_DIR}/../fixtures/link-c"
-    BUILD "${_b}" CONFIG "${_cfg}" TARGETS capp rust-clib-bin-cargo)
+    BUILD "${_b}" CONFIG "${_cfg}" TARGETS capp cargo-build-rust-clib-bin)
 if(_skip)
     message(STATUS "t-rust-link-c : SKIP (fixture gate: capability absent at configure)")
     return()

@@ -47,7 +47,7 @@ if(NOT _rc EQUAL 0)
     message(FATAL_ERROR "rust-profile-release: child configure failed (${_rc})\n${_out}${_err}")
 endif()
 
-execute_process(COMMAND "${CMAKE_COMMAND}" --build "${_b}" --target greet-cargo
+execute_process(COMMAND "${CMAKE_COMMAND}" --build "${_b}" --target cargo-build-greet
     ENVIRONMENT "PATH=${_cpath}"
     RESULT_VARIABLE _rc OUTPUT_VARIABLE _out ERROR_VARIABLE _err)
 if(NOT _rc EQUAL 0)
