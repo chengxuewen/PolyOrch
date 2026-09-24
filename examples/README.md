@@ -43,3 +43,29 @@ writes the manifest + local config (no install). `rust-basic` needs only a
 cargo on `PATH`. The version pin, manifest path and smoke task in
 `bootstrap.cmake` are caller policy -- the PolyOrch module ships the
 mechanism, not the numbers.
+
+## Debugging rust targets in VSCode
+
+Every rust example opts in to `PolyOrch_RUST_VSCODE_DEBUG` (the library
+default stays OFF — nothing writes into your workspace unless you or an
+example asks). After a configure, `<workspace root>/.vscode/` gains a
+managed block in `launch.json` + `tasks.json`: one CodeLLDB launch config
+per `polyorch_rust_run` target (Debug/Release profiles derive from the
+artifact path) whose `preLaunchTask` builds exactly that crate's mediator
+(`greet-build`) — F5 = incremental build of the real orchestrated artifact,
+then debug. Reconfiguring regenerates the block in place; your own configs
+above the markers are preserved byte-for-byte. Requirements: VSCode +
+CMake Tools + the CodeLLDB extension.
+
+- **Scope**: run targets only. Cross-routed binaries skip (remote debugging
+  is a deferred surface), and `#[test]` debugging is deliberately delegated
+  to rust-analyzer's test lens — cargo's fingerprint-hashed test binaries
+  are unknowable at configure time, and per-test discovery is an editor
+  concern the ecosystem already solved.
+- **Wrong workspace root?** If you open folder A but configure subfolder B,
+  pass `PolyOrch_RUST_VSCODE_DIR=<A>/.vscode` (e.g. via
+  `cmake.configureSettings: { "PolyOrch_RUST_VSCODE_DIR":
+  "${workspaceFolder}/.vscode" }`) so the files land where VSCode reads them.
+- **Embedded hosts** get the block at the host root only when they actually
+  build the rust examples — configuring examples means you want them, debug
+  included; a host that never pulls an example sees nothing.

@@ -2674,12 +2674,6 @@ function(_polyorch_rust_debug_register HANDLE)
             "no artifact path on the handle")
         return()
     endif()
-    # profile/bin segment = artifact path relative to its cargo target-dir
-    set(_rel "${_art}")
-    if(_td AND NOT _td STREQUAL "NOTFOUND")
-        file(RELATIVE_PATH _rel "${_td}" "${_art}")
-    endif()
-    get_filename_component(_seg "${_rel}" DIRECTORY)
     # cwd = the crate dir (cargo-run convention); fall back to build root
     get_target_property(_mf "${HANDLE}" POLYORCH_RUST_MANIFEST)
     if(_mf AND NOT _mf STREQUAL "NOTFOUND")
@@ -2687,8 +2681,25 @@ function(_polyorch_rust_debug_register HANDLE)
     else()
         set(_cwd "${CMAKE_BINARY_DIR}")
     endif()
-    set_property(GLOBAL APPEND PROPERTY POLYORCH_RUST_DEBUG_SPECS
-        "${HANDLE}|${_art}|${_cwd}|${_seg}")
+    get_filename_component(_bin "${_art}" NAME)
+    if(CMAKE_CONFIGURATION_TYPES AND _td AND NOT _td STREQUAL "NOTFOUND")
+        # multi-config: the eager location carries a per-CFG genex that no
+        # debug adapter evaluates -- expand the two cargo profiles the
+        # staging layout guarantees (corr. WP4 dir naming) explicitly.
+        foreach(_seg debug release)
+            set_property(GLOBAL APPEND PROPERTY POLYORCH_RUST_DEBUG_SPECS
+                "${HANDLE}|${_td}/${_seg}/${_bin}|${_cwd}|${_seg}")
+        endforeach()
+    else()
+        # profile/bin segment = artifact path relative to its cargo target-dir
+        set(_rel "${_art}")
+        if(_td AND NOT _td STREQUAL "NOTFOUND")
+            file(RELATIVE_PATH _rel "${_td}" "${_art}")
+        endif()
+        get_filename_component(_seg "${_rel}" DIRECTORY)
+        set_property(GLOBAL APPEND PROPERTY POLYORCH_RUST_DEBUG_SPECS
+            "${HANDLE}|${_art}|${_cwd}|${_seg}")
+    endif()
 endfunction()
 
 # _polyorch_rust_vscode_rows(SPECS LAUNCH_OUT TASKS_OUT)

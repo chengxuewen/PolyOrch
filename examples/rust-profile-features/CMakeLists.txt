@@ -48,6 +48,9 @@ if(NOT _rust_standalone)
 endif()
 
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/../../cmake")
+# F5 out of the box: generate VSCode debug configs for this example's run
+# targets (WP11 surface; the library default stays OFF -- see the WP11 note in examples/README.md)
+set(PolyOrch_RUST_VSCODE_DEBUG ON)
 include(PolyOrchRustHelpers)
 
 polyorch_rust_setup(REQUIRED)

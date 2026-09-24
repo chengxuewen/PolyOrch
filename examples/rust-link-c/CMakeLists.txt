@@ -61,6 +61,9 @@ project(rust-link-c LANGUAGES C)   # the C half is a first-class citizen here
 
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/../../cmake")
 include(PolyOrchPixiHelpers)
+# F5 out of the box: generate VSCode debug configs for this example's run
+# targets (WP11 surface; the library default stays OFF -- see the WP11 note in examples/README.md)
+set(PolyOrch_RUST_VSCODE_DEBUG ON)
 include(PolyOrchRustHelpers)
 
 # Route selection: same build graph on either route (see rust-import for the
