@@ -80,8 +80,9 @@ set(POLYORCH_RUST_VERSION "0.0.0-test" CACHE INTERNAL "")
 set(POLYORCH_RUST_ROUTE "system" CACHE INTERNAL "")
 set(POLYORCH_RUST_BIN_DIR "" CACHE INTERNAL "")
 
-polyorch_rust_build(TARGET greet-bin PACKAGE greet CRATE greet-cli BINARY)
-polyorch_rust_build(TARGET greet-lib PACKAGE greet CRATE greetlib STATIC)
+polyorch_rust_build(TARGET greet-bin PACKAGE greet CRATE greet-cli BINARY NO_SOURCES
+    MANIFEST "${CMAKE_CURRENT_LIST_DIR}/../fixtures/rule-wiring/rust-ws/Cargo.toml")
+polyorch_rust_build(TARGET greet-lib PACKAGE greet CRATE greetlib STATIC NO_SOURCES)
 
 # R-5 ordering regression: every setter runs AFTER the build() call.
 polyorch_rust_set_features(TARGET greet-bin FEATURES alpha beta)
@@ -162,7 +163,8 @@ set(POLYORCH_RUST_CARGO "@_cmakecmd@" CACHE INTERNAL "")
 set(POLYORCH_RUST_HOST_TARGET "x86_64-unknown-linux-gnu" CACHE INTERNAL "")
 set(POLYORCH_RUST_ROUTE "system" CACHE INTERNAL "")
 set(POLYORCH_RUST_BIN_DIR "" CACHE INTERNAL "")
-polyorch_rust_build(TARGET greet-bin PACKAGE greet CRATE greet-cli BINARY)
+polyorch_rust_build(TARGET greet-bin PACKAGE greet CRATE greet-cli BINARY NO_SOURCES
+    MANIFEST "${CMAKE_CURRENT_LIST_DIR}/../fixtures/rule-wiring/rust-ws/Cargo.toml")
 # the MEDIATOR name must be rejected: setters take the declared handle only
 polyorch_rust_set_features(TARGET greet-bin-build FEATURES alpha)
 ]==])

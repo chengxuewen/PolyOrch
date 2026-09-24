@@ -118,7 +118,8 @@ set(CMAKE_SYSROOT "@SYS@")
 set(CMAKE_C_COMPILER_TARGET "@CTT@")
 add_library(clib STATIC clib.c)
 @CXXLIB@
-polyorch_rust_build(TARGET lp-bin PACKAGE hello CRATE hello-cli @KIND@)
+polyorch_rust_build(TARGET lp-bin PACKAGE hello CRATE hello-cli @KIND@ NO_SOURCES
+    MANIFEST "${CMAKE_CURRENT_LIST_DIR}/../fixtures/rule-wiring/rust-ws/Cargo.toml")
 @LIBS@get_target_property(_if lp-bin INTERFACE_LINK_LIBRARIES)
 file(WRITE "${CMAKE_BINARY_DIR}/iface.txt" "${_if}")
 @HBK@@RUN@

@@ -38,7 +38,7 @@ macro(ck_dk_fail name rx prelude)
     endif()
 endmacro()
 
-set(_call "polyorch_rust_build(TARGET pair PACKAGE hello CRATE pair)")
+set(_call "polyorch_rust_build(TARGET pair PACKAGE hello CRATE pair NO_SOURCES MANIFEST \"${CMAKE_CURRENT_LIST_DIR}/../fixtures/rule-wiring/rust-ws/Cargo.toml\")")
 
 # (1) explicit empty list = opt-out: the historical FATAL survives.
 ck_dk_fail(dk-optout "pick exactly one of BINARY, STATIC, SHARED"
@@ -63,7 +63,8 @@ set(POLYORCH_RUST_ROUTE "system" CACHE INTERNAL "")
 set(POLYORCH_RUST_BIN_DIR "" CACHE INTERNAL "")
 set(POLYORCH_RUST_CARGO_TARGET "" CACHE INTERNAL "")
 @PRE@
-polyorch_rust_build(TARGET pair PACKAGE hello CRATE pair)
+polyorch_rust_build(TARGET pair PACKAGE hello CRATE pair NO_SOURCES
+    MANIFEST "${CMAKE_CURRENT_LIST_DIR}/../fixtures/rule-wiring/rust-ws/Cargo.toml")
 foreach(h @HANDLES@)
     if(TARGET ${h} AND TARGET ${h}-build)
         message(STATUS "KIND ${h} OK")

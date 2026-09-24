@@ -61,7 +61,7 @@ ck_call_fail(knobs-feat-vs-global
     "set(POLYORCH_RUST_CARGO \"${CMAKE_COMMAND}\" CACHE INTERNAL \"\")"
     "set(POLYORCH_RUST_HOST_TARGET \"x86_64-unknown-linux-gnu\" CACHE INTERNAL \"\")"
     "set(POLYORCH_RUST_ROUTE \"system\" CACHE INTERNAL \"\")"
-    "polyorch_rust_build(TARGET kn-fp PACKAGE krate CRATE kcrate BINARY FEATURES a)")
+    "polyorch_rust_build(TARGET kn-fp PACKAGE krate CRATE kcrate BINARY FEATURES a NO_SOURCES MANIFEST \"${CMAKE_CURRENT_LIST_DIR}/../fixtures/rule-wiring/rust-ws/Cargo.toml\")")
 
 # ---------------------------------------------------------- child harness ----
 file(WRITE "${_s}/_knobs.in" [==[
@@ -76,8 +76,9 @@ set(POLYORCH_RUST_HOST_TARGET "x86_64-unknown-linux-gnu" CACHE INTERNAL "")
 set(POLYORCH_RUST_ROUTE "system" CACHE INTERNAL "")
 set(POLYORCH_RUST_BIN_DIR "" CACHE INTERNAL "")
 set(POLYORCH_RUST_CARGO_TARGET "" CACHE INTERNAL "")
-polyorch_rust_build(TARGET k-bin PACKAGE krate CRATE kcrate BINARY)
-polyorch_rust_build(TARGET k-lib PACKAGE krate CRATE kcrate STATIC)
+polyorch_rust_build(TARGET k-bin PACKAGE krate CRATE kcrate BINARY NO_SOURCES
+    MANIFEST "${CMAKE_CURRENT_LIST_DIR}/../fixtures/rule-wiring/rust-ws/Cargo.toml")
+polyorch_rust_build(TARGET k-lib PACKAGE krate CRATE kcrate STATIC NO_SOURCES)
 polyorch_rust_test(PACKAGE krate NAME k-test)
 if(@SKF@)
     polyorch_rust_set_features(TARGET k-bin FEATURES zz)

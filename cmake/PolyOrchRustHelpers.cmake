@@ -186,14 +186,21 @@ endfunction()
 # variable is a no-op), so PATH, the ENV entries and the RUSTFLAGS= entry
 # below all trail the strip block.
 function(polyorch_rust_build)
-    set(_opts BINARY STATIC SHARED LOCKED FROZEN)
+    set(_opts BINARY STATIC SHARED LOCKED FROZEN NO_SOURCES)
     set(_one TARGET PACKAGE CRATE PROFILE MANIFEST BASE_DIR FOLDER PREBUILD)
     set(_multi FEATURES DEPENDS)
     cmake_parse_arguments(PARSE_ARGV 0 B "${_opts}" "${_one}" "${_multi}")
     if(B_UNPARSED_ARGUMENTS)
         message(FATAL_ERROR "polyorch_rust_build: unknown args: ${B_UNPARSED_ARGUMENTS}")
     endif()
-    _polyorch_rust_must(B_TARGET B_PACKAGE B_CRATE)
+    # MANIFEST is required whenever the IDE source mount will run; a
+    # NO_SOURCES call opts out of the mount and may omit it (script-mode
+    # identity assertions never touch sources).
+    if(B_NO_SOURCES)
+        _polyorch_rust_must(B_TARGET B_PACKAGE B_CRATE)
+    else()
+        _polyorch_rust_must(B_TARGET B_PACKAGE B_CRATE B_MANIFEST)
+    endif()
     set(_kind "")
     foreach(_k BINARY STATIC SHARED)
         if(B_${_k})
@@ -259,6 +266,9 @@ function(polyorch_rust_build)
         endif()
         if(B_FROZEN)
             list(APPEND _fwd FROZEN)
+        endif()
+        if(B_NO_SOURCES)
+            list(APPEND _fwd NO_SOURCES)
         endif()
         foreach(_dl ${_dkw})
             if(_dl STREQUAL "bin")
@@ -583,6 +593,24 @@ function(polyorch_rust_build)
             ${_uterm}
             VERBATIM)
         add_custom_target("${_med}" DEPENDS "${_artifact}")
+    endif()
+    # IDE source mount: list the crate's files under the mediator so IDE
+    # project trees show (and open) the rust sources on the target. The list
+    # is COSMETIC ONLY -- cargo owns the real build inputs; a glob miss or
+    # stray hit never affects correctness (that distinction is why the GLOB
+    # caution in the CMake docs does not apply here). CONFIGURE_DEPENDS
+    # re-globs on configure so newly added files appear. NO_SOURCES opts out.
+    # IDE source mount: the crate's files (metadata src_path + sibling glob,
+    # the AUTHORITATIVE list) join the mediator as HEADER_FILE_ONLY sources --
+    # cosmetic for IDE trees, never compile inputs. NO_SOURCES opts out.
+    if(NOT B_NO_SOURCES)
+        _polyorch_rust_metadata_sources("${B_MANIFEST}" "${B_CRATE}" _rs_files)
+        if(_rs_files)
+            set_source_files_properties(${_rs_files} PROPERTIES
+                HEADER_FILE_ONLY ON)   # IDE display, never compile inputs
+            set_property(TARGET "${_med}" APPEND PROPERTY
+                SOURCES ${_rs_files})
+        endif()
     endif()
     # DEPRECATED: attaches extra prerequisites to the mediator; the
     # auto-build edge below already orders it for every consumer.
@@ -1279,6 +1307,58 @@ endfunction()
 # build inputs live on the <TARGET>-build mediator, which is a
 # directory-scoped target -- so every setter must be called from the scope
 # that declared it (or a child scope), like the build call itself.
+# Resolve the IDE-source list for one crate: cargo metadata --no-deps gives
+# the AUTHORITATIVE entry files (targets[].src_path); a sibling *.rs glob
+# completes the mod files metadata does not list. Cached per absolute
+# manifest (metadata runs once per manifest per configure). OUT receives a
+# semicolon list of absolute paths.
+function(_polyorch_rust_metadata_sources MANIFEST CRATE OUT)
+    get_filename_component(_abs "${MANIFEST}" ABSOLUTE)
+    get_filename_component(_abs "${_abs}" REALPATH)
+    if(DEFINED _polyorch_meta_srcs_${_abs})
+        set(${OUT} "${${_polyorch_meta_srcs_${_abs}}}" PARENT_SCOPE)
+        return()
+    endif()
+    _polyorch_rust_command(_cmd SUBCOMMAND
+        metadata --no-deps --format-version=1 --manifest-path "${_abs}")
+    execute_process(COMMAND ${_cmd}
+        RESULT_VARIABLE _rc OUTPUT_VARIABLE _json ERROR_VARIABLE _err)
+    if(NOT _rc EQUAL 0)
+        message(FATAL_ERROR
+            "polyorch_rust_build: cargo metadata failed (rc=${_rc}) -- "
+            "IDE source list unavailable:\n${_err}")
+    endif()
+    string(JSON _np LENGTH "${_json}" "packages")
+    set(_acc "")
+    set(_dirs "")
+    if(_np GREATER 0)
+        math(EXPR _plast "${_np} - 1")
+        foreach(_pi RANGE 0 ${_plast})
+            string(JSON _pkg GET "${_json}" "packages" ${_pi} "name")
+            if(NOT _pkg STREQUAL "${CRATE}")
+                continue()
+            endif()
+            string(JSON _nt LENGTH "${_json}" "packages" ${_pi} "targets")
+            math(EXPR _tlast "${_nt} - 1")
+            foreach(_ti RANGE 0 ${_tlast})
+                string(JSON _sp GET "${_json}" "packages" ${_pi} "targets" ${_ti} "src_path")
+                list(APPEND _acc "${_sp}")
+                get_filename_component(_sd "${_sp}" DIRECTORY)
+                list(APPEND _dirs "${_sd}")
+            endforeach()
+        endforeach()
+    endif()
+    foreach(_d IN LISTS _dirs)
+        file(GLOB _mod LIST_DIRECTORIES false "${_d}/*.rs")
+        list(APPEND _acc ${_mod})
+    endforeach()
+    if(_acc)
+        list(REMOVE_DUPLICATES _acc)
+    endif()
+    set(_polyorch_meta_srcs_${_abs} "${_acc}" CACHE INTERNAL "rust ide sources per manifest")
+    set(${OUT} "${_acc}" PARENT_SCOPE)
+endfunction()
+
 function(_polyorch_rust_mediator CALLER T OUT)
     if(NOT TARGET "${T}")
         message(FATAL_ERROR

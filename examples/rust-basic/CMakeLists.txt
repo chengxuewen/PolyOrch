@@ -83,11 +83,13 @@ polyorch_rust_build(
     TARGET  greet
     PACKAGE greet-cli
     CRATE   greet-cli
-    BINARY)
+    BINARY
+    MANIFEST "${CMAKE_CURRENT_LIST_DIR}/Cargo.toml")
 
 # [3/4] test + run wrappers for the same crate.
 polyorch_rust_test(
     PACKAGE greet-cli 
     NAME greet-test)
+    
 polyorch_rust_run(
     TARGET greet)
