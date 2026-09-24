@@ -689,6 +689,10 @@ function(polyorch_rust_build)
     # polyorch_rust_import already set there), so polyorch_rust_install
     # validates handles from both registration paths the same way.
     set_property(TARGET "${B_TARGET}" PROPERTY POLYORCH_RUST_PACKAGE "${B_PACKAGE}")
+    # The actual cargo --target-dir of this handle's rule (custom BASE_DIR
+    # included). Read back by the debug-config registrar to derive the
+    # artifact's profile/segment relative to it.
+    set_property(TARGET "${B_TARGET}" PROPERTY POLYORCH_RUST_TARGET_DIR "${_td}")
     # WP7: the manifest path rides the handle too (the reference's
     # INTERFACE_COR_PACKAGE_MANIFEST_PATH role, corr:1808/2116) -- read by
     # polyorch_rust_cxxbridge / polyorch_rust_cbindgen for their auto-mode
@@ -1800,8 +1804,15 @@ function(polyorch_rust_run)
     # launches). Stamps ride the handle (MANIFEST/PACKAGE) and the mediator
     # (CRATE, falling back to PACKAGE when they differ nothing to mount).
     _polyorch_rust_mount_verb_targets("${R_TARGET}" "${R_TARGET}-run")
-    if(TARGET "${_med}")
-        add_dependencies("${R_TARGET}-run" "${_med}")
+    # Ordering edge: the run node builds first (latent bug: _med was never
+    # defined here, so this edge silently never attached). The mediator is
+    # the <handle>-build convention; import-route handles have none, and
+    # an import needs no build edge anyway.
+    if(TARGET "${R_TARGET}-build")
+        add_dependencies("${R_TARGET}-run" "${R_TARGET}-build")
+    endif()
+    if(PolyOrch_RUST_VSCODE_DEBUG)
+        _polyorch_rust_debug_register("${R_TARGET}")
     endif()
     set(_fold "${R_FOLDER}")
     if(NOT _fold)
@@ -2620,3 +2631,175 @@ function(polyorch_rust_cbindgen)
         add_dependencies("${CN_TARGET}-build" "${_agg}")
     endif()
 endfunction()
+
+# ===========================================================================
+# WP11: VSCode debug-config generation for rust run targets.
+#
+# polyorch_rust_run registers a CodeLLDB launch config + matching build task
+# into <CMAKE_SOURCE_DIR>/.vscode (or PolyOrch_RUST_VSCODE_DIR), merged as a
+# managed region so user content survives reconfigure byte-for-byte. Gated by
+# PolyOrch_RUST_VSCODE_DEBUG (default OFF; examples opt in). Test debugging
+# is deliberately NOT generated (cargo's fingerprint-hashed test binaries are
+# unknowable at configure time -- rust-analyzer's test lens is the ecosystem
+# answer; ruled 2026-09-24).
+#
+# Managed-region contract: the BEGIN/END comment lines sit at column 0 INSIDE
+# the JSON array, generated rows live between them (every row comma-terminated
+# -- VSCode parses trailing commas fine), user configs live ABOVE the BEGIN
+# marker. A pre-existing file without markers is never rewritten: the generated
+# document lands beside it as <file>.polyorch-new for manual adoption.
+# ===========================================================================
+
+option(PolyOrch_RUST_VSCODE_DEBUG
+    "Generate .vscode launch/tasks configs for polyorch_rust_run targets" OFF)
+set(PolyOrch_RUST_VSCODE_DIR "" CACHE PATH
+    "Directory for the generated .vscode files (empty = <CMAKE_SOURCE_DIR>/.vscode)")
+
+# _polyorch_rust_debug_register(HANDLE)
+# Collect one launch spec per run target. Skips (with STATUS) cross-routed
+# builds -- remote debug is a deferred surface -- and handles without a
+# readable artifact path.
+function(_polyorch_rust_debug_register HANDLE)
+    if(POLYORCH_RUST_CARGO_TARGET)
+        message(STATUS
+            "polyorch_rust_run(${HANDLE}): VSCode debug config skipped -- "
+            "cross-routed artifact (remote debug is deferred)")
+        return()
+    endif()
+    get_target_property(_art "${HANDLE}" IMPORTED_LOCATION)
+    get_target_property(_td "${HANDLE}" POLYORCH_RUST_TARGET_DIR)
+    if(NOT _art OR _art STREQUAL "NOTFOUND")
+        message(STATUS
+            "polyorch_rust_run(${HANDLE}): VSCode debug config skipped -- "
+            "no artifact path on the handle")
+        return()
+    endif()
+    # profile/bin segment = artifact path relative to its cargo target-dir
+    set(_rel "${_art}")
+    if(_td AND NOT _td STREQUAL "NOTFOUND")
+        file(RELATIVE_PATH _rel "${_td}" "${_art}")
+    endif()
+    get_filename_component(_seg "${_rel}" DIRECTORY)
+    # cwd = the crate dir (cargo-run convention); fall back to build root
+    get_target_property(_mf "${HANDLE}" POLYORCH_RUST_MANIFEST)
+    if(_mf AND NOT _mf STREQUAL "NOTFOUND")
+        get_filename_component(_cwd "${_mf}" DIRECTORY)
+    else()
+        set(_cwd "${CMAKE_BINARY_DIR}")
+    endif()
+    set_property(GLOBAL APPEND PROPERTY POLYORCH_RUST_DEBUG_SPECS
+        "${HANDLE}|${_art}|${_cwd}|${_seg}")
+endfunction()
+
+# _polyorch_rust_vscode_rows(SPECS LAUNCH_OUT TASKS_OUT)
+# Pure spec-table -> JSONC region text (unit-testable offline).
+function(_polyorch_rust_vscode_rows SPECS LAUNCH_OUT TASKS_OUT)
+    set(_L "")
+    set(_K "")
+    foreach(_row ${SPECS})
+        string(REPLACE "|" ";" _f "${_row}")
+        list(GET _f 0 _h)
+        list(GET _f 1 _art)
+        list(GET _f 2 _cwd)
+        list(GET _f 3 _seg)
+        set(_nm "PolyOrch: ${_h} (${_seg})")
+        string(APPEND _L
+"        {\n"
+"            \"name\": \"${_nm}\",\n"
+"            \"type\": \"lldb\",\n"
+"            \"request\": \"launch\",\n"
+"            \"program\": \"${_art}\",\n"
+"            \"cwd\": \"${_cwd}\",\n"
+"            \"preLaunchTask\": \"${_nm}\"\n"
+"        },\n")
+        string(APPEND _K
+"        {\n"
+"            \"label\": \"${_nm}\",\n"
+"            \"type\": \"shell\",\n"
+"            \"command\": \"cmake\",\n"
+"            \"args\": [\"--build\", \"${CMAKE_BINARY_DIR}\", \"--target\", \"${_h}-build\"],\n"
+"            \"problemMatcher\": []\n"
+"        },\n")
+    endforeach()
+    set(${LAUNCH_OUT} "${_L}" PARENT_SCOPE)
+    set(${TASKS_OUT} "${_K}" PARENT_SCOPE)
+endfunction()
+
+# _polyorch_rust_region_write(FILE BEGIN END ROWS SHELL SHELL_KIND)
+# SHELL = full document template used when FILE is absent (contains %ROWS%);
+# BEGIN/END = column-0 marker comment lines; ROWS = comma-terminated rows.
+# Returns via out-var: OK | REPLACED | CREATED | PLACED_NEW.
+function(_polyorch_rust_region_write FILE BEGIN END ROWS SHELL OUT)
+    if(NOT EXISTS "${FILE}")
+        string(REPLACE "%ROWS%" "${BEGIN}\n${ROWS}${END}" _full "${SHELL}")
+        get_filename_component(_par "${FILE}" DIRECTORY)
+        file(MAKE_DIRECTORY "${_par}")
+        file(WRITE "${FILE}" "${_full}\n")
+        set(${OUT} "CREATED" PARENT_SCOPE)
+        return()
+    endif()
+    file(READ "${FILE}" _t)
+    string(FIND "${_t}" "${BEGIN}" _b)
+    string(FIND "${_t}" "${END}" _e)
+    if(_b GREATER -1 AND _e GREATER _b)
+        string(LENGTH "${_t}" _len)
+        string(SUBSTRING "${_t}" 0 "${_b}" _pre)
+        string(LENGTH "${END}" _endlen)
+        math(EXPR _e2 "${_e} + ${_endlen}")
+        string(SUBSTRING "${_t}" "${_e2}" "${_len}" _post)
+        set(_new "${_pre}${BEGIN}\n${ROWS}${END}${_post}")
+        if(NOT _new STREQUAL _t)
+            file(WRITE "${FILE}" "${_new}")
+        endif()
+        set(${OUT} "REPLACED" PARENT_SCOPE)
+        return()
+    endif()
+    # no markers: never rewrite a file we do not own -- park beside it
+    string(REPLACE "%ROWS%" "${BEGIN}\n${ROWS}${END}" _full "${SHELL}")
+    file(WRITE "${FILE}.polyorch-new" "${_full}\n")
+    set(${OUT} "PLACED_NEW" PARENT_SCOPE)
+endfunction()
+
+# End-of-configure deferred generator (hooked at include time, once per tree).
+function(_polyorch_rust_vscode_debug_generate)
+    get_property(_specs GLOBAL PROPERTY POLYORCH_RUST_DEBUG_SPECS)
+    _polyorch_rust_vscode_rows("${_specs}" _launch _tasks)
+    set(_dir "${PolyOrch_RUST_VSCODE_DIR}")
+    if(NOT _dir)
+        set(_dir "${CMAKE_SOURCE_DIR}/.vscode")
+    endif()
+    if(EXISTS "${_dir}" AND NOT IS_DIRECTORY "${_dir}")
+        # a FILE squatting on the directory path: skip loudly, never unlink
+        message(WARNING
+            "PolyOrch_RUST_VSCODE_DIR: '${_dir}' exists as a file -- "
+            "rust debug surface skipped")
+        return()
+    endif()
+    set(_st "")
+    _polyorch_rust_region_write("${_dir}/launch.json"
+        "// __POLYORCH_GENERATED_BEGIN__ (PolyOrch rust debug configs; keep this block last, regenerate via reconfigure)"
+        "// __POLYORCH_GENERATED_END__"
+        "${_launch}"
+"{\n    \"version\": \"0.2.0\",\n    \"configurations\": [\n%ROWS%\n    ]\n}"
+        _st)
+    set(_st2 "")
+    _polyorch_rust_region_write("${_dir}/tasks.json"
+        "// __POLYORCH_GENERATED_BEGIN__ (PolyOrch rust build tasks; keep this block last, regenerate via reconfigure)"
+        "// __POLYORCH_GENERATED_END__"
+        "${_tasks}"
+"{\n    \"version\": \"2.0.0\",\n    \"tasks\": [\n%ROWS%\n    ]\n}"
+        _st2)
+    message(STATUS
+        "PolyOrch: rust debug configs -> ${_dir} "
+        "(launch ${_st}, tasks ${_st2}; CodeLLDB extension required)")
+endfunction()
+
+# Per-round include hook: register the end-of-configure generator ONCE per
+# configure round while the option is ON (GLOBAL properties reset every
+# round, so re-registration across configures stays correct; multiple
+# includes across directories collapse via the flag).
+get_property(_polyorch_dbg_hooked GLOBAL PROPERTY POLYORCH_RUST_DEBUG_HOOKED)
+if(PolyOrch_RUST_VSCODE_DEBUG AND NOT _polyorch_dbg_hooked)
+    set_property(GLOBAL PROPERTY POLYORCH_RUST_DEBUG_HOOKED TRUE)
+    cmake_language(DEFER CALL _polyorch_rust_vscode_debug_generate)
+endif()
