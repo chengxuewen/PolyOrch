@@ -1327,7 +1327,11 @@ function(_polyorch_rust_metadata_sources MANIFEST CRATE OUT)
     get_filename_component(_abs "${MANIFEST}" ABSOLUTE)
     get_filename_component(_abs "${_abs}" REALPATH)
     if(DEFINED _polyorch_meta_srcs_${_abs})
-        set(${OUT} "${${_polyorch_meta_srcs_${_abs}}}" PARENT_SCOPE)
+        # single deref: the cache var's NAME is _polyorch_meta_srcs_<abs>;
+        # "${${_polyorch_meta_srcs_${_abs}}}" would deref the VALUE as a name
+        # and read empty on every reconfigure of a warm tree (mounted sources
+        # silently vanish on the second configure -- the "visible once" bug).
+        set(${OUT} "${_polyorch_meta_srcs_${_abs}}" PARENT_SCOPE)
         return()
     endif()
     _polyorch_rust_command(_cmd SUBCOMMAND
@@ -1367,6 +1371,7 @@ function(_polyorch_rust_metadata_sources MANIFEST CRATE OUT)
         list(REMOVE_DUPLICATES _acc)
     endif()
     set(_polyorch_meta_srcs_${_abs} "${_acc}" CACHE INTERNAL "rust ide sources per manifest")
+    message(STATUS "MTDBG abs=${_abs} crate=${CRATE} acc=[${_acc}]")
     set(${OUT} "${_acc}" PARENT_SCOPE)
 endfunction()
 
