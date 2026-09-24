@@ -61,18 +61,24 @@ endif()
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/../../cmake")
 include(PolyOrchRustHelpers)
 
-# [1/4] Locate the toolchain on PATH (system route, the default). A host
-#         without cargo gets the REQUIRED FATAL naming exactly that fix --
-#         pinning/switching the toolchain is an environment concern (a
-#         rustup override, a shell, a pixi env), not this example's.
+# [1/4] Locate the toolchain (system route, the default). In embedded mode
+#         this writes the route into the HOST cache -- the fusion cost,
+#         accepted by the opt-in knob.
 polyorch_rust_setup(REQUIRED)
 
 # [2/4] Wrap cargo. The CMake imported target is named `greet` while the
 #         built binary's file base name is `greet-cli` (the [[bin]] name).
 #         They are kept DISTINCT on purpose: an IMPORTED target whose name
 #         equals its artifact base name makes the Makefile generator silently
-#         drop the rule that produces the binary (PIT-13). `greet-cargo`
+#         drop the rule that produces the binary (PIT-13). `cargo-build-greet`
 #         (the mediator) is what you build; `greet` is what you link/inspect.
+#
+#         EMBEDDED MODE = GRAPH FUSION (2026-09-23 pilot): when included by
+#         the examples umbrella with the opt-in ON and the tool reachable,
+#         these calls run RIGHT HERE -- cargo-build-greet / greet-test /
+#         run-greet become real targets in the HOST build graph (clickable
+#         individually, DEPENDS-able from host targets). The umbrella
+#         PolyOrchExampleRustBasic target stays as the standalone-tree demo.
 polyorch_rust_build(
     FOLDER  "${PROJECT_NAME}/examples/rust-basic"
     TARGET  greet
