@@ -211,3 +211,10 @@
 - **Root cause**: WP9's plan line ("ledger gains the test map") was remembered as a landed file; status.md's history prose carried the phantom forward across sessions.
 - **Solution**: before editing/registering against any cited path: `git ls-files <path>` (or `test -f`); if absent, grep the ledger/README for which file actually carries the function, and fix the phantom reference in the same commit.
 - **Verification**: `git ls-files docs/reference/corrosion-test-map.md` -> empty; the namespace note lives at `docs/reference/corrosion-port-ledger.md` head.
+
+## PIT-26: CMake double-deref on CACHE INTERNAL read-back silently un-mounts on reconfigure (2026-09-24)
+- **Symptom**: IDE target tree showed mounted rust sources right after the first configure, then the files vanished after any reconfigure of the same build tree ("visible once"). Fresh-tree test cases stayed green; only the warm tree lost the mount.
+- **Root cause**: `_polyorch_rust_metadata_sources()` cached the per-manifest list as `CACHE INTERNAL _polyorch_meta_srcs_<abs>` but read it back as `"${${_polyorch_meta_srcs_${_abs}}}"` -- the inner `${}` yields the list VALUE ("a;b;c"), the outer `${}` then dereferences that value as a variable name, which is undefined -> empty. Every cache hit returned empty; the cold path (first configure) never touched it.
+- **Solution**: single deref: `set(${OUT} "${_polyorch_meta_srcs_${_abs}}" PARENT_SCOPE)` -- CMake expands `${_abs}` inside the name, then one `${NAME}` lookup.
+- **Verification**: `grep -c '${${_' cmake/PolyOrchRustHelpers.cmake` must be 0; plus the File API codemodel warm-reconfigure regression (configure twice, assert greet-build sources still export the .rs list -- the case that fresh-scratch cases structurally cannot catch).
+- **Forbidden**: testing ONLY in fresh scratch trees -- any per-configure cache/deref bug is invisible there; a warm-tree reconfigure leg is mandatory whenever a CACHE INTERNAL round-trip is introduced.
