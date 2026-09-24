@@ -605,6 +605,14 @@ function(polyorch_rust_build)
     # cosmetic for IDE trees, never compile inputs. NO_SOURCES opts out.
     if(NOT B_NO_SOURCES)
         _polyorch_rust_metadata_sources("${B_MANIFEST}" "${B_CRATE}" _rs_files)
+        # metadata lists compile targets only; the manifest itself (and its
+        # lockfile, once generated) are where dependency/feature edits live,
+        # so they join the display list explicitly.
+        list(APPEND _rs_files "${B_MANIFEST}")
+        get_filename_component(_root "${B_MANIFEST}" DIRECTORY)
+        if(EXISTS "${_root}/Cargo.lock")
+            list(APPEND _rs_files "${_root}/Cargo.lock")
+        endif()
         if(_rs_files)
             # HEADER_FILE_ONLY marks them "not compiled here" for CMake; some
             # IDE versions fold header-class entries away in target trees, so
