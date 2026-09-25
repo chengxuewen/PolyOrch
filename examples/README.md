@@ -84,3 +84,11 @@ a C compiler in the tree (the examples declare `project(... LANGUAGES C)`
 for the stub). Multi-config generators skip the shadow (single-config only
 in v0); the launch.json path above is unaffected either way. The shadow
 target is EXCLUDE_FROM_ALL: a plain build never adopts it.
+
+The surface also manages a third region -- `.vscode/settings.json` --
+setting `cmake.debugConfig: { "type": "lldb" }`, which (vscode-cmake-tools
+>= 1.24, PR #4818) redirects the target-tree Debug gesture to CodeLLDB
+instead of the cppdbg default that needs cpptools installed. Already define
+`cmake.debugConfig` yourself outside the region? The whole file is left
+untouched (skip reported in the configure log). Run (without debugging)
+needs nothing: CMake Tools executes the binary in a terminal directly.
