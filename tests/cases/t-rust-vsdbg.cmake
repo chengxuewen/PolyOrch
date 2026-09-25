@@ -49,6 +49,8 @@ ck(_lj MATCHES "\"preLaunchTask\": \"PolyOrch: vb \\(${_seg}\\)\"")
 ck(_tj MATCHES "\"label\": \"PolyOrch: vb \\(${_seg}\\)\"")     # closure
 ck(_tj MATCHES "\"--target\", \"vb-build\"")
 ck(_lj MATCHES "__POLYORCH_GENERATED_BEGIN__")
+file(READ "${_b}/vsout/settings.json" _sj)
+ck(_sj MATCHES "\"cmake.debugConfig\": \{ \"type\": \"lldb\"")
 
 # ---- idempotency: a second configure must not touch the bytes -------------
 file(SHA256 "${_b}/vsout/launch.json" _h1)

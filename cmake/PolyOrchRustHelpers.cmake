@@ -2864,9 +2864,36 @@ function(_polyorch_rust_vscode_debug_generate)
         "${_tasks}"
 "{\n    \"version\": \"2.0.0\",\n    \"tasks\": [\n%ROWS%\n    ]\n}"
         _st2)
+    # settings.json: the tree-button provider fix (vscode-cmake-tools
+    # >= 1.24, PR #4818): cmake.debugConfig.type skips the cppdbg
+    # auto-detection so the target-tree Debug gesture opens CodeLLDB.
+    # Skipped when the user authors cmake.debugConfig outside our region
+    # (their definition wins; a duplicate JSON key is undefined behavior).
+    set(_sf "${_dir}/settings.json")
+    set(_st3 "SKIPPED")
+    set(_skip_settings FALSE)
+    if(EXISTS "${_sf}")
+        file(READ "${_sf}" _sraw)
+        string(FIND "${_sraw}" "cmake.debugConfig" _udc)
+        string(FIND "${_sraw}" "// __POLYORCH_GENERATED_BEGIN__" _omb)
+        # a key living BEFORE the begin marker (or in a markerless file) is
+        # the user's own definition -- leave the file fully alone
+        if(_udc GREATER -1 AND (_omb LESS 0 OR _udc LESS _omb))
+            set(_skip_settings TRUE)
+        endif()
+    endif()
+    if(NOT _skip_settings)
+        _polyorch_rust_region_write("${_sf}"
+            "// __POLYORCH_GENERATED_BEGIN__ (PolyOrch rust debug provider; regenerate via reconfigure)"
+            "// __POLYORCH_GENERATED_END__"
+            "    \"cmake.debugConfig\": { \"type\": \"lldb\", \"request\": \"launch\" },\n"
+"{\n%ROWS%\n}"
+            _st3)
+    endif()
     message(STATUS
         "PolyOrch: rust debug configs -> ${_dir} "
-        "(launch ${_st}, tasks ${_st2}; CodeLLDB extension required)")
+        "(launch ${_st}, tasks ${_st2}, settings ${_st3}; "
+        "CodeLLDB + cmake-tools>=1.24 for tree Debug)")
 endfunction()
 
 # Per-round include hook: register the end-of-configure generator ONCE per
