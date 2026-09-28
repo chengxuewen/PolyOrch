@@ -1,0 +1,23 @@
+[package]
+name = "spine"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "spine"          # the CMake bin-artifact contract: <CRATE> (= package name)
+path = "src/bin/spine-run.rs"
+test = false
+bench = false
+
+[workspace]
+
+[lib]
+name = "spine"   # artifact libspine.a = the CRATE-derived name the CMake face expects
+
+crate-type = ["staticlib", "rlib"]   # rlib: the src/bin runner imports the lib; staticlib: the C++ consumer
+
+[dependencies]
+cxx = "1.0"
+
+[build-dependencies]
+cxx-build = "1.0"

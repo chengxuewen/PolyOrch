@@ -2107,6 +2107,10 @@ function(polyorch_rust_install)
     # half-registers and the actionable error wins over the setup guard.
     foreach(_h IN LISTS A_TARGETS)
         _polyorch_rust_mediator("polyorch_rust_install" "${_h}" _med)
+        # PIT-29: the mediator gate resolved the (possibly prefixed) name;
+        # mirror it onto the loop var so every later read in the pass and
+        # in the plan rows uses the REGISTERED spelling.
+        _polyorch_rust_apply_target_prefix(_h "${_h}")
         get_target_property(_pkg "${_h}" POLYORCH_RUST_PACKAGE)
         if(NOT _pkg)
             message(FATAL_ERROR
@@ -2160,6 +2164,7 @@ function(polyorch_rust_install)
     # Pass 2: plan + stage + serialize. Every handle was validated in the
     # pre-pass, so only the kind lookup and the implib literal remain.
     foreach(_h IN LISTS A_TARGETS)
+        _polyorch_rust_apply_target_prefix(_h "${_h}")   # PIT-29: registered spelling
         set(_med "${_h}-build")
         get_target_property(_kind "${_med}" POLYORCH_RUST_KIND)
         set(_plext ${_extra})
@@ -2333,6 +2338,11 @@ function(polyorch_rust_cxxbridge)
     endforeach()
     _polyorch_rust_require_setup(polyorch_rust_cxxbridge)
 
+    # WP13/PIT-29: the caller passes the bare handle name; the registered
+    # handle carries the fusion prefix (fifth name outlet -- found when the
+    # flagship example ran fused).
+    _polyorch_rust_apply_target_prefix(_h0 "${CB_TARGET}")
+    set(CB_TARGET "${_h0}")
     set(_cxx "${CB_TARGET}-cxx")
     if(TARGET "${_cxx}")
         message(FATAL_ERROR
@@ -2526,6 +2536,11 @@ function(polyorch_rust_cbindgen)
     cmake_parse_arguments(PARSE_ARGV 0 CN "ALLOW_INSTALL"
         "TARGET;MANIFEST_DIRECTORY;CARGO_PACKAGE;BINDINGS_TARGET;TARGET_TRIPLE;HEADER_NAME;CBINDGEN_VERSION;PREFIX"
         "FLAGS")
+    # WP13/PIT-29: prefix-aware like every other name outlet
+    if(CN_TARGET)
+        _polyorch_rust_apply_target_prefix(_cn_t "${CN_TARGET}")
+        set(CN_TARGET "${_cn_t}")
+    endif()
     if(CN_UNPARSED_ARGUMENTS)
         message(FATAL_ERROR
             "polyorch_rust_cbindgen: unknown args: ${CN_UNPARSED_ARGUMENTS}")

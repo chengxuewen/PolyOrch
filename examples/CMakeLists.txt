@@ -48,7 +48,8 @@ find_program(PolyOrchExample_pixi NAMES pixi
 # FUSED -- system-route rust examples (in the host graph, no buttons)
 # ============================================================================
 if(PolyOrch_BUILD_RUST_EXAMPLES AND PolyOrchExample_cargo)
-    foreach(_fused "rust-basic" "rust-import" "rust-link-c" "rust-profile-features")
+    foreach(_fused "rust-basic" "rust-import" "rust-link-c" "rust-profile-features"
+                   "rust-bindings")
         # WP13: full directory name as prefix, <directory>-all aggregates.
         # Directory scope per iteration.
         set(PolyOrch_RUST_TARGET_PREFIX "${_fused}")
@@ -221,6 +222,27 @@ if(PolyOrch_BUILD_RUST_EXAMPLES AND PolyOrchExample_cargo)
 else()
     message(STATUS
         "PolyOrch examples: PolyOrchExampleRustCross not registered "
+        "-- set PolyOrch_BUILD_RUST_EXAMPLES=ON AND have cargo reachable "
+        "(PATH or ~/.cargo/bin)")
+endif()
+
+# rust-bindings: the flagship binding example's full chain -- fused verb
+# targets already exist in this tree; this button additionally runs the
+# install(EXPORT) -> find_package consumer story end to end.
+if(PolyOrch_BUILD_RUST_EXAMPLES AND PolyOrchExample_cargo)
+    add_custom_target(PolyOrchExampleRustBindings
+        COMMAND ${CMAKE_COMMAND}
+            -S "${CMAKE_CURRENT_SOURCE_DIR}/rust-bindings"
+            -B "${CMAKE_CURRENT_BINARY_DIR}/standalone/rust-bindings"
+        COMMAND ${CMAKE_COMMAND} --build
+            "${CMAKE_CURRENT_BINARY_DIR}/standalone/rust-bindings" --target rust-bindings-app
+        COMMAND ${CMAKE_COMMAND} --build
+            "${CMAKE_CURRENT_BINARY_DIR}/standalone/rust-bindings" --target rust-bindings-consumer
+        COMMENT "rust-bindings: cxx bridge + cbindgen + install(EXPORT) -> find_package consumer")
+    set_target_properties(PolyOrchExampleRustBindings PROPERTIES FOLDER ${PROJECT_NAME}/examples)
+else()
+    message(STATUS
+        "PolyOrch examples: PolyOrchExampleRustBindings not registered "
         "-- set PolyOrch_BUILD_RUST_EXAMPLES=ON AND have cargo reachable "
         "(PATH or ~/.cargo/bin)")
 endif()
