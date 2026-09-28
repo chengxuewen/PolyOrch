@@ -54,10 +54,13 @@ if(PolyOrch_BUILD_RUST_EXAMPLES AND PolyOrchExample_cargo)
         # Directory scope per iteration.
         set(PolyOrch_RUST_TARGET_PREFIX "${_fused}")
         set(PolyOrch_RUST_AGGREGATE_NAME "${_fused}-all")
+        # one IDE root for the whole fused family, under the buttons' group
+        set(PolyOrch_RUST_FOLDER_ROOT "${PROJECT_NAME}/examples/${_fused}")
         add_subdirectory(${_fused})
     endforeach()
     unset(PolyOrch_RUST_AGGREGATE_NAME)
     unset(PolyOrch_RUST_TARGET_PREFIX)
+    unset(PolyOrch_RUST_FOLDER_ROOT)
 else()
     message(STATUS
         "PolyOrch examples: system-route rust examples not fused "

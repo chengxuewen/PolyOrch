@@ -757,6 +757,14 @@ function(polyorch_rust_build)
     # relative to the source root ("where you call it is where it lives").
     set(_fold "${B_FOLDER}")
     if(NOT _fold)
+        # PolyOrch_RUST_FOLDER_ROOT (directory variable, WP13): a host that
+        # fuses several subtrees pins the whole family under one IDE root
+        # ("examples/rust/<dir>" in the umbrella), instead of each subtree's
+        # CMAKE_SOURCE_DIR-relative path (empty when the subtree IS the
+        # source root -- the standalone-examples configure).
+        set(_fold "${PolyOrch_RUST_FOLDER_ROOT}")
+    endif()
+    if(NOT _fold)
         cmake_path(RELATIVE_PATH CMAKE_CURRENT_LIST_DIR
             BASE_DIRECTORY "${CMAKE_SOURCE_DIR}" OUTPUT_VARIABLE _fold)
     endif()
@@ -1193,8 +1201,12 @@ function(polyorch_rust_import)
     if(A_FOLDER)
         set(_foldkw FOLDER "${A_FOLDER}")
     else()
-        cmake_path(RELATIVE_PATH CMAKE_CURRENT_LIST_DIR
-            BASE_DIRECTORY "${CMAKE_SOURCE_DIR}" OUTPUT_VARIABLE _folddef)
+        if(PolyOrch_RUST_FOLDER_ROOT)
+            set(_folddef "${PolyOrch_RUST_FOLDER_ROOT}")
+        else()
+            cmake_path(RELATIVE_PATH CMAKE_CURRENT_LIST_DIR
+                BASE_DIRECTORY "${CMAKE_SOURCE_DIR}" OUTPUT_VARIABLE _folddef)
+        endif()
         set(_foldkw FOLDER "${_folddef}")
     endif()
 
@@ -1802,6 +1814,9 @@ function(polyorch_rust_test)
     endif()
     set(_fold "${T_FOLDER}")
     if(NOT _fold)
+        set(_fold "${PolyOrch_RUST_FOLDER_ROOT}")
+    endif()
+    if(NOT _fold)
         cmake_path(RELATIVE_PATH CMAKE_CURRENT_LIST_DIR
             BASE_DIRECTORY "${CMAKE_SOURCE_DIR}" OUTPUT_VARIABLE _fold)
     endif()
@@ -1856,6 +1871,9 @@ function(polyorch_rust_run)
     endif()
     set(_fold "${R_FOLDER}")
     if(NOT _fold)
+        set(_fold "${PolyOrch_RUST_FOLDER_ROOT}")
+    endif()
+    if(NOT _fold)
         cmake_path(RELATIVE_PATH CMAKE_CURRENT_LIST_DIR
             BASE_DIRECTORY "${CMAKE_SOURCE_DIR}" OUTPUT_VARIABLE _fold)
     endif()
@@ -1881,6 +1899,9 @@ function(polyorch_rust_clean)
         COMMAND ${CMAKE_COMMAND} -E rm -rf "${_td}"
         COMMENT "removing cargo target directory ${_td}")
     set(_fold "${C_FOLDER}")
+    if(NOT _fold)
+        set(_fold "${PolyOrch_RUST_FOLDER_ROOT}")
+    endif()
     if(NOT _fold)
         cmake_path(RELATIVE_PATH CMAKE_CURRENT_LIST_DIR
             BASE_DIRECTORY "${CMAKE_SOURCE_DIR}" OUTPUT_VARIABLE _fold)
@@ -2358,6 +2379,9 @@ function(polyorch_rust_cxxbridge)
             set(CB_FOLDER "${_cxxfold}")
         endif()
     endif()
+    if(NOT CB_FOLDER AND PolyOrch_RUST_FOLDER_ROOT)
+        set(CB_FOLDER "${PolyOrch_RUST_FOLDER_ROOT}")
+    endif()
 
     # Manifest of the crate handle (the reference reads
     # INTERFACE_COR_PACKAGE_MANIFEST_PATH off the imported target,
@@ -2687,6 +2711,9 @@ function(polyorch_rust_cbindgen)
     # floated at the tree root; group them (and the per-header regen
     # targets, missed in the first pass) under the handle's own folder.
     get_target_property(_cbfold "${_bt}" FOLDER)
+    if((NOT _cbfold OR _cbfold STREQUAL "NOTFOUND") AND PolyOrch_RUST_FOLDER_ROOT)
+        set(_cbfold "${PolyOrch_RUST_FOLDER_ROOT}")
+    endif()
     if(_cbfold AND NOT _cbfold STREQUAL "NOTFOUND")
         set_target_properties("${_agg}" PROPERTIES FOLDER "${_cbfold}")
     endif()

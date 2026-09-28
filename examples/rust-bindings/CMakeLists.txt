@@ -85,8 +85,13 @@ polyorch_rust_cxxbridge(TARGET spine-static
 # C++-side bridge function (host_scale).
 add_executable(rust-bindings-app cpp/app/main.cpp)
 target_compile_features(rust-bindings-app PRIVATE cxx_std_17)
+if(PolyOrch_RUST_FOLDER_ROOT)
+    set(_rbfold "${PolyOrch_RUST_FOLDER_ROOT}")
+else()
+    set(_rbfold "rust-bindings")
+endif()
 set_target_properties(rust-bindings-app rust-bindings-cxx-regen
-    PROPERTIES FOLDER rust-bindings)
+    PROPERTIES FOLDER "${_rbfold}")
 # the bridge include!("spine/bridge_impl.h") pulls the hand-written
 # header into the GENERATED .cpp too -- teach the generated archive where
 # it lives (the cxxbridge surface has no include-dir knob; this is the
@@ -102,7 +107,6 @@ set(_hcxx "${_h}-cxx")
 target_include_directories("${_hcxx}" PRIVATE
     "${CMAKE_CURRENT_SOURCE_DIR}/crates/spine/include")
 target_link_libraries(rust-bindings-app PRIVATE "${_hcxx}" "${_h}")
-set_target_properties(rust-bindings-app PROPERTIES FOLDER "rust-bindings")
 target_include_directories(rust-bindings-app PRIVATE
     "${CMAKE_CURRENT_SOURCE_DIR}/cpp/app"
     # the generated bridge header carries the include!("spine/bridge_impl.h")
@@ -161,4 +165,4 @@ add_custom_target(rust-bindings-consumer
         "${CMAKE_CURRENT_BINARY_DIR}/consumer-build"
     COMMAND "${CMAKE_CURRENT_BINARY_DIR}/consumer-build/consumer"
     COMMENT "rust-bindings: install(EXPORT) -> find_package consumer -> run")
-set_target_properties(rust-bindings-consumer PROPERTIES FOLDER rust-bindings)
+set_target_properties(rust-bindings-consumer PROPERTIES FOLDER "${_rbfold}")

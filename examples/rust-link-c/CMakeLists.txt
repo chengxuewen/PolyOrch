@@ -101,10 +101,14 @@ polyorch_rust_build(
 # an unprefixed bare name can collide with the host's own targets, and a
 # missing FOLDER leaves the node floating outside the family in the IDE tree.
 add_library(rust-link-c-cfn STATIC c_fn.c)   # the rust side links this by name below
-file(RELATIVE_PATH CURRENT_DIR_REL
-     "${CMAKE_SOURCE_DIR}"
-     "${CMAKE_CURRENT_SOURCE_DIR}")
-set_target_properties(rust-link-c-cfn PROPERTIES FOLDER ${CURRENT_DIR_REL})
+if(PolyOrch_RUST_FOLDER_ROOT)
+    set(_cfold "${PolyOrch_RUST_FOLDER_ROOT}")
+else()
+    file(RELATIVE_PATH _cfold
+        "${CMAKE_SOURCE_DIR}"
+        "${CMAKE_CURRENT_SOURCE_DIR}")
+endif()
+set_target_properties(rust-link-c-cfn PROPERTIES FOLDER "${_cfold}")
 # NOTE: the CMake TARGET (`cli-user-tool`) deliberately differs from the
 # artifact base name (`cli-user`, the [[package]] name): an IMPORTED target
 # named like its output file makes the Makefile generator silently swallow
