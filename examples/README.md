@@ -49,14 +49,15 @@ mechanism, not the numbers.
 System-route rust examples are **fused into the host graph**: opening the
 examples tree (or a host that `add_subdirectory`s them with
 `PolyOrch_BUILD_RUST_EXAMPLES=ON` and cargo reachable) yields real verb
-targets per example -- `say-hi-exe-build/-run`, `dash_ed-build`,
-`cli-user-tool-build`, `demo-build/-rel-build`, `greet-build/-run/-test` --
-plus a per-example aggregate (`rust-import-rust-all` etc.). Each subtree
+targets per example -- `rust-import-say-hi-exe-build/-run`,
+`rust-link-c-cli-user-tool-build`, `rust-profile-features-demo-build/-rel-build`,
+`rust-basic-greet-build/-run/-test` -- plus a per-example aggregate
+(`rust-import-all` etc.). Each subtree
 degrades to a STATUS note (and registers nothing) when cargo is not
 reachable in the GUI's PATH, mirroring rust-basic.
-Fused handles are **prefixed with the example name** (`import-dash_ed-build`,
-`link-c-cli-user-tool-run`, `profile-features-demo-build`; aggregates align:
-`import-rust-all`) so the host namespace never carries bare crate-ish names
+Fused targets follow the **literal directory-name grammar**
+(`<directory>-<handle>-<verb>` for handle families, `<directory>-all` for
+aggregates) so the host namespace never carries bare crate-ish names
 that could collide with the host's own targets. IDE grouping follows each
 subtree's calling directory (`examples/rust-import` etc. as FOLDERs).
 

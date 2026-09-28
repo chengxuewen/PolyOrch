@@ -20,7 +20,6 @@ polyorch_option(PolyOrch_BUILD_PIXI_EXAMPLES
 
 add_subdirectory(pixi-configure)
 add_subdirectory(pixi-workspace)
-add_subdirectory(rust-basic)
 
 # Script-mode cold start. Build-time only: it may install pixi and reach the
 # network, so it never runs during configure.
@@ -94,14 +93,14 @@ find_program(PolyOrchExample_pixi NAMES pixi
 # materialization (possible network solve) must never sit inside the host
 # configure.
 if(PolyOrch_BUILD_RUST_EXAMPLES AND PolyOrchExample_cargo)
-    foreach(_fused "rust-import" "rust-link-c" "rust-profile-features")
-        # WP13: prefix every handle family with the example name (no bare
-        # demo-build/greet in the host namespace) and gather the IDE tree
-        # under one folder. The subdirectories run in their own scope, so
-        # both directory variables are set per iteration.
-        string(REPLACE "rust-" "" _pfx "${_fused}")
-        set(PolyOrch_RUST_TARGET_PREFIX "${_pfx}")
-        set(PolyOrch_RUST_AGGREGATE_NAME "${_pfx}-rust-all")
+    foreach(_fused "rust-basic" "rust-import" "rust-link-c" "rust-profile-features")
+        # WP13 grammar (user ruling, literal form): handle families carry the
+        # FULL directory name as prefix (rust-link-c-cli-user-tool-build),
+        # aggregates are <directory>-all (rust-link-c-all) -- no stripped or
+        # invented prefixes. Directory scope per iteration; rust-basic joins
+        # the loop so its bare greet-* / default aggregate retire.
+        set(PolyOrch_RUST_TARGET_PREFIX "${_fused}")
+        set(PolyOrch_RUST_AGGREGATE_NAME "${_fused}-all")
         add_subdirectory(${_fused})
     endforeach()
     unset(PolyOrch_RUST_AGGREGATE_NAME)

@@ -1789,7 +1789,8 @@ function(polyorch_rust_test)
     # IDE parity: with TARGET <handle> the test node mounts the same display
     # files as the build mediator (breakpoint workflow entry symmetry).
     if(T_TARGET)
-        _polyorch_rust_mount_verb_targets("${T_TARGET}" "${_name}")
+        _polyorch_rust_apply_target_prefix(_tt "${T_TARGET}")
+        _polyorch_rust_mount_verb_targets("${_tt}" "${_name}")
     endif()
     set(_fold "${T_FOLDER}")
     if(NOT _fold)

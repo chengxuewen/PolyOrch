@@ -9,7 +9,7 @@
 #   cmake -S examples/rust-basic -B build
 #   cmake --build build --target greet-cargo     # cargo build  -> .../greet-cli
 #   cmake --build build --target greet-run       # execute the artifact
-#   cmake --build build --target greet-test      # cargo test
+#   cmake --build build --target greet-test      # cargo test (fused hosts: rust-basic-greet-test)
 #
 #   # embedded in a host that has PolyOrch_BUILD_EXAMPLES=ON:
 #   cmake ... -DPolyOrch_BUILD_RUST_EXAMPLES=ON        # otherwise this file returns early
@@ -90,9 +90,16 @@ polyorch_rust_build(
     MANIFEST "${CMAKE_CURRENT_LIST_DIR}/Cargo.toml")
 
 # [3/4] test + run wrappers for the same crate.
+# WP13: the fused host prefixes every target with the directory name
+# (standalone, PolyOrch_RUST_TARGET_PREFIX is empty -> bare names).
+if(PolyOrch_RUST_TARGET_PREFIX)
+    set(_test_name "${PolyOrch_RUST_TARGET_PREFIX}-greet-test")
+else()
+    set(_test_name "greet-test")
+endif()
 polyorch_rust_test(
     PACKAGE greet-cli
-    NAME greet-test
+    NAME "${_test_name}"
     TARGET greet)
     
 polyorch_rust_run(
