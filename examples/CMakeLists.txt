@@ -7,6 +7,12 @@
 # Route-group opt-ins, declared centrally (polyorch_option UI: cache type
 # stamp + consistent help). The per-example files CONSUME these (plain if +
 # return); they no longer declare their own options.
+# Standalone configure support (cmake -S examples): the option helpers live
+# in the library; embedded hosts include them before this file runs.
+cmake_minimum_required(VERSION 3.22)   # standalone configure support (cmake -S examples)
+list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_LIST_DIR}/../cmake")
+include(PolyOrchCMakeHelpers)   # polyorch_option lives here (NOT OptionHelpers -- that is the expression helpers)
+
 polyorch_option(PolyOrch_BUILD_RUST_EXAMPLES
     "Include the rust examples (build with the system cargo on PATH)" OFF)
 polyorch_option(PolyOrch_BUILD_PIXI_EXAMPLES
@@ -78,6 +84,26 @@ find_program(PolyOrchExample_cargo NAMES cargo
 find_program(PolyOrchExample_pixi NAMES pixi
     PATHS "$ENV{HOME}/.pixi/bin" "$ENV{PIXI_HOME}/bin")
 
+# WP12 (2026-09-28, user ruling): system-route examples fuse into the HOST
+# graph -- each registers its own verb targets (greet-build/-run/-test shape)
+# instead of a remote-control button. Each subtree carries its own
+# standalone/embedded gate (cargo probe + STATUS degradation + CACHE FORCE
+# injection pair) and names its rust aggregate <example>-rust-all via
+# PolyOrch_RUST_AGGREGATE_NAME so three fused subtrees cannot merge into one
+# aggregate silently. Pixi-route buttons below stay remote: environment
+# materialization (possible network solve) must never sit inside the host
+# configure.
+if(PolyOrch_BUILD_RUST_EXAMPLES AND PolyOrchExample_cargo)
+    foreach(_fused "rust-import" "rust-link-c" "rust-profile-features")
+        set(PolyOrch_RUST_AGGREGATE_NAME "${_fused}-rust-all")
+        add_subdirectory(${_fused})
+    endforeach()
+    unset(PolyOrch_RUST_AGGREGATE_NAME)
+else()
+    message(STATUS "PolyOrch examples: system-route rust examples not fused -- set PolyOrch_BUILD_RUST_EXAMPLES=ON (cargo reachable)")
+endif()
+
+# Pixi-route remote buttons (env isolation; see WP12 note above).
 foreach(_pair "Import:rust-import:cargo-build-dash_ed:say-run-hi-exe"
               "LinkC:rust-link-c:app:cli-run-user-tool")
     string(REPLACE ":" ";" _p "${_pair}")
@@ -85,25 +111,6 @@ foreach(_pair "Import:rust-import:cargo-build-dash_ed:say-run-hi-exe"
     list(GET _p 1 _dir)
     list(GET _p 2 _t1)
     list(GET _p 3 _t2)
-    if(PolyOrchExample_cargo AND PolyOrch_BUILD_RUST_EXAMPLES)
-        add_custom_target(PolyOrchExampleRust${_name}
-            COMMAND ${CMAKE_COMMAND}
-                -S "${CMAKE_CURRENT_SOURCE_DIR}/${_dir}"
-                -B "${CMAKE_CURRENT_BINARY_DIR}/standalone/${_dir}"
-            COMMAND ${CMAKE_COMMAND} --build
-                "${CMAKE_CURRENT_BINARY_DIR}/standalone/${_dir}" --target "${_t1}"
-            COMMAND ${CMAKE_COMMAND} --build
-                "${CMAKE_CURRENT_BINARY_DIR}/standalone/${_dir}" --target "${_t2}"
-            COMMENT "rust-${_name}: system-route configure -> build -> run (offline)")
-        set_target_properties(PolyOrchExampleRust${_name} PROPERTIES
-            FOLDER ${PROJECT_NAME}/examples)
-    else()
-        if(NOT PolyOrch_BUILD_RUST_EXAMPLES)
-            message(STATUS "PolyOrch examples: PolyOrchExampleRust${_name} not registered -- set PolyOrch_BUILD_RUST_EXAMPLES=ON")
-        else()
-            message(STATUS "PolyOrch examples: PolyOrchExampleRust${_name} not registered -- no cargo on PATH")
-        endif()
-    endif()
     if(PolyOrchExample_pixi AND PolyOrch_BUILD_PIXI_EXAMPLES)
         add_custom_target(PolyOrchExampleRust${_name}Pixi
             COMMAND ${CMAKE_COMMAND}
@@ -121,22 +128,6 @@ foreach(_pair "Import:rust-import:cargo-build-dash_ed:say-run-hi-exe"
         message(STATUS "PolyOrch examples: PolyOrchExampleRust${_name}Pixi not registered -- no pixi tool")
     endif()
 endforeach()
-
-# P1: the five-knob steering example (profile/features/env/rustflags/flags).
-if(PolyOrch_BUILD_RUST_EXAMPLES AND PolyOrchExample_cargo)
-add_custom_target(PolyOrchExampleRustProfileFeatures
-    COMMAND ${CMAKE_COMMAND}
-        -S "${CMAKE_CURRENT_SOURCE_DIR}/rust-profile-features"
-        -B "${CMAKE_CURRENT_BINARY_DIR}/standalone/rust-profile-features"
-    COMMAND ${CMAKE_COMMAND} --build
-        "${CMAKE_CURRENT_BINARY_DIR}/standalone/rust-profile-features" --target cargo-build-demo
-    COMMAND ${CMAKE_COMMAND} --build
-        "${CMAKE_CURRENT_BINARY_DIR}/standalone/rust-profile-features" --target cargo-build-demo-rel
-    COMMENT "rust-profile-features: debug+features+env vs release+rustflags+cargo-flags (offline)")
-set_target_properties(PolyOrchExampleRustProfileFeatures PROPERTIES FOLDER ${PROJECT_NAME}/examples)
-else()
-    message(STATUS "PolyOrch examples: PolyOrchExampleRustProfileFeatures not registered -- set PolyOrch_BUILD_RUST_EXAMPLES=ON (cargo on PATH)")
-endif()
 
 # P1: install/export producer-consumer chain.
 if(PolyOrch_BUILD_RUST_EXAMPLES AND PolyOrchExample_cargo)

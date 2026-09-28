@@ -44,6 +44,24 @@ cargo on `PATH`. The version pin, manifest path and smoke task in
 `bootstrap.cmake` are caller policy -- the PolyOrch module ships the
 mechanism, not the numbers.
 
+## Fused vs remote-control examples (WP12)
+
+System-route rust examples are **fused into the host graph**: opening the
+examples tree (or a host that `add_subdirectory`s them with
+`PolyOrch_BUILD_RUST_EXAMPLES=ON` and cargo reachable) yields real verb
+targets per example -- `say-hi-exe-build/-run`, `dash_ed-build`,
+`cli-user-tool-build`, `demo-build/-rel-build`, `greet-build/-run/-test` --
+plus a per-example aggregate (`rust-import-rust-all` etc.). Each subtree
+degrades to a STATUS note (and registers nothing) when cargo is not
+reachable in the GUI's PATH, mirroring rust-basic.
+
+**Remote-control buttons stay remote**: the pixi-route buttons
+(`PolyOrchExampleRust*Pixi`, PixiEnvRun), `PolyOrchExampleRustInstallExport`
+and the pixi trio materialize environments or independent build trees on
+click -- that work (first-run network solve included) must never sit inside
+a host configure, so they remain standalone sub-configures driven by a
+single button.
+
 ## Debugging rust targets in VSCode
 
 Every rust example opts in to `PolyOrch_RUST_VSCODE_DEBUG` (the library

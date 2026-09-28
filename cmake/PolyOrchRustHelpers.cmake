@@ -723,13 +723,20 @@ function(polyorch_rust_build)
     # prerequisite of the consumer; measured on cmake 4.4.3), replacing
     # per-consumer manual wiring of the mediator.
     add_dependencies("${B_TARGET}" "${_med}")
-    # Opt-in aggregate: `cmake --build . --target polyorch-rust-all` builds
-    # every rust artifact registered in the tree without putting cargo into
-    # a bare build's default target set.
-    if(NOT TARGET polyorch-rust-all)
-        add_custom_target(polyorch-rust-all)
+    # Opt-in aggregate: `cmake --build . --target <aggregate>` builds every
+    # rust artifact registered in the tree without putting cargo into a bare
+    # build's default target set. The name is PolyOrch_RUST_AGGREGATE_NAME
+    # (default polyorch-rust-all); a host fusing MULTIPLE example trees via
+    # add_subdirectory sets it per directory scope so each subtree gets its
+    # own aggregate instead of silently merging every mediator into one.
+    set(_agg "${PolyOrch_RUST_AGGREGATE_NAME}")
+    if(NOT _agg)
+        set(_agg polyorch-rust-all)
     endif()
-    add_dependencies(polyorch-rust-all "${_med}")
+    if(NOT TARGET "${_agg}")
+        add_custom_target("${_agg}")
+    endif()
+    add_dependencies("${_agg}" "${_med}")
     # IDE folder: explicit FOLDER wins; default = the calling directory
     # relative to the source root ("where you call it is where it lives").
     set(_fold "${B_FOLDER}")
