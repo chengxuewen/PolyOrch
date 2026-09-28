@@ -2348,6 +2348,16 @@ function(polyorch_rust_cxxbridge)
         message(FATAL_ERROR
             "polyorch_rust_cxxbridge: target '${_cxx}' already exists")
     endif()
+    # WP13/PIT-29 consistency: the generated archive joins the handle's IDE
+    # folder (it did not, and floated at the tree root once fused). The
+    # handle may not exist yet at this point (some callers cxxbridge before
+    # build) -- the folder then stays unset, which is the pre-WP13 look.
+    if(TARGET "${CB_TARGET}")
+        get_target_property(_cxxfold "${CB_TARGET}" FOLDER)
+        if(_cxxfold AND NOT _cxxfold STREQUAL "NOTFOUND")
+            set(CB_FOLDER "${_cxxfold}")
+        endif()
+    endif()
 
     # Manifest of the crate handle (the reference reads
     # INTERFACE_COR_PACKAGE_MANIFEST_PATH off the imported target,
@@ -2406,6 +2416,9 @@ function(polyorch_rust_cxxbridge)
     set(_sdir "${_gen}/src")
 
     add_library("${_cxx}" STATIC)
+    if(CB_FOLDER)
+        set_target_properties("${_cxx}" PROPERTIES FOLDER "${CB_FOLDER}")
+    endif()
     target_include_directories("${_cxx}" PUBLIC
         $<BUILD_INTERFACE:${_gen}/include>
         $<INSTALL_INTERFACE:include>)
@@ -2671,7 +2684,8 @@ function(polyorch_rust_cbindgen)
             COMMENT "Generate cbindgen bindings for package ${_pkg}")
     endif()
     # WP13: the cbindgen aggregates were created without an IDE folder and
-    # floated at the tree root; group them under the handle's own folder.
+    # floated at the tree root; group them (and the per-header regen
+    # targets, missed in the first pass) under the handle's own folder.
     get_target_property(_cbfold "${_bt}" FOLDER)
     if(_cbfold AND NOT _cbfold STREQUAL "NOTFOUND")
         set_target_properties("${_agg}" PROPERTIES FOLDER "${_cbfold}")
@@ -2683,6 +2697,9 @@ function(polyorch_rust_cbindgen)
             "polyorch_rust_cbindgen: regeneration target '${_per}' already exists (same header generated twice for ${_bt})")
     endif()
     add_custom_target("${_per}" DEPENDS "${_hdr}")
+    if(_cbfold)
+        set_target_properties("${_per}" PROPERTIES FOLDER "${_cbfold}")
+    endif()
     add_dependencies("${_agg}" "${_per}")
     add_dependencies("${_bt}" "${_agg}")
     if(_auto)
