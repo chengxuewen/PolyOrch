@@ -185,6 +185,19 @@ endfunction()
 # placed AFTER --unset wins (cmake 4.4.3 measured; unsetting an absent
 # variable is a no-op), so PATH, the ENV entries and the RUSTFLAGS= entry
 # below all trail the strip block.
+# _polyorch_rust_apply_target_prefix(OUT NAME)
+# WP13: the host-side fusion prefix (PolyOrch_RUST_TARGET_PREFIX, directory
+# variable) applied to one handle name. build/import/run all route through
+# this so every surface that derives a target name agrees on the prefixed
+# form. Empty prefix = NAME unchanged.
+function(_polyorch_rust_apply_target_prefix out name)
+    if(PolyOrch_RUST_TARGET_PREFIX)
+        set(${out} "${PolyOrch_RUST_TARGET_PREFIX}-${name}" PARENT_SCOPE)
+    else()
+        set(${out} "${name}" PARENT_SCOPE)
+    endif()
+endfunction()
+
 function(polyorch_rust_build)
     set(_opts BINARY STATIC SHARED LOCKED FROZEN NO_SOURCES)
     set(_one TARGET PACKAGE CRATE PROFILE MANIFEST BASE_DIR FOLDER PREBUILD)
@@ -193,6 +206,9 @@ function(polyorch_rust_build)
     if(B_UNPARSED_ARGUMENTS)
         message(FATAL_ERROR "polyorch_rust_build: unknown args: ${B_UNPARSED_ARGUMENTS}")
     endif()
+    # WP13: the fusion prefix renames the whole family (handle, mediator,
+    # verbs, aggregate membership all derive from B_TARGET).
+    _polyorch_rust_apply_target_prefix(B_TARGET "${B_TARGET}")
     # MANIFEST is required whenever the IDE source mount will run; a
     # NO_SOURCES call opts out of the mount and may omit it (script-mode
     # identity assertions never touch sources).
@@ -1209,8 +1225,10 @@ function(polyorch_rust_import)
             ${_kws} MANIFEST "${A_MANIFEST}" ${_lockb} ${_foldkw})
         # Registry marker on the consumer-facing handle (gen:190 precedent);
         # the mediator already carries POLYORCH_RUST_PACKAGE from the build.
-        set_property(TARGET "${_handle}" PROPERTY POLYORCH_RUST_PACKAGE "${_pkg}")
-        list(APPEND _imps "${_handle}")
+        # WP13: the prefixed name is what build() registered -- apply it here.
+        _polyorch_rust_apply_target_prefix(_phandle "${_handle}")
+        set_property(TARGET "${_phandle}" PROPERTY POLYORCH_RUST_PACKAGE "${_pkg}")
+        list(APPEND _imps "${_phandle}")
     endforeach()
     list(SORT _imps)
     list(SORT _skips)
@@ -1439,11 +1457,13 @@ function(_polyorch_rust_metadata_sources MANIFEST CRATE OUT)
         list(REMOVE_DUPLICATES _acc)
     endif()
     set(_polyorch_meta_srcs_${_abs} "${_acc}" CACHE INTERNAL "rust ide sources per manifest")
-    message(STATUS "MTDBG abs=${_abs} crate=${CRATE} acc=[${_acc}]")
     set(${OUT} "${_acc}" PARENT_SCOPE)
 endfunction()
 
 function(_polyorch_rust_mediator CALLER T OUT)
+    # WP13: setters accept the caller's (possibly unprefixed) handle name;
+    # the registered name carries the fusion prefix when one is in scope.
+    _polyorch_rust_apply_target_prefix(T "${T}")
     if(NOT TARGET "${T}")
         message(FATAL_ERROR
             "${CALLER}: no target '${T}' (declare it with polyorch_rust_build first)")
@@ -1790,6 +1810,7 @@ function(polyorch_rust_run)
         message(FATAL_ERROR "polyorch_rust_run: unknown args: ${R_UNPARSED_ARGUMENTS}")
     endif()
     _polyorch_rust_must(R_TARGET)
+    _polyorch_rust_apply_target_prefix(R_TARGET "${R_TARGET}")
     _polyorch_rust_require_setup(polyorch_rust_run)
     if(NOT TARGET "${R_TARGET}")
         message(FATAL_ERROR

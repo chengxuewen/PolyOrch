@@ -92,11 +92,11 @@ polyorch_rust_build(
     STATIC
     MANIFEST "${CMAKE_CURRENT_LIST_DIR}/rs/Cargo.toml")
 
-add_executable(app app.c)
-target_link_libraries(app PRIVATE geometry)   # + the probed system libs, automatically
+# add_executable(app app.c)
+# target_link_libraries(app PRIVATE geometry)   # + the probed system libs, automatically
 
 # --- direction 2: C staticlib -> Rust binary -------------------------------
-add_library(c_triple STATIC c_fn.c)
+# add_library(c_triple STATIC c_fn.c)
 # NOTE: the CMake TARGET (`cli-user-tool`) deliberately differs from the
 # artifact base name (`cli-user`, the [[package]] name): an IMPORTED target
 # named like its output file makes the Makefile generator silently swallow

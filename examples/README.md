@@ -54,6 +54,11 @@ targets per example -- `say-hi-exe-build/-run`, `dash_ed-build`,
 plus a per-example aggregate (`rust-import-rust-all` etc.). Each subtree
 degrades to a STATUS note (and registers nothing) when cargo is not
 reachable in the GUI's PATH, mirroring rust-basic.
+Fused handles are **prefixed with the example name** (`import-dash_ed-build`,
+`link-c-cli-user-tool-run`, `profile-features-demo-build`; aggregates align:
+`import-rust-all`) so the host namespace never carries bare crate-ish names
+that could collide with the host's own targets. IDE grouping follows each
+subtree's calling directory (`examples/rust-import` etc. as FOLDERs).
 
 **Remote-control buttons stay remote**: the pixi-route buttons
 (`PolyOrchExampleRust*Pixi`, PixiEnvRun), `PolyOrchExampleRustInstallExport`

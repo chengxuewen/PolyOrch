@@ -95,10 +95,17 @@ find_program(PolyOrchExample_pixi NAMES pixi
 # configure.
 if(PolyOrch_BUILD_RUST_EXAMPLES AND PolyOrchExample_cargo)
     foreach(_fused "rust-import" "rust-link-c" "rust-profile-features")
-        set(PolyOrch_RUST_AGGREGATE_NAME "${_fused}-rust-all")
+        # WP13: prefix every handle family with the example name (no bare
+        # demo-build/greet in the host namespace) and gather the IDE tree
+        # under one folder. The subdirectories run in their own scope, so
+        # both directory variables are set per iteration.
+        string(REPLACE "rust-" "" _pfx "${_fused}")
+        set(PolyOrch_RUST_TARGET_PREFIX "${_pfx}")
+        set(PolyOrch_RUST_AGGREGATE_NAME "${_pfx}-rust-all")
         add_subdirectory(${_fused})
     endforeach()
     unset(PolyOrch_RUST_AGGREGATE_NAME)
+    unset(PolyOrch_RUST_TARGET_PREFIX)
 else()
     message(STATUS "PolyOrch examples: system-route rust examples not fused -- set PolyOrch_BUILD_RUST_EXAMPLES=ON (cargo reachable)")
 endif()

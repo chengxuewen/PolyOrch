@@ -32,9 +32,9 @@ ck(_nerr EQUAL 0)
 
 # target existence via the generated build tree's target directory list
 file(READ "${_h}/b/CMakeFiles/TargetDirectories.txt" _tdirs)
-foreach(_t "dash_ed-build" "say-hi-exe-run" "cli-user-tool-build"
-           "demo-rel-build" "rust-import-rust-all"
-           "rust-link-c-rust-all" "rust-profile-features-rust-all")
+foreach(_t "import-dash_ed-build" "import-say-hi-exe-run"
+           "link-c-cli-user-tool-build" "profile-features-demo-rel-build"
+           "import-rust-all" "link-c-rust-all" "profile-features-rust-all")
     string(FIND "${_tdirs}" "${_t}.dir" _hit)
     if(_hit LESS 0)
         message(FATAL_ERROR "check failed: fused target '${_t}' absent from host tree")
