@@ -1409,12 +1409,15 @@ function(_polyorch_rust_metadata_sources MANIFEST CRATE OUT)
     endif()
     get_filename_component(_abs "${MANIFEST}" ABSOLUTE)
     get_filename_component(_abs "${_abs}" REALPATH)
-    if(DEFINED _polyorch_meta_srcs_${_abs})
-        # single deref: the cache var's NAME is _polyorch_meta_srcs_<abs>;
-        # "${${_polyorch_meta_srcs_${_abs}}}" would deref the VALUE as a name
-        # and read empty on every reconfigure of a warm tree (mounted sources
-        # silently vanish on the second configure -- the "visible once" bug).
-        set(${OUT} "${_polyorch_meta_srcs_${_abs}}" PARENT_SCOPE)
+    # cache key = manifest + crate (WP13: a workspace manifest serves
+    # several crates; the manifest-only key made the second crate read the
+    # first crate's list -- say-hi mounted dash-ed's lib.rs)
+    string(MAKE_C_IDENTIFIER "${CRATE}" _ck)
+    if(DEFINED _polyorch_meta_srcs_${_abs}_${_ck})
+        # single deref: the cache var's NAME is _polyorch_meta_srcs_<abs>_<ck>;
+        # a double deref would read the VALUE as a name and come back empty on
+        # warm trees (PIT-26).
+        set(${OUT} "${_polyorch_meta_srcs_${_abs}_${_ck}}" PARENT_SCOPE)
         return()
     endif()
     _polyorch_rust_command(_cmd SUBCOMMAND
@@ -1439,7 +1442,12 @@ function(_polyorch_rust_metadata_sources MANIFEST CRATE OUT)
         math(EXPR _plast "${_np} - 1")
         foreach(_pi RANGE 0 ${_plast})
             string(JSON _pkg GET "${_json}" "packages" ${_pi} "name")
-            if(NOT _pkg STREQUAL "${CRATE}")
+            # WP13: the import path hands us the crate SELECTOR, whose
+            # dash->underscore normalization (gen:137-142) may differ from
+            # the raw package name -- compare both spellings, or lib records
+            # from dashed packages mount zero sources silently.
+            string(REPLACE "-" "_" _pkg_n "${_pkg}")
+            if(NOT _pkg STREQUAL "${CRATE}" AND NOT _pkg_n STREQUAL "${CRATE}")
                 continue()
             endif()
             string(JSON _nt LENGTH "${_json}" "packages" ${_pi} "targets")
@@ -1459,7 +1467,7 @@ function(_polyorch_rust_metadata_sources MANIFEST CRATE OUT)
     if(_acc)
         list(REMOVE_DUPLICATES _acc)
     endif()
-    set(_polyorch_meta_srcs_${_abs} "${_acc}" CACHE INTERNAL "rust ide sources per manifest")
+    set(_polyorch_meta_srcs_${_abs}_${_ck} "${_acc}" CACHE INTERNAL "rust ide sources per manifest+crate")
     set(${OUT} "${_acc}" PARENT_SCOPE)
 endfunction()
 

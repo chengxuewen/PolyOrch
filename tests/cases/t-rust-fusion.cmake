@@ -51,4 +51,47 @@ foreach(_btn "PolyOrchExampleRustInstallExport")
     endif()
 endforeach()
 
+# WP13 mount correctness on the import path: the dashed-package crates
+# (dash-ed lib + say-hi bin) each mount THEIR OWN sources (the selector
+# normalization compare + the manifest+crate cache key)
+execute_process(
+    COMMAND "${CMAKE_COMMAND}" -S "${_h}" -B "${_h}/b"
+        -DPolyOrch_BUILD_EXAMPLES=ON -DPolyOrch_BUILD_RUST_EXAMPLES=ON
+        -DPolyOrch_RUST_VSCODE_DIR=${_h}/vsout
+    ENVIRONMENT "PATH=$ENV{PATH}:$ENV{HOME}/.cargo/bin:$ENV{HOME}/.pixi/bin"
+    RESULT_VARIABLE _rc OUTPUT_QUIET ERROR_QUIET)
+ck(_rc EQUAL 0)
+# WP13 mount correctness on the import path (File API codemodel, the
+# layer VSCode consumes): the dashed-package crates each mount THEIR OWN
+# sources -- selector-normalization compare + manifest+crate cache key.
+set(_b2 "${_s}/fused-q")
+file(MAKE_DIRECTORY "${_b2}/.cmake/api/v1/query/client-vscode")
+file(WRITE "${_b2}/.cmake/api/v1/query/client-vscode/query.json"
+    "{\"requests\":[{\"kind\":\"codemodel\",\"version\":2}]}")
+execute_process(
+    COMMAND "${CMAKE_COMMAND}" -S "${_h}" -B "${_b2}"
+        -DPolyOrch_BUILD_EXAMPLES=ON -DPolyOrch_BUILD_RUST_EXAMPLES=ON
+    ENVIRONMENT "PATH=$ENV{PATH}:$ENV{HOME}/.cargo/bin:$ENV{HOME}/.pixi/bin"
+    RESULT_VARIABLE _rc OUTPUT_QUIET ERROR_QUIET)
+ck(_rc EQUAL 0)
+# the codemodel index only REFERENCES targets; the sources live in the
+# per-target reply files -- scan all of them
+file(GLOB _cmf "${_b2}/.cmake/api/v1/reply/target-*.json")
+list(LENGTH _cmf _ncm)
+ck(_ncm GREATER 4)   # a fused tree has ~20 targets; 0-4 means the query never ran
+set(_cmj "")
+foreach(_f ${_cmf})
+    file(READ "${_f}" _one)
+    string(APPEND _cmj "${_one}")
+endforeach()
+string(FIND "${_cmj}" "dash-ed/src/lib.rs" _hit1)
+string(FIND "${_cmj}" "say-hi/src/main.rs" _hit2)
+ck(_hit1 GREATER -1)
+ck(_hit2 GREATER -1)
+# contamination guard: dash-ed's lib.rs must appear EXACTLY once in the
+# whole reply (a manifest-only cache key would mount it on say-hi too)
+string(REGEX MATCHALL "dash-ed/src/lib.rs" _lhits "${_cmj}")
+list(LENGTH _lhits _nl)
+ck(_nl EQUAL 1)
+
 message(STATUS "t-rust-fusion: OK (3 fused verb sets + prefixed aggregates + remote buttons intact)")
