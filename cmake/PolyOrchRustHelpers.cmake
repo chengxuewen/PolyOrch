@@ -760,9 +760,12 @@ function(polyorch_rust_build)
         cmake_path(RELATIVE_PATH CMAKE_CURRENT_LIST_DIR
             BASE_DIRECTORY "${CMAKE_SOURCE_DIR}" OUTPUT_VARIABLE _fold)
     endif()
-    # all three handles join the same IDE folder: the imported target
-    # consumers link, the mediator that owns the rule.
-    set_target_properties("${B_TARGET}" "${_med}"
+    # all four rust-side targets join the same IDE folder: the imported
+    # target consumers link, the mediator that owns the rule, and the
+    # aggregate that builds it on demand (WP13: the aggregate used to be
+    # created before this block but never joined the FOLDER -- it floated
+    # at the tree root, glaring once subtrees were fused).
+    set_target_properties("${B_TARGET}" "${_med}" "${_agg}"
         PROPERTIES FOLDER "${_fold}")
     # WP4 deferred finalize: late-read the output-directory properties and
     # re-shape the IMPORTED locations (per-CFG on multi-config), staging a
@@ -2642,6 +2645,12 @@ function(polyorch_rust_cbindgen)
     if(NOT TARGET "${_agg}")
         add_custom_target("${_agg}"
             COMMENT "Generate cbindgen bindings for package ${_pkg}")
+    endif()
+    # WP13: the cbindgen aggregates were created without an IDE folder and
+    # floated at the tree root; group them under the handle's own folder.
+    get_target_property(_cbfold "${_bt}" FOLDER)
+    if(_cbfold AND NOT _cbfold STREQUAL "NOTFOUND")
+        set_target_properties("${_agg}" PROPERTIES FOLDER "${_cbfold}")
     endif()
     string(MAKE_C_IDENTIFIER "${CN_HEADER_NAME}" _hid)
     set(_per "${_agg}.${_hid}")
