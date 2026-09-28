@@ -2846,9 +2846,13 @@ function(_polyorch_rust_vscode_debug_generate)
         "${_tasks}"
 "{\n    \"version\": \"2.0.0\",\n    \"tasks\": [\n%ROWS%\n    ]\n}"
         _st2)
+    get_property(_nspecs GLOBAL PROPERTY POLYORCH_RUST_DEBUG_SPECS)
+    list(LENGTH _nspecs _n)
+    string(TIMESTAMP _ts "%H:%M:%S")
     message(STATUS
-        "PolyOrch: rust debug configs -> ${_dir} "
-        "(launch ${_st}, tasks ${_st2}; CodeLLDB extension required)")
+        "PolyOrch: rust debug configs -> ${_dir} at ${_ts} "
+        "(launch ${_st}, tasks ${_st2}; ${_n} run target(s); "
+        "CodeLLDB extension required)")
 endfunction()
 
 # Per-round include hook: register the end-of-configure generator ONCE per
