@@ -155,6 +155,11 @@ endfunction()
 # the locked pre-WP5 shape, byte-stable per t-rust-artifact-paths).
 # OUT_BASE_DIR receives the base, never the triple segment.
 function(_polyorch_rust_artifact_names)
+    # CMP0174 NEW: an empty TARGET value (the host layer passes no
+    # cross triple) sets an EMPTY var instead of unsetting it -- the
+    # documented pre-CMP0174 contract every caller and downstream
+    # if(A_TARGET) check was written against.
+    cmake_policy(SET CMP0174 NEW)
     set(_one TRIPLE KIND CRATE FILE_OUT DIR_OUT IMPLIB_OUT PROFILE BASE_DIR OUT_BASE_DIR TARGET)
     cmake_parse_arguments(PARSE_ARGV 0 A "" "${_one}" "")
     if(A_UNPARSED_ARGUMENTS)
@@ -276,6 +281,11 @@ endfunction()
 # FATALs. The gnullvm importlib lives under deps/, not the profile
 # root -- cargo does not expose it yet (corr:334-337 workaround).
 function(_polyorch_rust_copy_plan)
+    # CMP0174 NEW: an empty TARGET value (the host layer passes no
+    # cross triple) sets an EMPTY var instead of unsetting it -- the
+    # documented pre-CMP0174 contract every caller and downstream
+    # if(A_TARGET) check was written against.
+    cmake_policy(SET CMP0174 NEW)
     set(_one TRIPLE KIND CRATE SRC_DIR DEST_DIR OUT TARGET PROFILE)
     cmake_parse_arguments(PARSE_ARGV 0 A "" "${_one}" "")
     if(A_UNPARSED_ARGUMENTS)
