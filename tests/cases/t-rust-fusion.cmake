@@ -94,4 +94,14 @@ string(REGEX MATCHALL "dash-ed/src/lib.rs" _lhits "${_cmj}")
 list(LENGTH _lhits _nl)
 ck(_nl EQUAL 1)
 
+# WP13 regression lock: the fused default path must actually BUILD each
+# family (rust-link-c's direction-2 C staticlib once lived in a comment
+# while link_libraries referenced it -- invisible until fused).
+execute_process(
+    COMMAND "${CMAKE_COMMAND}" --build "${_b2}/examples/rust-link-c" --target rust-link-c-cli-user-tool-build
+    RESULT_VARIABLE _rc OUTPUT_VARIABLE _bo ERROR_VARIABLE _be)
+if(NOT _rc EQUAL 0)
+    message(FATAL_ERROR "fused link-c build failed (rc=${_rc}): ${_bo}${_be}")
+endif()
+
 message(STATUS "t-rust-fusion: OK (3 fused verb sets + prefixed aggregates + remote buttons intact)")

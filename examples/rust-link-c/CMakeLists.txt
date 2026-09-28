@@ -96,7 +96,7 @@ polyorch_rust_build(
 # target_link_libraries(app PRIVATE geometry)   # + the probed system libs, automatically
 
 # --- direction 2: C staticlib -> Rust binary -------------------------------
-# add_library(c_triple STATIC c_fn.c)
+add_library(c_triple STATIC c_fn.c)   # the rust side links this by name below
 # NOTE: the CMake TARGET (`cli-user-tool`) deliberately differs from the
 # artifact base name (`cli-user`, the [[package]] name): an IMPORTED target
 # named like its output file makes the Makefile generator silently swallow
