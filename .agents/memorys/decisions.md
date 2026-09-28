@@ -179,3 +179,26 @@ Reference: plan `.omo/plans/2026-09-24-vscode-debug.md` (Momus OKAY, zero
 MUST-FIX); product fixes the plan did not foresee: the latent never-defined
 `_med` run-order edge, the CMP0219 macro-backslash policy need in cases, and
 the MC genex-in-location expansion.
+
+
+## D24: tree-button shadow targets retired; launch.json is the debug surface (2026-09-28, user ruling A)
+
+D23-C adopted a shadow executable per run target (C stub + POST_BUILD
+artifact adopt) to get native CMake Tools tree Debug buttons. Live
+evaluation failed it: the button's provider chain is
+cmake-tools-version-gated (cppdbg default needs cpptools; lldb only via
+cmake.debugConfig.type, >=1.24), the pin is workspace-global (would
+hijack real C++ debugging in embedded hosts), Run never builds first,
+and the whole surface rests on cppdbg-era assumptions the ecosystem
+research (corrosion/rust-analyzer/xmake-vscode/cmake-tools sources)
+confirmed nobody else binds to. Ecosystem consensus: debug configs are
+either ephemeral startDebugging (extension-side: cmake-tools,
+xmake-vscode, rust-analyzer) or absent (corrosion); no build system
+generates launch.json -- PolyOrch's persisted managed-region launch +
+tasks generation is the strongest build-side form. Reverted in
+e498f8a: shadow function, settings.json region, example LANGUAGES C,
+shadow test legs. Deferred: .idea/runConfigurations half-automation
+(waits on JetBrains making Custom Build Targets committable);
+a PolyOrch VSCode extension is the only route to real tree buttons --
+explicitly out of product scope (D16 CMake-helper form) unless
+re-scoped by user.
