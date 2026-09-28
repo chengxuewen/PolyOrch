@@ -247,3 +247,11 @@ grep -c "duplicate-pattern" <file>    # expect 1; >1 = edit inserted duplicates
 **Verification**: after writing a generator, run it TWICE (must be idempotent: second run = zero diff) and `bash -n`/`ast.parse` the artifact it produced.
 
 **Blocking condition**: debugging a generator's regex by hand-escaping instead of re-escaping via `re.escape` from file bytes; generating a generator via nested heredoc/f-string.
+
+### 21. Target-name renames must sweep every STRING reference, then prove it with --target help (PIT-28 round)
+
+**Rule**: renaming a CMake target (or its naming grammar) is a string sweep, not a symbol rename. After any grammar change, enumerate every reference class — umbrella buttons, test assertions, README commands, comments adjacent to live calls — and fix each against a FRESH empirical target list (`cmake --build <tree> --target help` of the standalone AND fused shapes), never from memory. Any live call whose referenced target is only defined inside a commented block is a latent reference-to-air: resolve it in the same change.
+
+**Verification**: `for n in <referenced names>; do cmake --build <tree> --target help | grep -q "$n" || echo "FOSSIL: $n"; done` must be silent; the default-path build leg (fusion case) passes.
+
+**Blocking condition**: committing a rename with button/test names updated "from memory"; leaving a live API call pointing at a commented-out definition.
