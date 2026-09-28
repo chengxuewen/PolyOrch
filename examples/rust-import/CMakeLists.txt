@@ -60,7 +60,6 @@ include(PolyOrchPixiHelpers)
 # F5 out of the box: generate VSCode debug configs for this example's run
 # targets (WP11 surface; the library default stays OFF -- see the WP11 note in examples/README.md)
 set(PolyOrch_RUST_VSCODE_DEBUG ON)
-project(polyorch-example-rust-import LANGUAGES C)  # cc for the shadow debug stub (D23-C)
 include(PolyOrchRustHelpers)
 
 # Route selection (dual-route examples, 2026-09-23): the SAME 30 lines of

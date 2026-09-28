@@ -70,25 +70,21 @@ CMake Tools + the CodeLLDB extension.
   build the rust examples — configuring examples means you want them, debug
   included; a host that never pulls an example sees nothing.
 
-### The tree Debug button: `<handle>-dbg` shadow targets
+### Other IDEs (CLion, Qt Creator)
 
-CMake Tools only puts Debug/Run buttons on codemodel EXECUTABLE targets —
-and a cargo artifact can never be one (imported handles are absent from the
-codemodel outright). With the debug surface on, `polyorch_rust_run` also
-adopts the artifact: a `<handle>-dbg` target (a 3-line C stub + a
-POST_BUILD copy of the cargo bytes) appears beside the verb nodes, so the
-native tree gesture "generate and debug" works — building it runs the real
-`<handle>-build` mediator first, and the debugger launches exactly the
-orchestrated artifact (byte-identical, verified by tests). Requirements:
-a C compiler in the tree (the examples declare `project(... LANGUAGES C)`
-for the stub). Multi-config generators skip the shadow (single-config only
-in v0); the launch.json path above is unaffected either way. The shadow
-target is EXCLUDE_FROM_ALL: a plain build never adopts it.
+The generated launch/tasks files are VSCode formats; no other IDE reads
+them (and `compile_commands.json` is code-insight only, never debug).
+Manual one-time setup per IDE:
 
-The surface also manages a third region -- `.vscode/settings.json` --
-setting `cmake.debugConfig: { "type": "lldb" }`, which (vscode-cmake-tools
->= 1.24, PR #4818) redirects the target-tree Debug gesture to CodeLLDB
-instead of the cppdbg default that needs cpptools installed. Already define
-`cmake.debugConfig` yourself outside the region? The whole file is left
-untouched (skip reported in the configure log). Run (without debugging)
-needs nothing: CMake Tools executes the binary in a terminal directly.
+- **CLion**: Run > Edit Configurations > + > **Custom Build Application**;
+  Executable = the artifact path from our generated launch.json; Before
+  launch > Run Another Configuration, or build `greet-build` from the
+  CMake target list first. (CMake `add_custom_target` itself never gains
+  a debug button -- YouTrack CPP-43901/CPP-1313, open since 2010.)
+- **Qt Creator**: Projects > Run > Add > **Custom Executable** with the
+  artifact path; Projects > Build > Add Build Step > **Custom Process
+  Step** for the cargo build (stored per-user in `.user` files -- not
+  shareable).
+- **Anything else**: `lldb <artifact>` / `gdb <artifact>` directly --
+  the DWARF paths inside the cargo bytes point at the real sources.
+

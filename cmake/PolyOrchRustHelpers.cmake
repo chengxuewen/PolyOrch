@@ -1813,7 +1813,6 @@ function(polyorch_rust_run)
     endif()
     if(PolyOrch_RUST_VSCODE_DEBUG)
         _polyorch_rust_debug_register("${R_TARGET}")
-        _polyorch_rust_debug_shadow("${R_TARGET}")
     endif()
     set(_fold "${R_FOLDER}")
     if(NOT _fold)
@@ -2703,69 +2702,6 @@ function(_polyorch_rust_debug_register HANDLE)
     endif()
 endfunction()
 
-# _polyorch_rust_debug_shadow(HANDLE)
-# The tree-button bridge (D23 follow-up, user-adopted option C): CMake
-# Tools hard-gates its Debug/Run buttons on codemodel EXECUTABLE targets,
-# and cargo artifacts can never BE one (IMPORTED targets are absent from
-# the codemodel entirely -- measured via file(API)). The shadow adopts
-# the artifact: a stub-compiled real executable target <handle>-dbg that
-# depends on the mediator and POST_BUILD-copies the cargo bytes over its
-# own output. The tree node then gets native Debug/Run, and what the
-# debugger launches IS the orchestrated artifact (byte copy).
-# Skips (STATUS, never FATAL): multi-config generators (per-CFG artifact
-# expansion unresolved), no C compiler in the tree, non-binary handles,
-# mediator absent (import-route run). Existing surfaces untouched:
-# launch.json/tasks stay as generated; the verb mount (sources/folder)
-# rides <handle>-run, unaffected.
-function(_polyorch_rust_debug_shadow HANDLE)
-    set(_sd "${HANDLE}-dbg")
-    if(CMAKE_CONFIGURATION_TYPES)
-        message(STATUS
-            "polyorch_rust_run(${HANDLE}): shadow debug target skipped -- "
-            "multi-config generators are single-config only in v0")
-        return()
-    endif()
-    if(NOT CMAKE_C_COMPILER)
-        message(STATUS
-            "polyorch_rust_run(${HANDLE}): shadow debug target skipped -- "
-            "no C compiler (the stub needs project(LANGUAGES C))")
-        return()
-    endif()
-    if(NOT TARGET "${HANDLE}-build")
-        message(STATUS
-            "polyorch_rust_run(${HANDLE}): shadow debug target skipped -- "
-            "import-route handle has no mediator to depend on")
-        return()
-    endif()
-    get_target_property(_ltype "${HANDLE}" IMPORTED_LOCATION)
-    get_target_property(_kind "${HANDLE}" TYPE)
-    if(NOT _ltype OR _ltype STREQUAL "NOTFOUND" OR NOT _kind STREQUAL "EXECUTABLE")
-        return()   # static/shared run handles have no debuggable program anyway
-    endif()
-    if(TARGET "${_sd}")
-        message(FATAL_ERROR
-            "polyorch_rust_run(${HANDLE}): '${_sd}' already exists -- the "
-            "shadow debug target needs the name (rename the other target, "
-            "or disable PolyOrch_RUST_VSCODE_DEBUG)")
-    endif()
-    set(_stub "${CMAKE_CURRENT_BINARY_DIR}/${_sd}-stub.c")
-    file(WRITE "${_stub}"
-        "/* PolyOrch shadow stub: the cargo artifact overwrites this "
-        "binary at POST_BUILD; the bytes below never execute. */\n"
-        "int main(void){return 0;}\n")
-    add_executable("${_sd}" EXCLUDE_FROM_ALL "${_stub}")
-    add_dependencies("${_sd}" "${HANDLE}-build")
-    add_custom_command(TARGET "${_sd}" POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E copy_if_different
-            "${_ltype}" $<TARGET_FILE:${_sd}>
-        COMMENT "PolyOrch: adopting cargo artifact into ${_sd}")
-    # same IDE folder as the run sibling
-    get_target_property(_fold "${HANDLE}-run" FOLDER)
-    if(_fold AND NOT _fold STREQUAL "NOTFOUND")
-        set_target_properties("${_sd}" PROPERTIES FOLDER "${_fold}")
-    endif()
-endfunction()
-
 # _polyorch_rust_vscode_rows(SPECS LAUNCH_OUT TASKS_OUT)
 # Pure spec-table -> JSONC region text (unit-testable offline).
 function(_polyorch_rust_vscode_rows SPECS LAUNCH_OUT TASKS_OUT)
@@ -2864,36 +2800,9 @@ function(_polyorch_rust_vscode_debug_generate)
         "${_tasks}"
 "{\n    \"version\": \"2.0.0\",\n    \"tasks\": [\n%ROWS%\n    ]\n}"
         _st2)
-    # settings.json: the tree-button provider fix (vscode-cmake-tools
-    # >= 1.24, PR #4818): cmake.debugConfig.type skips the cppdbg
-    # auto-detection so the target-tree Debug gesture opens CodeLLDB.
-    # Skipped when the user authors cmake.debugConfig outside our region
-    # (their definition wins; a duplicate JSON key is undefined behavior).
-    set(_sf "${_dir}/settings.json")
-    set(_st3 "SKIPPED")
-    set(_skip_settings FALSE)
-    if(EXISTS "${_sf}")
-        file(READ "${_sf}" _sraw)
-        string(FIND "${_sraw}" "cmake.debugConfig" _udc)
-        string(FIND "${_sraw}" "// __POLYORCH_GENERATED_BEGIN__" _omb)
-        # a key living BEFORE the begin marker (or in a markerless file) is
-        # the user's own definition -- leave the file fully alone
-        if(_udc GREATER -1 AND (_omb LESS 0 OR _udc LESS _omb))
-            set(_skip_settings TRUE)
-        endif()
-    endif()
-    if(NOT _skip_settings)
-        _polyorch_rust_region_write("${_sf}"
-            "// __POLYORCH_GENERATED_BEGIN__ (PolyOrch rust debug provider; regenerate via reconfigure)"
-            "// __POLYORCH_GENERATED_END__"
-            "    \"cmake.debugConfig\": { \"type\": \"lldb\", \"request\": \"launch\" },\n"
-"{\n%ROWS%\n}"
-            _st3)
-    endif()
     message(STATUS
         "PolyOrch: rust debug configs -> ${_dir} "
-        "(launch ${_st}, tasks ${_st2}, settings ${_st3}; "
-        "CodeLLDB + cmake-tools>=1.24 for tree Debug)")
+        "(launch ${_st}, tasks ${_st2}; CodeLLDB extension required)")
 endfunction()
 
 # Per-round include hook: register the end-of-configure generator ONCE per

@@ -3,7 +3,7 @@
 # (dir redirected into the build tree so the configure never writes outside
 # the scratch). Reports the spec table through properties.txt.
 cmake_minimum_required(VERSION 3.25)
-project(polyorch-fixture-vsdbg LANGUAGES C)   # cc for the shadow target under test
+project(polyorch-fixture-vsdbg LANGUAGES NONE)
 
 # the debug surface hooks at INCLUDE time -- opt in before pulling it in
 set(PolyOrch_RUST_VSCODE_DEBUG ON)

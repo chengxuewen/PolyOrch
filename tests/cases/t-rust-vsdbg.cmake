@@ -49,8 +49,6 @@ ck(_lj MATCHES "\"preLaunchTask\": \"PolyOrch: vb \\(${_seg}\\)\"")
 ck(_tj MATCHES "\"label\": \"PolyOrch: vb \\(${_seg}\\)\"")     # closure
 ck(_tj MATCHES "\"--target\", \"vb-build\"")
 ck(_lj MATCHES "__POLYORCH_GENERATED_BEGIN__")
-file(READ "${_b}/vsout/settings.json" _sj)
-ck(_sj MATCHES "\"cmake.debugConfig\": \{ \"type\": \"lldb\"")
 
 # ---- idempotency: a second configure must not touch the bytes -------------
 file(SHA256 "${_b}/vsout/launch.json" _h1)
@@ -79,20 +77,6 @@ else()
 endif()
 ck(_pe)   # launch program == the real artifact the build produced
 
-# ---- shadow debug target (the tree-button bridge, D23 option C) ----------
-# fixture is project(LANGUAGES C) so the stub compiles; the shadow must
-# adopt the cargo bytes exactly (cmp) and remain an EXECUTABLE the
-# generator tracks (unlike the IMPORTED handle, invisible to codemodels)
-if(NOT "$ENV{POLYORCH_TEST_GENERATOR}" STREQUAL "Ninja Multi-Config")   # MC skips shadows v0 (register-side STATUS)
-    execute_process(COMMAND "${CMAKE_COMMAND}" --build "${_b}"
-        --config "${_cfg}" --target vb-dbg
-        RESULT_VARIABLE _rc OUTPUT_QUIET ERROR_QUIET)
-    ck(_rc EQUAL 0)
-    execute_process(COMMAND "${CMAKE_COMMAND}" -E compare_files
-        "${_b}/.cargo-target/${_seg}/vsdbg-bin" "${_b}/vb-dbg"
-        RESULT_VARIABLE _rc)
-    ck(_rc EQUAL 0)   # shadow bytes ARE the orchestrated artifact
-endif()
 
 message(STATUS "t-rust-vsdbg: OK (register + docs + idempotency + artifact materialization)")
 

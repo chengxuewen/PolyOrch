@@ -60,7 +60,6 @@ list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/../../cmake")
 # F5 out of the box: generate VSCode debug configs for this example's run
 # targets (WP11 surface; the library default stays OFF -- see the WP11 note in examples/README.md)
 set(PolyOrch_RUST_VSCODE_DEBUG ON)
-project(polyorch-example-rust-cross LANGUAGES C)   # cc for the shadow debug stub (D23-C)
 include(PolyOrchRustHelpers)
 
 if(NOT PolyOrch_RUST_CARGO_TARGET)
