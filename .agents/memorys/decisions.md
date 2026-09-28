@@ -202,3 +202,24 @@ shadow test legs. Deferred: .idea/runConfigurations half-automation
 a PolyOrch VSCode extension is the only route to real tree buttons --
 explicitly out of product scope (D16 CMake-helper form) unless
 re-scoped by user.
+
+
+## D25: flagship binding example scope -- L1 now, PyO3 later (2026-09-29, user ruling)
+
+The multi-language-binding discussion landed as examples/rust-bindings
+(WP14): one spine crate, two foreign surfaces (cxx bridge for C++ both
+directions; extern "C" documented by cbindgen), consumed by the repo's
+first real C++ executable and by a separate find_package project against
+the installed header. Scoping facts (inventory, explore pass): the
+consumer side of the whole repo was 100% C; install(EXPORT) is G1-not-
+ported and PUBLIC_HEADER installs flat (nested cxx headers stay a build-
+tree surface); Python tooling was zero-implemented. L2 (PyO3/maturin/
+wheel + PYO3_* env plumbing) is DEFERRED to its own WP when a real
+Python demand appears -- the cdylib kind mapping it needs already
+exists. Ecosystem footnotes (librarian pass): cxx+PyO3 hybrids exist
+downstream (huggingface/text-generation-inference trtllm backend,
+ZettaScaleLabs/hiroz, pyo3-bindgen) but none drive them from CMake
+targets; corrosion's own corpus is C++-consumers-only at the pin.
+WP14 also closed two latent library gaps the example forced: the
+cxxbridge/cbindgen/install TARGET outlets lacked fusion-prefix
+resolution (PIT-29 outlets six+seven).
