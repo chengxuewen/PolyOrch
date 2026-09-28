@@ -8,7 +8,7 @@
 #     INTERFACE -- so the plain `target_link_libraries(app geometry)` just
 #     works, no manual system-lib list.
 #   direction 2 (C lib consumed by Rust):
-#     polyorch_rust_link_libraries(cli-user c_triple) converts the CMake
+#     polyorch_rust_link_libraries(cli-user <c-lib-target>) converts the CMake
 #     static library target into -L/-l on the cargo link line -- the Rust
 #     binary's `extern "C"` declarations resolve against it.
 #
@@ -96,7 +96,12 @@ polyorch_rust_build(
 # target_link_libraries(app PRIVATE geometry)   # + the probed system libs, automatically
 
 # --- direction 2: C staticlib -> Rust binary -------------------------------
-add_library(c_triple STATIC c_fn.c)   # the rust side links this by name below
+# Hand-written targets in a FUSED subtree follow the same grammar as the
+# rust ones (WP13): <directory>-<semantic-name>, plus an explicit FOLDER --
+# an unprefixed bare name can collide with the host's own targets, and a
+# missing FOLDER leaves the node floating outside the family in the IDE tree.
+add_library(rust-link-c-cfn STATIC c_fn.c)   # the rust side links this by name below
+set_target_properties(rust-link-c-cfn PROPERTIES FOLDER rust-link-c)
 # NOTE: the CMake TARGET (`cli-user-tool`) deliberately differs from the
 # artifact base name (`cli-user`, the [[package]] name): an IMPORTED target
 # named like its output file makes the Makefile generator silently swallow
@@ -107,5 +112,5 @@ polyorch_rust_build(
     CRATE   cli-user
     BINARY
     MANIFEST "${CMAKE_CURRENT_LIST_DIR}/rs/bin/Cargo.toml")
-polyorch_rust_link_libraries(TARGET cli-user-tool c_triple)
+polyorch_rust_link_libraries(TARGET cli-user-tool rust-link-c-cfn)
 polyorch_rust_run(TARGET cli-user-tool)
