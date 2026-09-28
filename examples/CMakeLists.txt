@@ -48,24 +48,6 @@ add_custom_target(PolyOrchExamplePixiWorkspace
     COMMENT "Configuring the pixi-workspace example standalone (writes its build dir; needs pixi)")
 set_target_properties(PolyOrchExamplePixiWorkspace PROPERTIES FOLDER ${PROJECT_NAME}/examples)
 
-# Standalone configure + build: the example resolves cargo/rustc from PATH
-# (system route, no network, no environment install), then the two build
-# invocations compile and execute the artifact.
-if(PolyOrch_BUILD_RUST_EXAMPLES AND PolyOrchExample_cargo)
-add_custom_target(PolyOrchExampleRustBasic
-    COMMAND ${CMAKE_COMMAND}
-        -S "${CMAKE_CURRENT_SOURCE_DIR}/rust-basic"
-        -B "${CMAKE_CURRENT_BINARY_DIR}/standalone/rust-basic"
-    COMMAND ${CMAKE_COMMAND} --build
-        "${CMAKE_CURRENT_BINARY_DIR}/standalone/rust-basic" --target cargo-build-greet
-    COMMAND ${CMAKE_COMMAND} --build
-        "${CMAKE_CURRENT_BINARY_DIR}/standalone/rust-basic" --target greet-run
-    COMMENT "rust-basic: system-cargo configure -> cargo build -> run (offline)")
-set_target_properties(PolyOrchExampleRustBasic PROPERTIES FOLDER ${PROJECT_NAME}/examples)
-else()
-    message(STATUS "PolyOrch examples: PolyOrchExampleRustBasic not registered -- set PolyOrch_BUILD_RUST_EXAMPLES=ON (and have cargo on PATH)")
-endif()
-
 # P0 examples (dual-route/examples expansion, 2026-09-23): import an EXISTING
 # workspace, and the mixed C<->Rust link. GATED registration (matrix pixi-cell
 # philosophy): each route's button only exists when that route's toolchain is

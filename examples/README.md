@@ -34,8 +34,11 @@ configure):
 cmake --build build --target PolyOrchExamplePixiBootstrap   # may reach the network
 cmake --build build --target PolyOrchExamplePixiConfigure   # read-only
 cmake --build build --target PolyOrchExamplePixiWorkspace   # writes its build dir
-cmake --build build --target PolyOrchExampleRustBasic      # configure -> cargo build -> run (needs cargo on PATH)
 ```
+
+`rust-basic` has no remote button: it is FUSED -- with cargo reachable its
+verb targets (`rust-basic-greet-build/-run/-test`, aggregate
+`rust-basic-all`) are already in this tree (see the fusion section below).
 
 All examples stay offline once pixi itself is installed: the pixi-configure
 and pixi-workspace manifests are dependency-free, and `pixi-workspace` only
