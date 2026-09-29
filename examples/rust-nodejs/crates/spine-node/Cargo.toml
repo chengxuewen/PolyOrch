@@ -1,0 +1,17 @@
+[package]
+name = "spine-node"
+version = "0.1.0"
+edition = "2021"
+
+[workspace]
+
+[lib]
+name = "spine_node"
+crate-type = ["cdylib"]
+
+[dependencies]
+napi = "2"
+napi-derive = "2"
+
+[build-dependencies]
+napi-build = "2"
