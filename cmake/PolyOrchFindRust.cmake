@@ -1436,6 +1436,9 @@ endfunction()
 # (the cxxbridge leg is quiet per corr:1867; the cbindgen leg follows
 # the inverse of PolyOrch_RUST_VERBOSE, corr:2177).
 function(polyorch_rust_tool_bootstrap)
+    # CMP0174 NEW: callers omit VERSION entirely on the no-pin path; an
+    # empty value would otherwise unset the variable and warn.
+    cmake_policy(SET CMP0174 NEW)
     cmake_parse_arguments(PARSE_ARGV 0 TB "ALLOW_INSTALL;LOCKED;QUIET"
         "TOOL;BINARY;VERSION;PREFIX;OUT_VAR;OUT_TARGET" "")
     if(TB_UNPARSED_ARGUMENTS)

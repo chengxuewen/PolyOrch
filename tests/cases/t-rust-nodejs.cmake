@@ -51,10 +51,16 @@ ck(EXISTS "${_so}")
 # node available? run the demo; else the artifact assertions above stand
 find_program(_node node)
 if(NOT _node)
-    # a pixi env's node, if one exists (the njenv used during development
-    # is not a contract -- any env with node counts)
-    file(GLOB _pixinode "$ENV{HOME}/.pixi/envs/*/bin/node" "/tmp/opencode/njenv/.pixi/envs/default/bin/node")
-    list(GET _pixinode 0 _node)
+    # a pixi env's node, if one exists (any env with node counts; absence
+    # falls through to the artifact-only verdict below)
+    file(GLOB _pixinode
+        "$ENV{HOME}/.pixi/envs/*/bin/node"
+        "/tmp/opencode/*/.pixi/envs/default/bin/node"
+        "/tmp/opencode/*/pixi/envs/default/bin/node")
+    list(LENGTH _pixinode _pn)
+    if(_pn GREATER 0)
+        list(GET _pixinode 0 _node)
+    endif()
 endif()
 if(_node)
     execute_process(COMMAND "${CMAKE_COMMAND}" --build "${_b}"

@@ -1941,6 +1941,10 @@ endfunction()
 # a bin consumer links nothing to compile against. Unknown KIND or
 # unknown TRIPLE FATAL (the triple-family identity).
 function(_polyorch_rust_install_plan)
+    # CMP0174 NEW: PREFIX is omitted on default-layout installs; the unset
+    # vs empty distinction never mattered downstream (if(A_PREFIX) either
+    # way), but the author warning fired on every rust-bindings configure.
+    cmake_policy(SET CMP0174 NEW)
     set(_one TRIPLE KIND HANDLE PREFIX RUNTIME_DESTINATION ARCHIVE_DESTINATION
         LIBRARY_DESTINATION DEST_INCLUDE COMPONENT IMPLIB_FILE OUT_ROWS)
     set(_multi EXEC_PERMS FILE_PERMS PERMISSIONS CONFIGURATIONS HEADERS)
