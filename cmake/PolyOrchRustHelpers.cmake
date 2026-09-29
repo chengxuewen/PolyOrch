@@ -2114,7 +2114,7 @@ endfunction()
 # (port plan G1 ruling).
 function(polyorch_rust_install)
     set(_one EXPORT PREFIX RUNTIME_DESTINATION ARCHIVE_DESTINATION
-        LIBRARY_DESTINATION COMPONENT)
+        LIBRARY_DESTINATION COMPONENT LANGUAGE_PRODUCT)
     set(_multi TARGETS PERMISSIONS CONFIGURATIONS PUBLIC_HEADER)
     cmake_parse_arguments(PARSE_ARGV 0 A "" "${_one}" "${_multi}")
     if(A_UNPARSED_ARGUMENTS)
@@ -2199,6 +2199,33 @@ function(polyorch_rust_install)
             KIND "${_kind}" HANDLE "${_h}" PREFIX "${_p}"
             EXEC_PERMS ${_exec_perms} FILE_PERMS ${_file_perms}
             ${_plext} OUT_ROWS _rows)
+        # LANGUAGE_PRODUCT (WP16): language-runtime products follow the
+        # HOST language's naming, not cargo's -- python imports
+        # `spine_py.so` (no lib prefix), node loads `x.node`.
+        if(A_LANGUAGE_PRODUCT AND _kind STREQUAL "shared")
+            set(_rows2 "")
+            foreach(_row IN LISTS _rows)
+                string(REPLACE "|" ";" _f "${_row}")
+                list(GET _f 0 _art)
+                set(_renamed "")
+                if(A_LANGUAGE_PRODUCT STREQUAL "python" AND _art MATCHES "/lib[^/]*\\.so$")
+                    get_filename_component(_n "${_art}" NAME)
+                    string(REGEX REPLACE "^lib" "" _n "${_n}")
+                    set(_renamed "${_n}")
+                elseif(A_LANGUAGE_PRODUCT STREQUAL "node" AND _art MATCHES "\\.so$")
+                    get_filename_component(_n "${_art}" NAME)
+                    string(REGEX REPLACE "\\.so$" ".node" _n "${_n}")
+                    set(_renamed "${_n}")
+                endif()
+                if(_renamed)
+                    get_filename_component(_d "${_art}" DIRECTORY)
+                    list(APPEND _rows2 "${_d}/${_renamed}|${_d}|644")
+                else()
+                    list(APPEND _rows2 "${_row}")
+                endif()
+            endforeach()
+            set(_rows "${_rows2}")
+        endif()
 
         set(_ri 0)
         foreach(_row IN LISTS _rows)
@@ -2735,6 +2762,78 @@ function(polyorch_rust_cbindgen)
         # truth in both directions).
         add_dependencies("${CN_TARGET}-build" "${_agg}")
     endif()
+endfunction()
+
+# ===========================================================================
+# WP16: language-binding runtime surfaces.
+#
+# polyorch_rust_pyext(TARGET <cdylib-handle> MODULE <import-name>
+#                     [INTERPRETER <python>] [PIXI_ENV <env>] [DESTINATION <dir>])
+# Wires a PyO3 extension-module handle for host consumption:
+#   - resolves the interpreter (explicit > PIXI_ENV's bin > system python3)
+#     and exports PYO3_PYTHON into the handle's cargo rule env (PyO3's
+#     abi3 builds do not need libpython, but the interpreter governs
+#     ABI/version checks inside pyo3's build).
+#   - registers a <MODULE>-demo custom target that runs the consumer
+#     script with PYTHONPATH pointed at the module's artifact directory.
+function(polyorch_rust_pyext)
+    set(_one TARGET MODULE INTERPRETER PIXI_ENV DESTINATION)
+    cmake_parse_arguments(PARSE_ARGV 0 P "" "${_one}" "")
+    if(P_UNPARSED_ARGUMENTS)
+        message(FATAL_ERROR "polyorch_rust_pyext: unknown args: ${P_UNPARSED_ARGUMENTS}")
+    endif()
+    _polyorch_rust_must(P_TARGET P_MODULE)
+    _polyorch_rust_apply_target_prefix(_h "${P_TARGET}")
+    if(NOT TARGET "${_h}")
+        message(FATAL_ERROR "polyorch_rust_pyext: no such target '${_h}'")
+    endif()
+    get_target_property(_kind "${_h}-build" POLYORCH_RUST_KIND)
+    if(NOT _kind STREQUAL "shared")
+        message(FATAL_ERROR
+            "polyorch_rust_pyext: '${_h}' is not a cdylib (shared) handle -- "
+            "python extension modules are cdylib")
+    endif()
+
+    # interpreter: explicit > pixi env > system
+    set(_py "${P_INTERPRETER}")
+    if(NOT _py AND P_PIXI_ENV)
+        polyorch_pixi_env_paths(ENVIRONMENT "${P_PIXI_ENV}" BIN_OUT _pybin)
+        if(_pybin)
+            set(_py "${_pybin}/python")
+        endif()
+    endif()
+    if(NOT _py OR _py MATCHES "NOTFOUND$")
+        find_program(_pyexe python3)
+        if(_pyexe)
+            set(_py "${_pyexe}")
+        endif()
+    endif()
+    if(NOT _py OR _py MATCHES "NOTFOUND$")
+        message(FATAL_ERROR "polyorch_rust_pyext: no interpreter (pass INTERPRETER or PIXI_ENV, or have python3 on PATH)")
+    endif()
+
+    # ABI env into the handle's cargo rule (mediator env carrier)
+    polyorch_rust_set_env_vars(TARGET "${P_TARGET}" PYO3_PYTHON="${_py}")
+
+    # demo target: run the consumer script against the built module
+    get_target_property(_art "${_h}" IMPORTED_LOCATION)
+    get_filename_component(_artdir "${_art}" DIRECTORY)
+    set(_dest "${P_DESTINATION}")
+    if(NOT _dest)
+        set(_dest "${CMAKE_CURRENT_SOURCE_DIR}/consumer")
+    endif()
+    # python's import name has no cargo lib prefix: stage a renamed copy
+    # beside the artifact before running the consumer (install renames it
+    # permanently via LANGUAGE_PRODUCT python; the demo does it locally).
+    add_custom_target("${P_MODULE}-demo"
+        COMMAND "${CMAKE_COMMAND}" -E copy
+            "${_art}" "${_artdir}/${P_MODULE}.so"
+        COMMAND "${CMAKE_COMMAND}" -E env
+            "PYTHONPATH=${_artdir}" "${_py}" "${_dest}/hello.py"
+        DEPENDS "${_h}-build"
+        COMMENT "python: import ${P_MODULE} (consumer/hello.py)")
+    set_target_properties("${P_MODULE}-demo" PROPERTIES FOLDER
+        "${PolyOrch_RUST_FOLDER_ROOT}")
 endfunction()
 
 # ===========================================================================
