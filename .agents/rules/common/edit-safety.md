@@ -255,3 +255,19 @@ grep -c "duplicate-pattern" <file>    # expect 1; >1 = edit inserted duplicates
 **Verification**: `for n in <referenced names>; do cmake --build <tree> --target help | grep -q "$n" || echo "FOSSIL: $n"; done` must be silent; the default-path build leg (fusion case) passes.
 
 **Blocking condition**: committing a rename with button/test names updated "from memory"; leaving a live API call pointing at a commented-out definition.
+
+### 22. drv_run case prologue order is fixed (PIT-31, hit 5x)
+
+**Rule**: a driver-driven case file ALWAYS opens with: `# requires:` marker → `cmake_policy(SET CMP0219 NEW)` → `include(_inc)` → `include(_requires)` → `_polyorch_pixi_scratch(_s)` → `set(_b "${_s}/<name>")` → drv_run. The scratch macro must precede the BUILD path set — `_b` is derived from `_s`.
+
+**Verification**: `awk '/pixi_scratch/{s=NR} /set\(_b/{b=NR} END{exit !(s<b)}' <case>` exits 0.
+
+**Blocking condition**: writing a drv_run case without the scratch-first prologue.
+
+### 23. Before wiring a property knob, sweep existing writers of that property (PIT-33)
+
+**Rule**: introducing a variable/knob that feeds a target property (FOLDER, OUTPUT_DIRECTORY, ...) requires grepping the touched files for EXISTING writers of the same property on the same targets. Later literal writers silently beat the knob (last-writer-wins), making the "fixed" value revert.
+
+**Verification**: `grep -n 'FOLDER' <file>` count equals the intended number of assignment sites; the codemodel (File API) shows the knob's value on every target.
+
+**Blocking condition**: committing a knob wiring while a second literal writer for the same property-target pair survives.

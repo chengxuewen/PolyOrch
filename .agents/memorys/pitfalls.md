@@ -246,3 +246,31 @@
 - **Solution**: document + use the cache path: `-DPolyOrch_RUST_VSCODE_DEBUG=ON` on the host configure (lands in CMakeCache, survives re-configures) or cmake.configureSettings for permanence. STATUS line now carries a timestamp + spec count so "did this configure write?" is decidable at a glance.
 - **Verification**: host configure log contains `PolyOrch: rust debug configs -> <root>/.vscode at <time> (... N run target(s) ...)`; launch.json mtime == that configure's time.
 - **Forbidden**: expecting a subtree's plain set() to flip a library default for the whole host; judging debug-config freshness without the STATUS timestamp.
+
+## PIT-31: the scratch-before-BUILD ordering in drv_run cases (2026-09-29, hit 5 times)
+- **Symptom**: `drv_run(... BUILD "${_b}")` fails with "file failed to create directory: <empty>" — `${_b}` is empty because `set(_b "${_s}/rb")` ran before `_polyorch_pixi_scratch(_s)` produced `_s` (or the scratch call was dropped entirely in a rewrite).
+- **Root cause**: `_polyorch_pixi_scratch` is a macro that sets its output var; the BUILD path set must come AFTER it. The write-tool case templates kept regenerating with the wrong order, hitting this in t-rust-bindings, t-rust-nodejs, t-rust-pyext, t-rust-wasm and one more across WP14-18.
+- **Solution**: case prologue is ALWAYS: requires-marker → policy → include(_inc) → include(_requires) → `_polyorch_pixi_scratch(_s)` → `set(_b "${_s}/<name>")` → drv_run.
+- **Verification**: `grep -n 'pixi_scratch' <case>` line number must be less than the `set(_b` line number; drv_run's configure proceeds past the artifact gate.
+- **Forbidden**: writing a new drv_run case from memory without the scratch-first prologue; "fixing" the empty BUILD by pre-creating directories.
+
+## PIT-32: cxx bridge hard rules (Box unsupported / same-file impl / deleter_if version skew / namespace attribute) (2026-09-29, WP14-15)
+- **Symptom**: four separate failures while building the binding examples — E0599 `Demo::make` not found although declared; `Box<bridge::Demo>` rejected ("Box of a C++ type is not supported yet"); generated `.cc` referencing `rust::deleter_if` which the paired cxx.h lacks; generated trampoline resolving `::Demo` while the type sat in `namespace demo`.
+- **Root cause**: cxx's rules, not bugs — (1) extern "Rust" implementations must live in the SAME FILE as the bridge declaration (file-scoped resolution); (2) opaque C++ types cross only as UniquePtr — factories belong on the C++ side; (3) cxx 1.0.202's generated opaque-drop references `rust::deleter_if` which its own shipped cxx.h lacks (upstream skew) — keeping the shim free of `rust::` types sidesteps it; (4) `#[cxx::bridge(namespace = "...")]` makes the trampoline resolve ::-qualified symbols, so the wrapper class must sit in the global namespace while the wrapped lib keeps its own.
+- **Solution**: encode the four rules in the binding examples' comments (rust-bindings, rust-cpp-lib) — they are the onboarding doc for the next cxx consumer.
+- **Verification**: both examples build+run green (`rust-bindings-app` prints 42/42.0; `consumer-bin-run` prints the lib-computed value).
+- **Forbidden**: Box<C++ type>; implementations in a sibling module; mixing cxx-build's generated cxx.h with rust:: types in hand-written shims on version-skewed registries.
+
+## PIT-33: duplicate literal property-set beats the knob — "fixed" targets revert (2026-09-29, WP13 follow-up)
+- **Symptom**: after introducing PolyOrch_RUST_FOLDER_ROOT and pointing hand-written targets at it, the fused codemodel STILL showed folder=rust-bindings for app and rust-link-c-cfn — the knob value was being overwritten by a SECOND, later `set_target_properties(... FOLDER "rust-bindings")` / `FOLDER ${CURRENT_DIR_REL}` line added in an earlier wave.
+- **Root cause**: accumulated example files carried multiple property-set lines for the same target from different waves; the last writer wins, and the last writer was a stale literal.
+- **Solution**: grep every FOLDER assignment per target before wiring a knob; delete or downgrade the fossils in the same change (rust-bindings' duplicate app set deleted; rust-link-c-cfn's CURRENT_DIR_REL replaced by the knob-with-fallback form).
+- **Verification**: codemodel folder listing shows zero `(none)` and zero stale-literal groups; `grep -c 'FOLDER' <file>` matches the expected count.
+- **Forbidden**: adding a new property source without grepping for existing writers of the same property on the same target.
+
+## PIT-34: driver artifact contract must be written BEFORE early returns (2026-09-29, WP18)
+- **Symptom**: `driver failed (rc=1)` pointing at `_driver.cmake:147` "fixture declared no artifacts" — while the real story was that the example's node-absence early return executed BEFORE the `file(WRITE ... polyorch-fixture-artifacts.txt)` block.
+- **Root cause**: the artifacts contract was placed at the file tail; any gate returning early (node missing, wasm stack incomplete) skips it, and the driver reports the wrong cause (missing contract instead of the intended degradation).
+- **Solution**: the contract write sits immediately after the module setup, before every gate/return; degradation legs then SKIP at the case level with their true reason.
+- **Verification**: `grep -n 'FIXTURE_ARTIFACTS' <example CMakeLists>` line number is less than the first `return()` line.
+- **Forbidden**: placing the artifacts contract after any conditional return in a driver-driven tree.

@@ -223,3 +223,24 @@ targets; corrosion's own corpus is C++-consumers-only at the pin.
 WP14 also closed two latent library gaps the example forced: the
 cxxbridge/cbindgen/install TARGET outlets lacked fusion-prefix
 resolution (PIT-29 outlets six+seven).
+
+
+## D26: language bindings triangle delivered (2026-09-29, user ruling "这三个必须")
+
+Python (PyO3), Node.js (napi-rs), and WebAssembly (wasm-pack -> npm pkg/)
+are first-class binding surfaces with their own examples (rust-pyext /
+rust-nodejs / rust-wasm, WP16-18) -- closing the L2 deferral D25 recorded.
+Shape rulings inside the delivery: N-API's stable ABI means the nodejs
+crate is a plain cargo build (node is a DEMO dependency, discovered from
+PATH or a pixi env, never a build dependency); PyO3 uses abi3-py38 (no
+interpreter headers, no libpython) with the interpreter resolved
+explicit > pixi env > system and injected as PYO3_PYTHON; wasm ships as
+wasm-pack pkg/ in bundler (web deliverable) + nodejs (local demo)
+flavors, with --mode no-install and --dev required on restricted egress
+(wasm-pack's default toolchain downloads hang) and wasm-opt satisfied by
+a pixi binaryen env. Shared infra: install's LANGUAGE_PRODUCT renames
+cdylib products to host-language conventions (libspine_py.so ->
+spine_py.so / spine-node.node); polyorch_rust_pyext is the first
+language-runtime surface verb. Network-bound tools (wasm-pack's own
+toolchain downloads, binaryen) are the known egress hazard -- --dev +
+no-install + pixi binaryen is the documented restricted-host set.
