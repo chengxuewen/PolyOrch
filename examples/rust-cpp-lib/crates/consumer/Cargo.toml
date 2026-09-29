@@ -1,0 +1,22 @@
+[package]
+name = "consumer"
+version = "0.1.0"
+edition = "2021"
+
+[workspace]
+
+[lib]
+name = "consumer"
+crate-type = ["staticlib", "rlib"]
+
+[[bin]]
+name = "consumer"
+path = "src/main.rs"
+test = false
+bench = false
+
+[dependencies]
+cxx = "1.0"
+
+[build-dependencies]
+cxx-build = "1.0"

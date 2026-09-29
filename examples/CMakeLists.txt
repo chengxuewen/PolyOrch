@@ -49,7 +49,7 @@ find_program(PolyOrchExample_pixi NAMES pixi
 # ============================================================================
 if(PolyOrch_BUILD_RUST_EXAMPLES AND PolyOrchExample_cargo)
     foreach(_fused "rust-basic" "rust-import" "rust-link-c" "rust-profile-features"
-                   "rust-bindings")
+                   "rust-bindings" "rust-cpp-lib")
         # WP13: full directory name as prefix, <directory>-all aggregates.
         # Directory scope per iteration.
         set(PolyOrch_RUST_TARGET_PREFIX "${_fused}")
