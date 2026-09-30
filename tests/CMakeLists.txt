@@ -126,12 +126,12 @@ endforeach()
 # invisible to project-target UIs (CMakeTools build dropdown, CMake outline).
 # A project-level umbrella target makes running the suite a first-class
 # operation in exactly those UIs, next to the pixi-*/<example-dir> button targets.
-add_custom_target(PolyOrchTest
+add_custom_target(polyorch-test
     COMMAND ${CMAKE_CTEST_COMMAND}
         --test-dir "${CMAKE_CURRENT_BINARY_DIR}"
         --output-on-failure
     COMMENT "Running the PolyOrch cmake -P test suite via CTest")
-set_target_properties(PolyOrchTest PROPERTIES FOLDER ${PROJECT_NAME}/tests)
+set_target_properties(polyorch-test PROPERTIES FOLDER ${PROJECT_NAME}/tests)
 # Per-route umbrellas (dual-route plan WP1): the ctest tree of THIS build
 # dir was configured with ONE route, so the umbrellas filter by LABEL --
 # no product-code coupling. Hyphen names: '::' is illegal in target names
