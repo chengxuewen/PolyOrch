@@ -36,12 +36,39 @@ foreach(_t "polyorch-rust-basic-greet-build" "polyorch-rust-basic-greet-run"
            "polyorch-rust-import-dash_ed-build" "polyorch-rust-link-c-cli-user-tool-build"
            "polyorch-rust-profile-features-demo-rel-build"
            "polyorch-rust-basic-all" "polyorch-rust-import-all" "polyorch-rust-link-c-all"
-           "polyorch-rust-profile-features-all")
+           "polyorch-rust-profile-features-all"
+           )
     string(FIND "${_tdirs}" "${_t}.dir" _hit)
     if(_hit LESS 0)
         message(FATAL_ERROR "check failed: fused target '${_t}' absent from host tree")
     endif()
 endforeach()
+
+# A3 (D29): the node family rides the same fused namespace -- asserted ONLY
+# when node+pm are reachable (the fusion tree's STATUS degradation is the
+# no-node contract, same as the rust family's no-cargo degradation). The
+# sanitize shape (@scope/hello-js -> scope-hello-js) is pinned when present.
+include("${CMAKE_CURRENT_LIST_DIR}/_requires.cmake")
+polyorch_requires(node _node_req)
+set(_node_names
+    "polyorch-node-web-scope-hello-js-build"
+    "polyorch-node-web-hello-ts-build"
+    "polyorch-node-web-scope-hello-js-run-hello")
+if(_node_req)
+    foreach(_t ${_node_names})
+        string(FIND "${_tdirs}" "${_t}.dir" _hit)
+        if(_hit LESS 0)
+            message(FATAL_ERROR "check failed: fused node target '${_t}' absent from host tree")
+        endif()
+    endforeach()
+else()
+    foreach(_t ${_node_names})
+        string(FIND "${_tdirs}" "${_t}.dir" _hit)
+        if(NOT _hit LESS 0)
+            message(FATAL_ERROR "check failed: fused node target '${_t}' registered WITHOUT node+pm (degradation broken)")
+        endif()
+    endforeach()
+endif()
 
 # remote-control buttons still registered (pixi route + install-export)
 foreach(_btn "polyorch-rust-install-export")

@@ -206,6 +206,40 @@ node / wasm toolchain) is missing — the artifact legs still configure.
 
 ---
 
+## 3.5 The Node/Frontend Bridge (npm · pnpm workspaces)
+
+```bash
+cmake -S examples/node-web -B build          # standalone (REQUIRED: node+pm needed)
+# fused: -DPolyOrch_BUILD_RUST_EXAMPLES=ON pulls node-web into the host graph
+cmake --build build --target scope-hello-js-run-hello   # a one-shot script verb
+```
+
+`polyorch_node_import` reads a root `package.json`'s `workspaces` globs and
+registers one `-build` mediator per member — the `workspace:*` dependency
+between `@scope/hello-js` and `hello-ts` becomes a real CMake dependency
+edge (building hello-ts builds hello-js first). Design boundaries (D29,
+eight user-adjudicated rulings):
+
+- **corepack abstraction**: the project's own `packageManager` field picks
+  npm/pnpm; PolyOrch never pins. Command shapes differ by PM (`npm run build
+  -w <pkg>` vs `pnpm --filter <pkg> run build`) — dispatched internally.
+- **dist/ convention**: artifacts live in `<pkg>/dist/` (OUTPUT_DIR
+  overrides); entry file resolved main → module → exports["."].
+- **one-shot verbs only**: a long-lived dev server is not the build graph's
+  job. `polyorch_node_run(TARGET x SCRIPT <name>)` runs `npm run <script>`.
+- **scripts dispatch only**: PolyOrch never invokes tsc/vite — the
+  package's own scripts ARE the build (the whitepaper's "does not compile
+  code itself" clause).
+- **three-tier discovery**: `-DPolyOrchNodeExe=` > PATH > pixi env glob,
+  then STATUS degradation (nvm users: `nvm use` before configuring).
+- **naming**: npm scopes sanitize to CMake-safe handles
+  (`@scope/hello-js` → `scope-hello-js`; add_custom_target rejects
+  '@'-headed names — measured). Fused trees namespace everything
+  `polyorch-node-web-...` via `PolyOrch_NODE_TARGET_PREFIX` (the node
+  face's own knob — the name says NODE and means NODE).
+
+---
+
 ## 4. pixi Environments
 
 pixi is the environment manager face: declare the environment in CMake,

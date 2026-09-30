@@ -281,3 +281,44 @@ Corrosion's minimal-embedded-surface philosophy. (Momus-reviewed plan
 2026-09-30; buttons already polyorch-* since the D27 grammar unification
 -- buttons in examples/CMakeLists.txt keep their literal names, which now
 read as polyorch-*.)
+
+
+## D29: the node/npm bridge (WP-node-alpha, 2026-09-30 -- eight user-adjudicated rulings)
+
+The fourth bridge (cargo / cmake / pixi / npm -- architecture.md's v0.1 list)
+lands as cmake/PolyOrchNodeHelpers.cmake: five verbs (setup / import / build
+/ test / run) over npm-pnpm workspaces. Eight rulings, walked one by one
+(adjudication-walkthrough protocol, plan
+.omo/plans/2026-09-30-node-bridge-alpha.md): (1) corepack abstraction -- the
+project's own packageManager field picks the PM, PolyOrch never pins;
+command shapes dispatch by PM (npm `run build -w <pkg>` vs pnpm
+`--filter <pkg> run build` -- the filter precedes the subcommand, a
+two-row template table). (2) dist/ convention + OUTPUT_DIR override;
+reading package.json (main/module/exports) is MANIFEST READING (legal),
+reading tsconfig/vite.config is CONFIG PROBING (forbidden). (3) long-lived
+dev servers DEFERRED -- run is a one-shot verb; the orchestrator does not
+run processes. (4) scripts dispatch only -- PolyOrch never invokes
+tsc/vite. (5) node discovery = the rust-nodejs three-tier chain
+(-DPolyOrchNodeExe= > PATH > pixi env glob) with precise half-missing
+reporting (node found + PM missing names the missing half). (A1, amended by
+measurement) sanitize '@org/pkg' -> 'org-pkg': '/'->'-', and the leading
+'@' is STRIPPED -- add_custom_target rejects '@'-headed names outright
+("reserved or not valid", measured); Momus had pre-approved exactly this
+degradation. (A2) node owns PolyOrch_NODE_TARGET_PREFIX (its own knob, its
+own apply helper -- the rust helper hardcodes the RUST knob and would
+silently drop a node prefix); the fusion loop sets both knobs symmetrically.
+(A3) t-rust-fusion pins the node family BOTH ways: targets asserted present
+when node+pm reachable, asserted ABSENT when not (the degradation itself is
+locked). Deliberate v0.1 edges: no install/EXPORT chain, no yarn/bun
+specifics (corepack absorbs them), no VSCode debug surface, no FROM pixi
+form. Implementation-smoke fixes beyond the plan: string(JSON) array
+iteration is GET-with-index-path (MEMBER is OBJECT-key-only, measured);
+PolyOrchNode_EXECUTABLE is CACHE FORCEd like the PM/FOUND knobs; the
+PASSTHROUGH channel takes a proper list (pre-escaped ';' per _inc.cmake's
+own note); the case reads the fixture's configure report from the
+driver's persisted _configure.log (the rust-family convention). Fixture:
+tests/fixtures/node-ws (zero-dependency node scripts -- the orchestrated
+surface is the PM's workspace machinery, not a compiler); case:
+t-rust-node (4 legs, `# requires: node` = node AND pm, contract skip at
+the gate). (Momus-reviewed; NEEDS-WORK 3 text-level blockers fixed in-plan
+before implementation.)

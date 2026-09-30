@@ -1,0 +1,13 @@
+{
+  "name": "hello-ts",
+  "version": "0.1.0",
+  "private": true,
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "node gen.js",
+    "test": "node -e \"console.log('hello-ts: tests OK')\""
+  },
+  "dependencies": {
+    "@scope/hello-js": "workspace:*"
+  }
+}

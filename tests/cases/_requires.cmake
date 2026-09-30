@@ -70,6 +70,40 @@ function(polyorch_requires cap out)
             set(_ok TRUE)
         endif()
 
+    elseif(cap STREQUAL "node")
+        # The node bridge's toolchain (D29): node AND a package manager.
+        # Node alone cannot run scripts -- setup() degrades on a missing PM
+        # and the verbs register nothing, so the case would FATAL deep in
+        # the fixture; the contract skip belongs here, at the gate.
+        # node: PATH -> ~/.pixi/bin -> any pixi env's bin/node (the
+        # rust-nodejs case's proven glob).
+        find_program(_pr_node NAMES node)
+        if(NOT _pr_node)
+            find_program(_pr_node NAMES node PATHS "$ENV{HOME}/.pixi/bin")
+        endif()
+        if(NOT _pr_node)
+            file(GLOB _pr_pixinode
+                "$ENV{HOME}/.pixi/envs/*/bin/node"
+                "/tmp/opencode/*/.pixi/envs/default/bin/node")
+            list(LENGTH _pr_pixinode _pr_pn)
+            if(_pr_pn GREATER 0)
+                list(GET _pr_pixinode 0 _pr_node)
+            endif()
+        endif()
+        # PM: corepack first (adjudication 1), bare npm as the fallback
+        find_program(_pr_corepack NAMES corepack)
+        if(_pr_corepack)
+            set(_pr_pm TRUE)
+        else()
+            find_program(_pr_npm NAMES npm)
+            if(_pr_npm)
+                set(_pr_pm TRUE)
+            endif()
+        endif()
+        if(_pr_node AND _pr_pm)
+            set(_ok TRUE)
+        endif()
+
     elseif(cap STREQUAL "pixi")
         find_program(_pr_pixi NAMES pixi PATHS
             "$ENV{HOME}/.pixi/bin" "$ENV{PIXI_HOME}/bin")
