@@ -1,0 +1,14 @@
+# Script-mode child: no project() (not scriptable) -- PROJECT_NAME is set
+# by hand to what a consumer's project() would have made it, because the
+# helper reads <PROJECT_NAME>_POLYORCH_NODE_TARGET_PREFIX from the caller
+# scope. The hyphenated name is legal in variables and unpassable via -D,
+# which is why this file exists instead of a PASSTHROUGH knob.
+set(PROJECT_NAME "my-host")
+set(my-host_POLYORCH_NODE_TARGET_PREFIX "po-caller")
+set(PolyOrch_NODE_TARGET_PREFIX "po-classic")
+include("@MODULE_DIR@/../../cmake/PolyOrchNodeHelpers.cmake")
+_polyorch_node_apply_prefix(_out "hello-js")
+if(NOT _out STREQUAL "po-caller-hello-js")
+    message(FATAL_ERROR "caller key not honored: got \"${_out}\"")
+endif()
+message(STATUS "knobs-caller-child: OK")

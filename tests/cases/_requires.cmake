@@ -104,6 +104,26 @@ function(polyorch_requires cap out)
             set(_ok TRUE)
         endif()
 
+    elseif(cap STREQUAL "no-node")
+        # Inverse probe (the no-system-rust shape): the degradation matrix
+        # may only assert "node missing" where the PATH (and the pixi glob)
+        # truly has neither node nor a PM. Runs after the node probe, so a
+        # host with node contract-skips the matrix case instead of
+        # false-failing.
+        set(_node_absent TRUE)
+        find_program(_pr_no_node NAMES node)
+        if(NOT _pr_no_node)
+            file(GLOB _pr_no_pixinode "$ENV{HOME}/.pixi/envs/*/bin/node")
+            if(_pr_no_pixinode)
+                set(_node_absent FALSE)
+            endif()
+        else()
+            set(_node_absent FALSE)
+        endif()
+        if(_node_absent AND NOT PolyOrchNodeExe)
+            set(_ok TRUE)
+        endif()
+
     elseif(cap STREQUAL "pixi")
         find_program(_pr_pixi NAMES pixi PATHS
             "$ENV{HOME}/.pixi/bin" "$ENV{PIXI_HOME}/bin")

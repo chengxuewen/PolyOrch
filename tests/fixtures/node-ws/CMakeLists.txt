@@ -30,3 +30,9 @@ polyorch_node_import(ROOT "${CMAKE_CURRENT_SOURCE_DIR}/package.json")
 # family verbs: one test gate (loud absence) + the FOLDER-less standalone shape
 polyorch_node_test(TARGET "scope-hello-ui")   # no scripts.test -> loud STATUS skip
 polyorch_node_test(TARGET "hello-js")         # none here either -> skip line in log
+
+# run verbs for the noderun case: both members' plain verb + the ARGS
+# passthrough shape (SCRIPT + ARGS)
+polyorch_node_run(TARGET "hello-js" SCRIPT hello)
+polyorch_node_run(TARGET "scope-hello-ui" SCRIPT hello)
+polyorch_node_run(TARGET "hello-js" SCRIPT args ARGS "--port=8080")

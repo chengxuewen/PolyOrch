@@ -94,6 +94,18 @@ function(polyorch_node_setup)
         set(_pm_argv "${PolyOrchNode_COREPACK}" "${_pm}")
     endif()
     if(NOT _pm_argv)
+        # bare-npm tier: the explicit knob first (same contract as the
+        # corepack one), then PATH
+        if(PolyOrchNodeNpm)
+            set(_pm_argv "${PolyOrchNodeNpm}")
+        else()
+            find_program(PolyOrchNode_NPM NAMES npm NO_CACHE)
+            if(PolyOrchNode_NPM)
+                set(_pm_argv "${PolyOrchNode_NPM}")
+            endif()
+        endif()
+    endif()
+    if(NOT _pm_argv)
         # node without any PM cannot run scripts: POLYORCH_NODE_FOUND goes
         # FALSE (the verbs need the PM), but the STATUS says WHICH half is
         # missing -- "node not found" was a misleading report.
