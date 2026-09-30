@@ -26,6 +26,7 @@ Read the user message and classify as:
 | **Refactor** | "refactor" / "optimize" / "simplify" / "clean up" | `/think-before-act` + `/remove-ai-slops` |
 | **Design** | "design" / "architecture" / "approach" / "how to" | `/brainstorming` + `/openspec-propose` |
 | **Test** | "test" / "E2E" / "coverage" | `/test-driven-development` + `/playwright` |
+| **Adjudication** | "裁决逐项过" / "一个个来" / "decide between options" / "walk the options" | `/adjudication-walkthrough` |
 | **Docs** | "docs" / "README" / "documentation" | `/doc-audit` |
 | **Security** | "security" / "permissions" / "auth" | `/security-review` |
 | **Exploration** | "research" / "compare" / "what options" | `/ecosystem-scan` + librarian agent |
