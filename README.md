@@ -32,6 +32,7 @@ the cmake test suites above.
 
 ```text
 docs/          the specification — start at docs/README.md
+  tutorials.md       hands-on learning path (getting started, rust builds, bindings, embedding)
   whitepaper.md      the frozen v1.0 record (historical; not the working authority)
   derived/           the working product surface: adapters, cli, environment, naming, competitive-analysis, outline
   architecture.md    design baseline: invariants, layers, data flow, open decisions

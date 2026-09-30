@@ -29,6 +29,7 @@ AI agent 工具链。这里没有 `src/`、没有构建入口、没有测试套�
 
 ```text
 docs/          规格说明 —— 从 docs/README.md 开始
+  tutorials.md       手把手学习路径（入门、Rust 构建、绑定、宿主嵌入）
   whitepaper.md      冻结的 v1.0 记录（历史快照，非工作权威）
   derived/           工作用产品面：adapters、cli、environment、naming、competitive-analysis、outline
   architecture.md    设计基线：不变式、分层、数据流、未决项

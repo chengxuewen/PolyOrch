@@ -17,6 +17,7 @@
 | [Whitepaper](./whitepaper.md) | **Frozen v1.0 record** -- the historical snapshot for brand naming, historical decisions, system architecture, and technical positioning. Not the working authority |
 | [This index](./README.md) | Documentation index, navigation table, and reading paths for three audience types |
 | [Architecture Design](./architecture.md) | Design baseline: invariants, layered view, data flow, debug surface, reproducibility boundary, bridge priority, and open decisions |
+| [Tutorials](./tutorials.md) | **Hands-on learning path** -- getting started, first rust build, bindings track, pixi environments, host embedding, test suites |
 | [Module Reference](./modules/00-overview.md) | Internals reference: the contract, dependency and development workflow, error model, and testing strategy |
 | [Adapters](./derived/adapters.md) | CMake / Xmake / Meson / Colcon adapter details and IDE debugging |
 | [Environment & Dependencies](./derived/environment.md) | Pixi environment management and vcpkg / Conan / Xrepo dependency unification |
