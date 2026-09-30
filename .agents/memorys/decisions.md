@@ -102,7 +102,7 @@
 
 ## D11: CMake-surface naming layering
 
-Brand casing on the CMake interface: cache variables and options are `PolyOrch_` (brand verbatim) + `UPPER_SNAKE` suffix (`PolyOrch_PIXI_MANIFEST`, `PolyOrch_BUILD_TESTS`); functions and package/import names lowercase `polyorch_*`; project-level targets `PolyOrch<PascalCase>` (`PolyOrchTest`, `PolyOrchExamplePixi*`). `POLYORCH_` remains a misspelling everywhere except ONE namespace: shell environment variables (`POLYORCH_TEST_E2E`), which follow the all-caps env convention and are deliberately exempted from the C1 scan scope (C1 scans content documents, not env names). A host's all-caps brand (e.g. a parent project's `*_ENABLE_PIXI`) is the same rule applied to that brand, not an exception. (user decision, 2026-09-21)
+Brand casing on the CMake interface: cache variables and options are `PolyOrch_` (brand verbatim) + `UPPER_SNAKE` suffix (`PolyOrch_PIXI_MANIFEST`, `PolyOrch_BUILD_TESTS`); functions and package/import names lowercase `polyorch_*`; project-level targets were `PolyOrch<PascalCase>` until 2026-09-30, when the example buttons were unified into the lowercase directory grammar (`pixi-bootstrap`, `rust-import-pixi`, `rust-bindings-standalone`; D27) -- target names are now kebab-case everywhere, CamelCase survives only in variable/option namespaces (`PolyOrchTest` remains a historical note). `POLYORCH_` remains a misspelling everywhere except ONE namespace: shell environment variables (`POLYORCH_TEST_E2E`), which follow the all-caps env convention and are deliberately exempted from the C1 scan scope (C1 scans content documents, not env names). A host's all-caps brand (e.g. a parent project's `*_ENABLE_PIXI`) is the same rule applied to that brand, not an exception. (user decision, 2026-09-21)
 
 Imported tool handles follow the same layering: `PolyOrchRust::<PascalCase>`
 (`PolyOrchRust::Rustc`, `PolyOrchRust::Cargo`) -- the namespaced-imported
@@ -225,7 +225,7 @@ cxxbridge/cbindgen/install TARGET outlets lacked fusion-prefix
 resolution (PIT-29 outlets six+seven).
 
 
-## D26: language bindings triangle delivered (2026-09-29, user ruling "这三个必须")
+## D26: language bindings triangle delivered (2026-09-29, user ruling: the three language bindings are mandatory)
 
 Python (PyO3), Node.js (napi-rs), and WebAssembly (wasm-pack -> npm pkg/)
 are first-class binding surfaces with their own examples (rust-pyext /

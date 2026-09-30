@@ -12,7 +12,7 @@
 #               aggregate:      <directory>-all
 #             Example: rust-link-c-cli-user-tool-build / rust-link-c-all.
 #
-#   REMOTE -- a single PolyOrchExample* button that runs the example in its
+#   REMOTE -- a single pixi-*/<example-dir> button target that runs the example in its
 #             OWN build dir (standalone/<name>), never inside the host
 #             configure. Used when the example has side effects a host
 #             configure must not absorb: pixi environment materialization
@@ -84,48 +84,48 @@ add_subdirectory(pixi-workspace)
 # pixi-bootstrap: script-mode cold start. Build-time only: may install pixi
 # and reach the network, so it never runs during configure.
 if(PolyOrchExample_pixi)
-    add_custom_target(PolyOrchExamplePixiBootstrap
+    add_custom_target(pixi-bootstrap
         COMMAND ${CMAKE_COMMAND} -P "${CMAKE_CURRENT_SOURCE_DIR}/pixi-bootstrap/bootstrap.cmake"
         COMMENT "Running the pixi-bootstrap example (may reach the network)")
-    set_target_properties(PolyOrchExamplePixiBootstrap PROPERTIES FOLDER ${PROJECT_NAME}/examples)
+    set_target_properties(pixi-bootstrap PROPERTIES FOLDER ${PROJECT_NAME}/examples)
 else()
     message(STATUS
-        "PolyOrch examples: PolyOrchExamplePixiBootstrap not registered "
+        "PolyOrch examples: pixi-bootstrap not registered "
         "-- needs pixi (PATH or ~/.pixi/bin); option gate: PolyOrch_BUILD_PIXI_EXAMPLES")
 endif()
 
 # pixi-configure: read-only standalone configure.
 if(PolyOrchExample_pixi)
-    add_custom_target(PolyOrchExamplePixiConfigure
+    add_custom_target(pixi-configure
         COMMAND ${CMAKE_COMMAND}
             -S "${CMAKE_CURRENT_SOURCE_DIR}/pixi-configure"
             -B "${CMAKE_CURRENT_BINARY_DIR}/standalone/pixi-configure"
         COMMENT "Configuring the pixi-configure example standalone (read-only)")
-    set_target_properties(PolyOrchExamplePixiConfigure PROPERTIES FOLDER ${PROJECT_NAME}/examples)
+    set_target_properties(pixi-configure PROPERTIES FOLDER ${PROJECT_NAME}/examples)
 else()
     message(STATUS
-        "PolyOrch examples: PolyOrchExamplePixiConfigure not registered "
+        "PolyOrch examples: pixi-configure not registered "
         "-- needs pixi (PATH or ~/.pixi/bin); option gate: PolyOrch_BUILD_PIXI_EXAMPLES")
 endif()
 
 # pixi-workspace: writes only into its own standalone/ build dir, no network.
 if(PolyOrchExample_pixi)
-    add_custom_target(PolyOrchExamplePixiWorkspace
+    add_custom_target(pixi-workspace
         COMMAND ${CMAKE_COMMAND}
             -S "${CMAKE_CURRENT_SOURCE_DIR}/pixi-workspace"
             -B "${CMAKE_CURRENT_BINARY_DIR}/standalone/pixi-workspace"
         COMMENT "Configuring the pixi-workspace example standalone (writes its build dir; needs pixi)")
-    set_target_properties(PolyOrchExamplePixiWorkspace PROPERTIES FOLDER ${PROJECT_NAME}/examples)
+    set_target_properties(pixi-workspace PROPERTIES FOLDER ${PROJECT_NAME}/examples)
 else()
     message(STATUS
-        "PolyOrch examples: PolyOrchExamplePixiWorkspace not registered "
+        "PolyOrch examples: pixi-workspace not registered "
         "-- needs pixi (PATH or ~/.pixi/bin); option gate: PolyOrch_BUILD_PIXI_EXAMPLES")
 endif()
 
 # pixi-env-run: "what pixi buys you" -- materialize an env, run its tools.
 # Route value is the literal "pixi" (the examples gate on STREQUAL "pixi").
 if(PolyOrchExample_pixi AND PolyOrch_BUILD_PIXI_EXAMPLES)
-    add_custom_target(PolyOrchExamplePixiEnvRun
+    add_custom_target(pixi-env-run
         COMMAND ${CMAKE_COMMAND}
             -S "${CMAKE_CURRENT_SOURCE_DIR}/pixi-env-run"
             -B "${CMAKE_CURRENT_BINARY_DIR}/standalone/pixi-env-run"
@@ -133,16 +133,16 @@ if(PolyOrchExample_pixi AND PolyOrch_BUILD_PIXI_EXAMPLES)
         COMMAND ${CMAKE_COMMAND} --build
             "${CMAKE_CURRENT_BINARY_DIR}/standalone/pixi-env-run" --target pixi-cmake-smoke
         COMMENT "pixi-env-run: materialize env -> run env tools (first run solves)")
-    set_target_properties(PolyOrchExamplePixiEnvRun PROPERTIES FOLDER ${PROJECT_NAME}/examples)
+    set_target_properties(pixi-env-run PROPERTIES FOLDER ${PROJECT_NAME}/examples)
 else()
     message(STATUS
-        "PolyOrch examples: PolyOrchExamplePixiEnvRun not registered "
+        "PolyOrch examples: pixi-env-run not registered "
         "-- set PolyOrch_BUILD_PIXI_EXAMPLES=ON AND have pixi (PATH or ~/.pixi/bin)")
 endif()
 
 # rust-import, pixi route: import an EXISTING workspace from the env.
 if(PolyOrchExample_pixi AND PolyOrch_BUILD_PIXI_EXAMPLES)
-    add_custom_target(PolyOrchExampleRustImportPixi
+    add_custom_target(rust-import-pixi
         COMMAND ${CMAKE_COMMAND}
             -S "${CMAKE_CURRENT_SOURCE_DIR}/rust-import"
             -B "${CMAKE_CURRENT_BINARY_DIR}/standalone/rust-import-pixi"
@@ -152,17 +152,17 @@ if(PolyOrchExample_pixi AND PolyOrch_BUILD_PIXI_EXAMPLES)
         COMMAND ${CMAKE_COMMAND} --build
             "${CMAKE_CURRENT_BINARY_DIR}/standalone/rust-import-pixi" --target say-hi-exe-run
         COMMENT "rust-import (pixi route): materialize env -> build -> run (first run solves)")
-    set_target_properties(PolyOrchExampleRustImportPixi PROPERTIES
+    set_target_properties(rust-import-pixi PROPERTIES
         FOLDER ${PROJECT_NAME}/examples)
 else()
     message(STATUS
-        "PolyOrch examples: PolyOrchExampleRustImportPixi not registered "
+        "PolyOrch examples: rust-import-pixi not registered "
         "-- set PolyOrch_BUILD_PIXI_EXAMPLES=ON AND have pixi (PATH or ~/.pixi/bin)")
 endif()
 
 # rust-link-c, pixi route: the mixed C<->Rust link from the env.
 if(PolyOrchExample_pixi AND PolyOrch_BUILD_PIXI_EXAMPLES)
-    add_custom_target(PolyOrchExampleRustLinkCPixi
+    add_custom_target(rust-link-c-pixi
         COMMAND ${CMAKE_COMMAND}
             -S "${CMAKE_CURRENT_SOURCE_DIR}/rust-link-c"
             -B "${CMAKE_CURRENT_BINARY_DIR}/standalone/rust-link-c-pixi"
@@ -172,17 +172,17 @@ if(PolyOrchExample_pixi AND PolyOrch_BUILD_PIXI_EXAMPLES)
         COMMAND ${CMAKE_COMMAND} --build
             "${CMAKE_CURRENT_BINARY_DIR}/standalone/rust-link-c-pixi" --target cli-user-tool-run
         COMMENT "rust-link-c (pixi route): materialize env -> build -> run (first run solves)")
-    set_target_properties(PolyOrchExampleRustLinkCPixi PROPERTIES
+    set_target_properties(rust-link-c-pixi PROPERTIES
         FOLDER ${PROJECT_NAME}/examples)
 else()
     message(STATUS
-        "PolyOrch examples: PolyOrchExampleRustLinkCPixi not registered "
+        "PolyOrch examples: rust-link-c-pixi not registered "
         "-- set PolyOrch_BUILD_PIXI_EXAMPLES=ON AND have pixi (PATH or ~/.pixi/bin)")
 endif()
 
 # rust-install-export: the producer/consumer chain via install(EXPORT).
 if(PolyOrch_BUILD_RUST_EXAMPLES AND PolyOrchExample_cargo)
-    add_custom_target(PolyOrchExampleRustInstallExport
+    add_custom_target(rust-install-export
         COMMAND ${CMAKE_COMMAND}
             -S "${CMAKE_CURRENT_SOURCE_DIR}/rust-install-export/producer"
             -B "${CMAKE_CURRENT_BINARY_DIR}/standalone/rust-install-export"
@@ -198,10 +198,10 @@ if(PolyOrch_BUILD_RUST_EXAMPLES AND PolyOrchExample_cargo)
         COMMAND ${CMAKE_COMMAND} --build
             "${CMAKE_CURRENT_BINARY_DIR}/standalone/rust-install-export-consumer"
         COMMENT "rust-install-export: build -> install(EXPORT) -> find_package consumer (offline)")
-    set_target_properties(PolyOrchExampleRustInstallExport PROPERTIES FOLDER ${PROJECT_NAME}/examples)
+    set_target_properties(rust-install-export PROPERTIES FOLDER ${PROJECT_NAME}/examples)
 else()
     message(STATUS
-        "PolyOrch examples: PolyOrchExampleRustInstallExport not registered "
+        "PolyOrch examples: rust-install-export not registered "
         "-- set PolyOrch_BUILD_RUST_EXAMPLES=ON AND have cargo reachable "
         "(PATH or ~/.cargo/bin)")
 endif()
@@ -211,7 +211,7 @@ endif()
 # configure needs the musl target installed -- a prerequisite a host
 # configure must not inherit.
 if(PolyOrch_BUILD_RUST_EXAMPLES AND PolyOrchExample_cargo)
-    add_custom_target(PolyOrchExampleRustCross
+    add_custom_target(rust-cross
         COMMAND ${CMAKE_COMMAND}
             -S "${CMAKE_CURRENT_SOURCE_DIR}/rust-cross"
             -B "${CMAKE_CURRENT_BINARY_DIR}/standalone/rust-cross"
@@ -221,10 +221,10 @@ if(PolyOrch_BUILD_RUST_EXAMPLES AND PolyOrchExample_cargo)
         COMMAND ${CMAKE_COMMAND} --build
             "${CMAKE_CURRENT_BINARY_DIR}/standalone/rust-cross" --target host-tool-bin-run
         COMMENT "rust-cross: --target musl route + hostbuild escape (needs the musl target installed)")
-    set_target_properties(PolyOrchExampleRustCross PROPERTIES FOLDER ${PROJECT_NAME}/examples)
+    set_target_properties(rust-cross PROPERTIES FOLDER ${PROJECT_NAME}/examples)
 else()
     message(STATUS
-        "PolyOrch examples: PolyOrchExampleRustCross not registered "
+        "PolyOrch examples: rust-cross not registered "
         "-- set PolyOrch_BUILD_RUST_EXAMPLES=ON AND have cargo reachable "
         "(PATH or ~/.cargo/bin)")
 endif()
@@ -233,7 +233,7 @@ endif()
 # targets already exist in this tree; this button additionally runs the
 # install(EXPORT) -> find_package consumer story end to end.
 if(PolyOrch_BUILD_RUST_EXAMPLES AND PolyOrchExample_cargo)
-    add_custom_target(PolyOrchExampleRustBindings
+    add_custom_target(rust-bindings-standalone
         COMMAND ${CMAKE_COMMAND}
             -S "${CMAKE_CURRENT_SOURCE_DIR}/rust-bindings"
             -B "${CMAKE_CURRENT_BINARY_DIR}/standalone/rust-bindings"
@@ -242,10 +242,10 @@ if(PolyOrch_BUILD_RUST_EXAMPLES AND PolyOrchExample_cargo)
         COMMAND ${CMAKE_COMMAND} --build
             "${CMAKE_CURRENT_BINARY_DIR}/standalone/rust-bindings" --target rust-bindings-consumer
         COMMENT "rust-bindings: cxx bridge + cbindgen + install(EXPORT) -> find_package consumer")
-    set_target_properties(PolyOrchExampleRustBindings PROPERTIES FOLDER ${PROJECT_NAME}/examples)
+    set_target_properties(rust-bindings-standalone PROPERTIES FOLDER ${PROJECT_NAME}/examples)
 else()
     message(STATUS
-        "PolyOrch examples: PolyOrchExampleRustBindings not registered "
+        "PolyOrch examples: rust-bindings-standalone not registered "
         "-- set PolyOrch_BUILD_RUST_EXAMPLES=ON AND have cargo reachable "
         "(PATH or ~/.cargo/bin)")
 endif()

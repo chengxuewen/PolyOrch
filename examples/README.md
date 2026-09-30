@@ -22,7 +22,7 @@
 configure is the system route, and adding `-DPolyOrch_EXAMPLE_ROUTE=pixi`
 (+ `-DPolyOrch_PIXI_MIRROR=cn` on a domestic network) re-runs the SAME
 example with the toolchain delivered by a pixi env (the umbrella targets
-`PolyOrchExampleRust*Pixi` encode this). A dedicated "pixi rust" example
+`rust-import-pixi` / `rust-link-c-pixi` encode this). A dedicated "pixi rust" example
 would duplicate the buttons; the route IS the option.
 
 The tool-only half of the cold start is its own entry point --
@@ -36,9 +36,9 @@ its own `standalone/` build dir, so they never collide with the embedded
 configure):
 
 ```bash
-cmake --build build --target PolyOrchExamplePixiBootstrap   # may reach the network
-cmake --build build --target PolyOrchExamplePixiConfigure   # read-only
-cmake --build build --target PolyOrchExamplePixiWorkspace   # writes its build dir
+cmake --build build --target pixi-bootstrap   # may reach the network
+cmake --build build --target pixi-configure   # read-only
+cmake --build build --target pixi-workspace   # writes its build dir
 ```
 
 `rust-basic` has no remote button: it is FUSED -- with cargo reachable its
@@ -70,7 +70,7 @@ that could collide with the host's own targets. IDE grouping follows each
 subtree's calling directory (`examples/rust-import` etc. as FOLDERs).
 
 **Remote-control buttons stay remote**: the pixi-route buttons
-(`PolyOrchExampleRust*Pixi`, PixiEnvRun), `PolyOrchExampleRustInstallExport`
+(`rust-import-pixi` / `rust-link-c-pixi`, `pixi-env-run`), `rust-install-export`
 and the pixi trio materialize environments or independent build trees on
 click -- that work (first-run network solve included) must never sit inside
 a host configure, so they remain standalone sub-configures driven by a

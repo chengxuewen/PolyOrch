@@ -125,7 +125,7 @@ endforeach()
 # The generator's built-in `test` target is directory-scoped, so it is
 # invisible to project-target UIs (CMakeTools build dropdown, CMake outline).
 # A project-level umbrella target makes running the suite a first-class
-# operation in exactly those UIs, next to the PolyOrchExample* targets.
+# operation in exactly those UIs, next to the pixi-*/<example-dir> button targets.
 add_custom_target(PolyOrchTest
     COMMAND ${CMAKE_CTEST_COMMAND}
         --test-dir "${CMAKE_CURRENT_BINARY_DIR}"

@@ -44,7 +44,7 @@ foreach(_t "rust-basic-greet-build" "rust-basic-greet-run"
 endforeach()
 
 # remote-control buttons still registered (pixi route + install-export)
-foreach(_btn "PolyOrchExampleRustInstallExport")
+foreach(_btn "rust-install-export")
     string(FIND "${_tdirs}" "${_btn}.dir" _hit)
     if(_hit LESS 0)
         message(FATAL_ERROR "check failed: remote button '${_btn}' missing")

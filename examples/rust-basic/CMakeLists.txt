@@ -80,8 +80,7 @@ polyorch_rust_setup(REQUIRED)
 #         the examples umbrella with the opt-in ON and the tool reachable,
 #         these calls run RIGHT HERE -- cargo-build-greet / greet-test /
 #         greet-run become real targets in the HOST build graph (clickable
-#         individually, DEPENDS-able from host targets). The umbrella
-#         PolyOrchExampleRustBasic target stays as the standalone-tree demo.
+#         individually, DEPENDS-able from host targets).
 polyorch_rust_build(
     TARGET  greet
     PACKAGE greet-cli

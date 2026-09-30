@@ -55,7 +55,14 @@ if(NOT PolyOrchRustNodeExe)
     find_program(PolyOrchRustNodeExe node)
 endif()
 if(PolyOrchRustNodeExe)
-    add_custom_target(spine-node-demo
+    # demo follows the directory grammar: prefixed when fused (standalone,
+    # PolyOrch_RUST_TARGET_PREFIX is empty -> bare name)
+    if(PolyOrch_RUST_TARGET_PREFIX)
+        set(_demo "${PolyOrch_RUST_TARGET_PREFIX}-spine-node-demo")
+    else()
+        set(_demo "spine-node-demo")
+    endif()
+    add_custom_target("${_demo}"
         COMMAND ${CMAKE_COMMAND} -E copy
             "$<TARGET_FILE:spine-node>"
             "${CMAKE_CURRENT_SOURCE_DIR}/consumer/spine-node.node"
@@ -63,7 +70,7 @@ if(PolyOrchRustNodeExe)
         DEPENDS spine-node-build
         WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/consumer"
         COMMENT "node: require spine-node (consumer/hello.mjs)")
-    set_target_properties(spine-node-demo PROPERTIES FOLDER
+    set_target_properties("${_demo}" PROPERTIES FOLDER
         "${PolyOrch_RUST_FOLDER_ROOT}")
 else()
     message(STATUS

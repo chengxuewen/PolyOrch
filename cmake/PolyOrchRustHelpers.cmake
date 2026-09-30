@@ -2829,14 +2829,15 @@ function(polyorch_rust_pyext)
     # python's import name has no cargo lib prefix: stage a renamed copy
     # beside the artifact before running the consumer (install renames it
     # permanently via LANGUAGE_PRODUCT python; the demo does it locally).
-    add_custom_target("${P_MODULE}-demo"
+    _polyorch_rust_apply_target_prefix(_pdemo "${P_MODULE}-demo")
+    add_custom_target("${_pdemo}"
         COMMAND "${CMAKE_COMMAND}" -E copy
             "${_art}" "${_artdir}/${P_MODULE}.so"
         COMMAND "${CMAKE_COMMAND}" -E env
             "PYTHONPATH=${_artdir}" "${_py}" "${_dest}/hello.py"
         DEPENDS "${_h}-build"
         COMMENT "python: import ${P_MODULE} (consumer/hello.py)")
-    set_target_properties("${P_MODULE}-demo" PROPERTIES FOLDER
+    set_target_properties("${_pdemo}" PROPERTIES FOLDER
         "${PolyOrch_RUST_FOLDER_ROOT}")
 endfunction()
 
