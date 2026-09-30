@@ -100,7 +100,12 @@ polyorch_rust_build(
 # rust ones (WP13): <directory>-<semantic-name>, plus an explicit FOLDER --
 # an unprefixed bare name can collide with the host's own targets, and a
 # missing FOLDER leaves the node floating outside the family in the IDE tree.
-add_library(rust-link-c-cfn STATIC c_fn.c)   # the rust side links this by name below
+if(PolyOrch_RUST_TARGET_PREFIX)
+    set(_cfn_t "${PolyOrch_RUST_TARGET_PREFIX}-rust-link-c-cfn")
+else()
+    set(_cfn_t "rust-link-c-cfn")
+endif()
+add_library("${_cfn_t}" STATIC c_fn.c)   # the rust side links this by name below
 if(PolyOrch_RUST_FOLDER_ROOT)
     set(_cfold "${PolyOrch_RUST_FOLDER_ROOT}")
 else()
@@ -108,7 +113,7 @@ else()
         "${CMAKE_SOURCE_DIR}"
         "${CMAKE_CURRENT_SOURCE_DIR}")
 endif()
-set_target_properties(rust-link-c-cfn PROPERTIES FOLDER "${_cfold}")
+set_target_properties("${_cfn_t}" PROPERTIES FOLDER "${_cfold}")
 # NOTE: the CMake TARGET (`cli-user-tool`) deliberately differs from the
 # artifact base name (`cli-user`, the [[package]] name): an IMPORTED target
 # named like its output file makes the Makefile generator silently swallow
@@ -119,5 +124,5 @@ polyorch_rust_build(
     CRATE   cli-user
     BINARY
     MANIFEST "${CMAKE_CURRENT_LIST_DIR}/rs/bin/Cargo.toml")
-polyorch_rust_link_libraries(TARGET cli-user-tool rust-link-c-cfn)
+polyorch_rust_link_libraries(TARGET cli-user-tool "${_cfn_t}")
 polyorch_rust_run(TARGET cli-user-tool)

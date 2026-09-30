@@ -49,7 +49,11 @@ polyorch_rust_build(
 # system-route demo (python3 from PATH); a pixi env's python can be passed
 # via PIXI_ENV (WP16 polyorch_rust_pyext resolves env bin/python).
 polyorch_rust_pyext(TARGET spine-py MODULE spine_py)   # MODULE = the python import name
-polyorch_rust_clean(NAME rust-pyext-clean)
+if(PolyOrch_RUST_TARGET_PREFIX)
+    polyorch_rust_clean(NAME "${PolyOrch_RUST_TARGET_PREFIX}-rust-pyext-clean")
+else()
+    polyorch_rust_clean(NAME rust-pyext-clean)
+endif()
 
 set(POLYORCH_FIXTURE_ARTIFACTS
     "manifest=${CMAKE_CURRENT_LIST_DIR}/crates/spine-py/Cargo.toml")

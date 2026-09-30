@@ -27,7 +27,7 @@ drv_run(_dlog _rc SKIP_VAR _skip
     FIXTURE "${CMAKE_CURRENT_LIST_DIR}/../fixtures/cbindgen"
     BUILD "${_b}"
     CONFIG "${_cfg}"
-    TARGETS polyorch-cbindgen-cb-lib-bindings;polyorch-cbindgen-cb-manual-bindings)
+    TARGETS cb-lib-cbindgen;cb-manual-cbindgen)
 if(_skip)
     message(STATUS "t-rust-cbindgen-e2e : SKIP (fixture gate: capability absent at configure)")
     return()

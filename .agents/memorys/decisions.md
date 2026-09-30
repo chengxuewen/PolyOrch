@@ -244,3 +244,40 @@ spine_py.so / spine-node.node); polyorch_rust_pyext is the first
 language-runtime surface verb. Network-bound tools (wasm-pack's own
 toolchain downloads, binaryen) are the known egress hazard -- --dev +
 no-install + pixi binaryen is the documented restricted-host set.
+
+
+## D28: fused-tree target namespace polyorch-<dir> + caller-project prefix key (2026-09-30, user ruling: plan 4)
+
+Fused (host-embedded) rust example targets all carry the `polyorch-<directory>`
+namespace: `polyorch-rust-basic-greet-build`, `polyorch-rust-basic-all`. The
+standalone configure keeps bare names (`rust-basic-greet-build`) -- the
+prefix exists ONLY in the shared host namespace, where an unprefixed
+`<dir>-...` name invites collisions (a host with its own `pixi-configure`
+or `rust-basic` directory is realistic; the validation host itself uses pixi).
+Mechanics: the fusion loop resolves the prefix ONCE at loop entry, while
+`PROJECT_NAME` is still the host's name -- the caller-project knob
+`<HOST>_POLYORCH_TARGET_PREFIX` wins if defined (multi-checkout /
+nested-embedding separation: each embedding project names its own
+instance; a nested PolyOrch copy flips `project(PolyOrch)` and reads its
+own keys, so it cannot be hijacked by the outer host's value), else the
+default `polyorch-<dir>`. The helper's `_polyorch_rust_apply_target_prefix`
+keeps a caller-knob fallback for direct-call consumers (no project()
+flip). Knob keys live on the CONSUMER side (B_POLYORCH_TARGET_PREFIX --
+the consumer states its own wish), following the LLVM_ENABLE_PROJECTS /
+VTK_MODULE_ENABLE_<Module> subject rule; `${PROJECT_NAME}_...` derived
+keys were rejected because PROJECT_NAME inside the 5 of 8 fused examples
+that call project(<dir>) is the directory name, unreachable by the host.
+The per-iteration `unset()` of the loop knobs is load-bearing (Momus
+blocker 1: a one-shot trailing unset made `if(NOT DEFINED)` true only on
+iteration 1 and silently merged aggregates through the helper's
+NOT-TARGET guard). cbindgen aggregates follow the handle grammar
+(`<handle>-cbindgen`), replacing the polyorch-cbindgen-<handle>-bindings
+form that double-prefixed in fused trees; `polyorch-cbindgen-stub` (the
+tool-stub echo marker) is UNRELATED and protected. Hand-written example
+targets (cfn, cpplib, app, consumer, cleans, nodejs demo handles) route
+through the same prefix idiom. Mainstream anchors: LLVM's enforced
+lowercase check-* utilities; fmt/gtest real-name + ::alias split;
+Corrosion's minimal-embedded-surface philosophy. (Momus-reviewed plan
+2026-09-30; buttons already polyorch-* since the D27 grammar unification
+-- buttons in examples/CMakeLists.txt keep their literal names, which now
+read as polyorch-*.)

@@ -42,8 +42,8 @@ cmake --build build --target pixi-workspace   # writes its build dir
 ```
 
 `rust-basic` has no remote button: it is FUSED -- with cargo reachable its
-verb targets (`rust-basic-greet-build/-run/-test`, aggregate
-`rust-basic-all`) are already in this tree (see the fusion section below).
+verb targets (`polyorch-rust-basic-greet-build/-run/-test`, aggregate
+`polyorch-rust-basic-all`) are already in this tree (see the fusion section below).
 
 All examples stay offline once pixi itself is installed: the pixi-configure
 and pixi-workspace manifests are dependency-free, and `pixi-workspace` only
@@ -57,10 +57,10 @@ mechanism, not the numbers.
 System-route rust examples are **fused into the host graph**: opening the
 examples tree (or a host that `add_subdirectory`s them with
 `PolyOrch_BUILD_RUST_EXAMPLES=ON` and cargo reachable) yields real verb
-targets per example -- `rust-import-say-hi-exe-build/-run`,
-`rust-link-c-cli-user-tool-build`, `rust-profile-features-demo-build/-rel-build`,
-`rust-basic-greet-build/-run/-test` -- plus a per-example aggregate
-(`rust-import-all` etc.). Each subtree
+targets per example -- `polyorch-rust-import-say-hi-exe-build/-run`,
+`polyorch-rust-link-c-cli-user-tool-build`, `polyorch-rust-profile-features-demo-build/-rel-build`,
+`polyorch-rust-basic-greet-build/-run/-test` -- plus a per-example aggregate
+(`polyorch-rust-import-all` etc.). Each subtree
 degrades to a STATUS note (and registers nothing) when cargo is not
 reachable in the GUI's PATH, mirroring rust-basic.
 Fused targets follow the **literal directory-name grammar**

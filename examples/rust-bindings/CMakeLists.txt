@@ -76,21 +76,31 @@ polyorch_rust_build(
 # [2/4] C++ bindings: generate the bridge trampolines into spine-static-cxx
 # (a static lib that compiles the generated .cpp) and expose the REGEN
 # target for the docs' touch-rerun story.
+if(PolyOrch_RUST_TARGET_PREFIX)
+    set(_regen "${PolyOrch_RUST_TARGET_PREFIX}-rust-bindings-cxx-regen")
+else()
+    set(_regen "rust-bindings-cxx-regen")
+endif()
 polyorch_rust_cxxbridge(TARGET spine-static
     FILES bridge.rs   # manifest-src-relative (the surface resolves against <manifest>/src)
-    REGEN_TARGET rust-bindings-cxx-regen)
+    REGEN_TARGET "${_regen}")
 
 # [3/4] The C++ executable consumer: links the generated archive AND the
 # rust staticlib, includes the generated bridge header, and implements the
 # C++-side bridge function (host_scale).
-add_executable(rust-bindings-app cpp/app/main.cpp)
-target_compile_features(rust-bindings-app PRIVATE cxx_std_17)
+if(PolyOrch_RUST_TARGET_PREFIX)
+    set(_app "${PolyOrch_RUST_TARGET_PREFIX}-rust-bindings-app")
+else()
+    set(_app "rust-bindings-app")
+endif()
+add_executable("${_app}" cpp/app/main.cpp)
+target_compile_features("${_app}" PRIVATE cxx_std_17)
 if(PolyOrch_RUST_FOLDER_ROOT)
     set(_rbfold "${PolyOrch_RUST_FOLDER_ROOT}")
 else()
     set(_rbfold "rust-bindings")
 endif()
-set_target_properties(rust-bindings-app rust-bindings-cxx-regen
+set_target_properties("${_app}" "${_regen}"
     PROPERTIES FOLDER "${_rbfold}")
 # the bridge include!("spine/bridge_impl.h") pulls the hand-written
 # header into the GENERATED .cpp too -- teach the generated archive where
@@ -106,8 +116,8 @@ endif()
 set(_hcxx "${_h}-cxx")
 target_include_directories("${_hcxx}" PRIVATE
     "${CMAKE_CURRENT_SOURCE_DIR}/crates/spine/include")
-target_link_libraries(rust-bindings-app PRIVATE "${_hcxx}" "${_h}")
-target_include_directories(rust-bindings-app PRIVATE
+target_link_libraries("${_app}" PRIVATE "${_hcxx}" "${_h}")
+target_include_directories("${_app}" PRIVATE
     "${CMAKE_CURRENT_SOURCE_DIR}/cpp/app"
     # the generated bridge header carries the include!("spine/bridge_impl.h")
     # pull-in, so the consumer needs the crate's include dir too
@@ -119,7 +129,7 @@ target_include_directories(rust-bindings-app PRIVATE
 # the cxxbridge surface's INTERFACE_INCLUDE_DIRECTORIES already points at
 # .../include, so add the .../include/<_hcxx> layer for the header
 set(_gen_root "${CMAKE_CURRENT_BINARY_DIR}/polyorch_generated/cxxbridge/${_hcxx}/include")
-target_include_directories(rust-bindings-app PRIVATE
+target_include_directories("${_app}" PRIVATE
     "${_gen_root}" "${_gen_root}/${_hcxx}")
 
 # [4/4] The C surface: cbindgen documents the extern "C" plane; install
@@ -133,7 +143,11 @@ polyorch_rust_install(TARGETS spine-static spine-run-bin
     EXPORT spine-demo
     PUBLIC_HEADER "$<TARGET_PROPERTY:${_h},INTERFACE_INCLUDE_DIRECTORIES>/spine.h"
     ARCHIVE_DESTINATION lib/spine)
-polyorch_rust_clean(NAME rust-bindings-clean)
+if(PolyOrch_RUST_TARGET_PREFIX)
+    polyorch_rust_clean(NAME "${PolyOrch_RUST_TARGET_PREFIX}-rust-bindings-clean")
+else()
+    polyorch_rust_clean(NAME rust-bindings-clean)
+endif()
 
 # test-driver artifact contract: declare the artifacts the driver asserts
 # NOTE: only config-independent paths here (the driver EXISTS-checks the
@@ -147,7 +161,12 @@ file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/polyorch-fixture-artifacts.txt" "${_af}\
 # spine-demo package, compiles against the installed cbindgen header, and
 # links the installed static lib -- the installed-binding story.
 set(_stage "${CMAKE_CURRENT_BINARY_DIR}/stage")
-add_custom_target(rust-bindings-consumer
+if(PolyOrch_RUST_TARGET_PREFIX)
+    set(_consumer "${PolyOrch_RUST_TARGET_PREFIX}-rust-bindings-consumer")
+else()
+    set(_consumer "rust-bindings-consumer")
+endif()
+add_custom_target("${_consumer}"
     # the install copies the built artifacts: build both mediators first
     # (the custom target has no automatic dependency on them)
     COMMAND ${CMAKE_COMMAND} --build "${CMAKE_BINARY_DIR}"
@@ -165,4 +184,4 @@ add_custom_target(rust-bindings-consumer
         "${CMAKE_CURRENT_BINARY_DIR}/consumer-build"
     COMMAND "${CMAKE_CURRENT_BINARY_DIR}/consumer-build/consumer"
     COMMENT "rust-bindings: install(EXPORT) -> find_package consumer -> run")
-set_target_properties(rust-bindings-consumer PROPERTIES FOLDER "${_rbfold}")
+set_target_properties("${_consumer}" PROPERTIES FOLDER "${_rbfold}")

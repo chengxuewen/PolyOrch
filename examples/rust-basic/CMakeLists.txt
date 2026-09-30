@@ -9,7 +9,7 @@
 #   cmake -S examples/rust-basic -B build
 #   cmake --build build --target greet-cargo     # cargo build  -> .../greet-cli
 #   cmake --build build --target greet-run       # execute the artifact
-#   cmake --build build --target greet-test      # cargo test (fused hosts: rust-basic-greet-test)
+#   cmake --build build --target greet-test      # cargo test (fused hosts: polyorch-rust-basic-greet-test)
 #
 #   # embedded in a host that has PolyOrch_BUILD_EXAMPLES=ON:
 #   cmake ... -DPolyOrch_BUILD_RUST_EXAMPLES=ON        # otherwise this file returns early

@@ -61,11 +61,18 @@ include(PolyOrchRustHelpers)
 polyorch_rust_setup(REQUIRED)
 
 # [1/3] The "existing" C++ library -- a plain CMake static lib target.
-add_library(rust-cpp-lib-cpplib STATIC
+# D28: prefixed when fused (bare in the standalone tree), same idiom as
+# the rust handles -- an unprefixed generic name invites host collisions.
+if(PolyOrch_RUST_TARGET_PREFIX)
+    set(_cpplib "${PolyOrch_RUST_TARGET_PREFIX}-rust-cpp-lib-cpplib")
+else()
+    set(_cpplib "rust-cpp-lib-cpplib")
+endif()
+add_library("${_cpplib}" STATIC
     cpp/libdemo/demo.cpp)
-target_include_directories(rust-cpp-lib-cpplib PUBLIC
+target_include_directories("${_cpplib}" PUBLIC
     "${CMAKE_CURRENT_SOURCE_DIR}/cpp/libdemo/include")
-set_target_properties(rust-cpp-lib-cpplib PROPERTIES FOLDER "${_rcl_fold}")
+set_target_properties("${_cpplib}" PROPERTIES FOLDER "${_rcl_fold}")
 
 # [2/3] The rust crate wrapping it. build.rs compiles the shim; the LIBRARY
 # arrives through the link_libraries forwarding below.
@@ -75,11 +82,15 @@ polyorch_rust_build(
     CRATE   consumer
     BINARY
     MANIFEST "${CMAKE_CURRENT_LIST_DIR}/crates/consumer/Cargo.toml")
-polyorch_rust_link_libraries(TARGET consumer-bin rust-cpp-lib-cpplib)
+polyorch_rust_link_libraries(TARGET consumer-bin "${_cpplib}")
 polyorch_rust_run(TARGET consumer-bin)
 
 # [3/3] housekeeping verbs
-polyorch_rust_clean(NAME rust-cpp-lib-clean)
+if(PolyOrch_RUST_TARGET_PREFIX)
+    polyorch_rust_clean(NAME "${PolyOrch_RUST_TARGET_PREFIX}-rust-cpp-lib-clean")
+else()
+    polyorch_rust_clean(NAME rust-cpp-lib-clean)
+endif()
 
 set(POLYORCH_FIXTURE_ARTIFACTS
     "manifest=${CMAKE_CURRENT_LIST_DIR}/crates/consumer/Cargo.toml")

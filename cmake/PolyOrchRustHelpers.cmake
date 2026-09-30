@@ -191,8 +191,21 @@ endfunction()
 # this so every surface that derives a target name agrees on the prefixed
 # form. Empty prefix = NAME unchanged.
 function(_polyorch_rust_apply_target_prefix out name)
-    if(PolyOrch_RUST_TARGET_PREFIX)
-        set(${out} "${PolyOrch_RUST_TARGET_PREFIX}-${name}" PARENT_SCOPE)
+    # D28 prefix chain: the caller-project knob
+    # (<PROJECT>_POLYORCH_TARGET_PREFIX, resolved in the caller's scope
+    # where PROJECT_NAME is the consumer's name) wins over the classic
+    # directory knob; the fusion loop resolves its own value at the
+    # loop entry and never relies on this chain. Empty string (either
+    # knob) means "no prefix" -- same contract as before.
+    set(_p "")
+    if(DEFINED ${PROJECT_NAME}_POLYORCH_TARGET_PREFIX
+            AND NOT "${${PROJECT_NAME}_POLYORCH_TARGET_PREFIX}" STREQUAL "")
+        set(_p "${${PROJECT_NAME}_POLYORCH_TARGET_PREFIX}")
+    elseif(PolyOrch_RUST_TARGET_PREFIX)
+        set(_p "${PolyOrch_RUST_TARGET_PREFIX}")
+    endif()
+    if(_p)
+        set(${out} "${_p}-${name}" PARENT_SCOPE)
     else()
         set(${out} "${name}" PARENT_SCOPE)
     endif()
@@ -2594,7 +2607,7 @@ endfunction()
 # literally; a non-INTERFACE BINDINGS_TARGET gets the reference's
 # AUTHOR_WARNING (corr:2141-2145). Regeneration on source changes rides
 # the cbindgen DEPFILE (corr:2235); the targets
-# polyorch-cbindgen-<bindings>-bindings[.<header-id>] port
+# <bindings>-cbindgen[.<header-id>] port (D28: follows the handle grammar;
 # corr:2248-2260, mediator edge included in auto mode (the cargo build
 # waits for fresh headers). CBINDGEN_VERSION is declared unimplemented
 # upstream (corr:2052); PolyOrch WIRES it into the bootstrap lock compare
@@ -2733,7 +2746,10 @@ function(polyorch_rust_cbindgen)
         COMMAND_EXPAND_LISTS
         WORKING_DIRECTORY "${_mdir}")
 
-    set(_agg "polyorch-cbindgen-${_bt}-bindings")
+    # D28: the aggregate follows the handle grammar (<handle>-cbindgen) --
+# the old polyorch-cbindgen-<handle>-bindings shape double-prefixed in
+# fused trees (handle already carries polyorch-<dir>).
+set(_agg "${_bt}-cbindgen")
     if(NOT TARGET "${_agg}")
         add_custom_target("${_agg}"
             COMMENT "Generate cbindgen bindings for package ${_pkg}")

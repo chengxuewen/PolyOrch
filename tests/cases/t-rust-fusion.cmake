@@ -32,11 +32,11 @@ ck(_nerr EQUAL 0)
 
 # target existence via the generated build tree's target directory list
 file(READ "${_h}/b/CMakeFiles/TargetDirectories.txt" _tdirs)
-foreach(_t "rust-basic-greet-build" "rust-basic-greet-run"
-           "rust-import-dash_ed-build" "rust-link-c-cli-user-tool-build"
-           "rust-profile-features-demo-rel-build"
-           "rust-basic-all" "rust-import-all" "rust-link-c-all"
-           "rust-profile-features-all")
+foreach(_t "polyorch-rust-basic-greet-build" "polyorch-rust-basic-greet-run"
+           "polyorch-rust-import-dash_ed-build" "polyorch-rust-link-c-cli-user-tool-build"
+           "polyorch-rust-profile-features-demo-rel-build"
+           "polyorch-rust-basic-all" "polyorch-rust-import-all" "polyorch-rust-link-c-all"
+           "polyorch-rust-profile-features-all")
     string(FIND "${_tdirs}" "${_t}.dir" _hit)
     if(_hit LESS 0)
         message(FATAL_ERROR "check failed: fused target '${_t}' absent from host tree")
@@ -44,7 +44,7 @@ foreach(_t "rust-basic-greet-build" "rust-basic-greet-run"
 endforeach()
 
 # remote-control buttons still registered (pixi route + install-export)
-foreach(_btn "rust-install-export")
+foreach(_btn "polyorch-rust-install-export")
     string(FIND "${_tdirs}" "${_btn}.dir" _hit)
     if(_hit LESS 0)
         message(FATAL_ERROR "check failed: remote button '${_btn}' missing")
@@ -98,7 +98,7 @@ ck(_nl EQUAL 1)
 # family (rust-link-c's direction-2 C staticlib once lived in a comment
 # while link_libraries referenced it -- invisible until fused).
 execute_process(
-    COMMAND "${CMAKE_COMMAND}" --build "${_b2}/examples/rust-link-c" --target rust-link-c-cli-user-tool-build
+    COMMAND "${CMAKE_COMMAND}" --build "${_b2}/examples/rust-link-c" --target polyorch-rust-link-c-cli-user-tool-build
     RESULT_VARIABLE _rc OUTPUT_VARIABLE _bo ERROR_VARIABLE _be)
 if(NOT _rc EQUAL 0)
     message(FATAL_ERROR "fused link-c build failed (rc=${_rc}): ${_bo}${_be}")

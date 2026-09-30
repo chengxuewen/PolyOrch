@@ -62,12 +62,19 @@ if(PolyOrchRustNodeExe)
     else()
         set(_demo "spine-node-demo")
     endif()
+    # the handle itself is prefixed when fused -- route the genex and the
+    # dependency through the prefixed name (Momus: latent bare-handle bomb)
+    if(PolyOrch_RUST_TARGET_PREFIX)
+        set(_h "${PolyOrch_RUST_TARGET_PREFIX}-spine-node")
+    else()
+        set(_h "spine-node")
+    endif()
     add_custom_target("${_demo}"
         COMMAND ${CMAKE_COMMAND} -E copy
-            "$<TARGET_FILE:spine-node>"
+            "$<TARGET_FILE:${_h}>"
             "${CMAKE_CURRENT_SOURCE_DIR}/consumer/spine-node.node"
         COMMAND "${PolyOrchRustNodeExe}" "${CMAKE_CURRENT_SOURCE_DIR}/consumer/hello.mjs"
-        DEPENDS spine-node-build
+        DEPENDS "${_h}-build"
         WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/consumer"
         COMMENT "node: require spine-node (consumer/hello.mjs)")
     set_target_properties("${_demo}" PROPERTIES FOLDER
@@ -78,7 +85,11 @@ else()
         "(pass -DPolyOrchRustNodeExe=<path>, e.g. a pixi env's bin/node)")
 endif()
 
-polyorch_rust_clean(NAME rust-nodejs-clean)
+if(PolyOrch_RUST_TARGET_PREFIX)
+    polyorch_rust_clean(NAME "${PolyOrch_RUST_TARGET_PREFIX}-rust-nodejs-clean")
+else()
+    polyorch_rust_clean(NAME rust-nodejs-clean)
+endif()
 
 set(POLYORCH_FIXTURE_ARTIFACTS
     "manifest=${CMAKE_CURRENT_LIST_DIR}/crates/spine-node/Cargo.toml")

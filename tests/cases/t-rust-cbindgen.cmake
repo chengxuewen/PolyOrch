@@ -105,7 +105,7 @@ drv_run(_dlog _rc SKIP_VAR _skip
     BUILD "${_b}"
     CONFIG "${_cfg}"
     GENERATOR "Unix Makefiles"
-    TARGETS polyorch-cbindgen-cb-lib-bindings\;polyorch-cbindgen-cb-manual-bindings
+    TARGETS cb-lib-cbindgen\;cb-manual-cbindgen
     PASSTHROUGH -DPOLYORCH_TEST_TOOL_PREFIX=${_stubs})
 if(_skip)
     message(STATUS "t-rust-cbindgen : SKIP (fixture gate: capability absent at configure)")
@@ -138,7 +138,7 @@ ck_file("${_g}/cb-manual/depfile/sub/manual.h.d")
 
 # Rule text of the auto leg (folded lines rejoined): the full -E env
 # prefix, the crate, the depfile argument.
-file(READ "${_b}/CMakeFiles/polyorch-cbindgen-cb-lib-bindings.rust_lib_h.dir/build.make" _mk)
+file(READ "${_b}/CMakeFiles/cb-lib-cbindgen.rust_lib_h.dir/build.make" _mk)
 string(REPLACE "\\\n" " " _mk "${_mk}")
 ck(_mk MATCHES "-E env TARGET=")
 ck(_mk MATCHES "--crate cb_fixture")
@@ -158,7 +158,7 @@ ck(NOT _mk MATCHES "--unset")
 # header content is stable (the tool, not CMake, owns change detection).
 file(READ "${_g}/cb-lib/include/rust-lib.h" _ah1)
 execute_process(COMMAND "${CMAKE_COMMAND}" --build "${_b}"
-    --target polyorch-cbindgen-cb-lib-bindings
+    --target cb-lib-cbindgen
     RESULT_VARIABLE _rc OUTPUT_VARIABLE _o ERROR_VARIABLE _e)
 if(NOT _rc EQUAL 0)
     message(FATAL_ERROR "t-rust-cbindgen: regen re-run failed (${_rc}):\n${_o}${_e}")
