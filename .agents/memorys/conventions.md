@@ -106,12 +106,22 @@ Chinese is permitted in three places:
 # book-to-skill is skipped: vendored third-party code whose Chinese strings are FUNCTIONAL
 # DATA (CJK chapter-heading patterns the parser matches), not prose. Translating them breaks
 # the parser. Same rationale as excluding node_modules.
+# Skill TRIGGER PHRASES are the same class of functional data (2026-09-30): the Chinese
+# phrases in a skill's description/trigger section must match the user's own wording or the
+# skill never activates. They are activation surface, not prose -- lines inside
+# .agents/skills/*/SKILL.md that sit inside the description/trigger-phrase context are
+# allowed; everything else in a skill file stays English.
 python3 - <<'PY'
 import re, pathlib, sys
 CJK = re.compile(r"[\u4e00-\u9fff]")
 ALLOWED = "面向多语言 monorepo 的可扩展构建编排器。"
 EXTS = {".md", ".mjs", ".js", ".json", ".jsonc", ".toml", ".sh", ".txt", ".py", ".yaml", ".yml"}
 SKIP = {".git", "node_modules", ".omo", "target", ".pixi", "book-to-skill"}
+# trigger-phrase allowance: a line whose CJK is inside double quotes (phrase lists) counts
+# as functional data
+def triggers_only(line):
+    stripped = re.sub(r'"[^"]*"', '', line)
+    return not CJK.search(stripped)
 # A single named file, not a pattern: the Chinese mirror of the front door (see rule 3 above).
 ALLOW_FILES = {"README_zh.md"}
 skip_files = {"package-lock.json"} | ALLOW_FILES
@@ -123,6 +133,8 @@ for p in pathlib.Path(".").rglob("*"):
         continue
     for i, line in enumerate(p.read_text(errors="ignore").splitlines(), 1):
         if CJK.search(line) and ALLOWED not in line:
+            if p.parts and ".agents" in p.parts and "skills" in p.parts and triggers_only(line):
+                continue
             bad.append(f"{p}:{i}")
 print("CJK outside allowed zones:", bad or "none")
 sys.exit(1 if bad else 0)
