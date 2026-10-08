@@ -35,10 +35,10 @@ file(READ "${_b}/_configure.log" _clog)
 ck(_clog MATCHES "polyorch_python: interpreter")
 ck(_clog MATCHES "python-stub")          # --version round-tripped through the knob
 
-# ---- leg 2: button registration (run-<target> grammar; NAME never renames
+# ---- leg 2: button registration (<target>-run grammar; NAME never renames
 # the button -- the label is display-side) -----------------------------------
 file(READ "${_b}/CMakeFiles/TargetDirectories.txt" _tdirs)
-foreach(_t "run-greet" "run-calc")
+foreach(_t "greet-run" "calc-run")
     string(FIND "${_tdirs}" "${_t}" _hit)
     if(_hit LESS 0)
         message(FATAL_ERROR "check failed: python run target '${_t}' not registered")
@@ -47,7 +47,7 @@ endforeach()
 
 # ---- leg 3: behavior through the stub: script + ARGS + ENVS all land ------
 execute_process(
-    COMMAND "${CMAKE_COMMAND}" --build "${_b}" --target "run-greet"
+    COMMAND "${CMAKE_COMMAND}" --build "${_b}" --target "greet-run"
     RESULT_VARIABLE _rc OUTPUT_VARIABLE _bo ERROR_VARIABLE _be)
 ck(_rc EQUAL 0)
 file(READ "${_s}/stub.log" _stublog)
@@ -58,7 +58,7 @@ ck(_stublog MATCHES "ENV PGREET=hi PMODE=fixture")
 # but the COMMENT ran; pin the no-ENVS leg stays clean (calc has no PGREET):
 file(REMOVE "${_s}/stub.log")
 execute_process(
-    COMMAND "${CMAKE_COMMAND}" --build "${_b}" --target "run-calc"
+    COMMAND "${CMAKE_COMMAND}" --build "${_b}" --target "calc-run"
     RESULT_VARIABLE _rc2)
 ck(_rc2 EQUAL 0)
 file(READ "${_s}/stub.log" _stub2)

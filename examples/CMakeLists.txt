@@ -50,7 +50,7 @@ find_program(PolyOrchExample_pixi NAMES pixi
 if(PolyOrch_BUILD_RUST_EXAMPLES AND PolyOrchExample_cargo)
     foreach(_fused "rust-basic" "rust-import" "rust-link-c" "rust-profile-features"
                    "rust-bindings" "rust-cpp-lib" "rust-pyext" "rust-nodejs"
-                   "node-web")
+                   "node-web" "python-basic")
         # D28: fused targets carry the polyorch- namespace (a bare
         # <dir>-... name in a host tree invites collisions). The prefix
         # is resolved HERE, at the loop entry, while PROJECT_NAME is
@@ -75,16 +75,20 @@ if(PolyOrch_BUILD_RUST_EXAMPLES AND PolyOrchExample_cargo)
             # A2 (D29): the node face has its OWN knob -- the name says NODE.
             # Same value, separate variable: neither surface's naming lies.
             set(PolyOrch_NODE_TARGET_PREFIX "polyorch-${_fused}")
+            # D32: python face owns its knob too (A2 symmetry, node flavor).
+            set(PolyOrch_PYTHON_TARGET_PREFIX "polyorch-${_fused}")
         else()
             set(PolyOrch_RUST_TARGET_PREFIX "${_host_prefix}-${_fused}")
             set(PolyOrch_RUST_AGGREGATE_NAME "${_host_prefix}-${_fused}-all")
             set(PolyOrch_NODE_TARGET_PREFIX "${_host_prefix}-${_fused}")
+            set(PolyOrch_PYTHON_TARGET_PREFIX "${_host_prefix}-${_fused}")
         endif()
         # one IDE root for the whole fused family, under the buttons' group
         set(PolyOrch_RUST_FOLDER_ROOT "${PROJECT_NAME}/examples/${_fused}")
         add_subdirectory(${_fused})
         unset(PolyOrch_RUST_TARGET_PREFIX)
         unset(PolyOrch_NODE_TARGET_PREFIX)
+        unset(PolyOrch_PYTHON_TARGET_PREFIX)
         unset(PolyOrch_RUST_AGGREGATE_NAME)
         unset(PolyOrch_RUST_FOLDER_ROOT)
     endforeach()

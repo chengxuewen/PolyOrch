@@ -70,6 +70,28 @@ else()
     endforeach()
 endif()
 
+# D32: the python family rides the same fused namespace (A3 pattern --
+# asserted ONLY when an interpreter is reachable; the else-leg pins that
+# python-basic registers NOTHING without one, the loop's per-face gate).
+polyorch_requires(python _py_req)
+set(_py_names
+    "polyorch-python-basic-greet-run")
+if(_py_req)
+    foreach(_t ${_py_names})
+        string(FIND "${_tdirs}" "${_t}.dir" _hit)
+        if(_hit LESS 0)
+            message(FATAL_ERROR "check failed: fused python target '${_t}' absent from host tree")
+        endif()
+    endforeach()
+else()
+    foreach(_t ${_py_names})
+        string(FIND "${_tdirs}" "${_t}.dir" _hit)
+        if(NOT _hit LESS 0)
+            message(FATAL_ERROR "check failed: fused python target '${_t}' registered WITHOUT an interpreter")
+        endif()
+    endforeach()
+endif()
+
 # remote-control buttons still registered (pixi route + install-export)
 foreach(_btn "polyorch-rust-install-export")
     string(FIND "${_tdirs}" "${_btn}.dir" _hit)

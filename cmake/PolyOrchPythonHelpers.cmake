@@ -10,7 +10,7 @@
 #
 # Family idioms, copied before diverging:
 #   - discovery tiers + CACHE/report shape      -> polyorch_node_setup (D29)
-#   - run-target grammar run-<handle>           -> polyorch_rust_run  (WP11)
+#   - run-target grammar <handle>-run           -> polyorch_rust_run  (WP11)
 #   - prefix/caller-key mechanism               -> _polyorch_node_apply_prefix
 # One deliberate deviation from node (D32 known-deviation 1): the tier-a
 # knob WINS over PATH, as node's own comment promises; node's code has the
@@ -70,7 +70,8 @@ function(polyorch_python_setup)
             "polyorch_python: interpreter (cached) ${PolyOrchPython_EXECUTABLE}")
         return()
     endif()
-    set(_py "")
+    # NO find_program pre-set: an already-defined (even empty) result var
+    # short-circuits NO_CACHE searches -- measured footgun, CMake 4.4.3.
     if(PolyOrchPythonExe)                                   # tier a: knob wins
         set(_py "${PolyOrchPythonExe}")
     else()
@@ -111,8 +112,8 @@ endfunction()
 
 # polyorch_python_run(TARGET <t> SCRIPT <s> [NAME <label>] [ARGS <a>...]
 #                     [ENVS <K=V>...] [WORKING_DIRECTORY <dir>])
-# Registers the button run-<t> (prefixed through the D28 grammar):
-#   cmake -E env <K=V>... <interp> <script> <args>
+# Registers the button <t>-run (the rust face's grammar; prefixed
+# through the D28 grammar): cmake -E env <K=V>... <interp> <script> <args>
 # WORKING_DIRECTORY defaults to the script's directory. ENVS flows through
 # the command wrapper at BUILD time (the -E env line IS the injection
 # point); no host-environment scrubbing here -- unlike cargo, python needs
@@ -154,7 +155,7 @@ function(polyorch_python_run)
         message(FATAL_ERROR
             "polyorch_python_run: path contains the reserved '|' (debug-spec separator)")
     endif()
-    _polyorch_python_apply_prefix(_rh "run-${_st}")
+    _polyorch_python_apply_prefix(_rh "${_st}-run")
     if(R_WORKING_DIRECTORY)
         set(_cwd "${R_WORKING_DIRECTORY}")
     else()

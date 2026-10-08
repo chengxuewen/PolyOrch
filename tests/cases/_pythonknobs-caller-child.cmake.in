@@ -1,0 +1,22 @@
+# Script-mode child for t-python-knobs leg 3 (D32). Mirrors
+# _nodeknobs-caller-child.cmake.in: PROJECT_NAME is hand-set because script
+# mode has no project(); the helper reads
+# <PROJECT_NAME>_POLYORCH_PYTHON_TARGET_PREFIX from the caller scope. The
+# hyphenated name is legal in variables and unpassable via -D, which is
+# why this file exists instead of a PASSTHROUGH knob.
+set(PROJECT_NAME "my-host")
+set(my-host_POLYORCH_PYTHON_TARGET_PREFIX "po-caller")
+set(PolyOrch_PYTHON_TARGET_PREFIX "po-classic")
+include("@MODULE_DIR@/PolyOrchPythonHelpers.cmake")
+_polyorch_python_apply_prefix(_out "greet-run")
+if(NOT _out STREQUAL "po-caller-greet-run")
+    message(FATAL_ERROR "caller key not honored: got \"${_out}\"")
+endif()
+# and the classic knob still wins when the caller key is absent
+unset(my-host_POLYORCH_PYTHON_TARGET_PREFIX)
+set(PROJECT_NAME "other-host")
+_polyorch_python_apply_prefix(_out2 "greet-run")
+if(NOT _out2 STREQUAL "po-classic-greet-run")
+    message(FATAL_ERROR "classic knob lost: got \"${_out2}\"")
+endif()
+message(STATUS "py-knobs-caller-child: OK")
