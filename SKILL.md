@@ -38,15 +38,16 @@ Two groups: the nine authored for this repository, and a vendored third-party se
 
 ### 2b. Vendored third party (58)
 
-The `xmake-*` and `xrepo-*` skills are the Xmake project's own agent-skill bundle.
+The `xmake-*` and `xrepo-*` skills are the Xmake project's own agent-skill bundle, retired
+from the loader on 2026-10-08 (D31) to the research zone -- reference corpus, not active skills.
 **They are not authored here and are not part of the generic toolchain port.** They
 are copied verbatim from `xmake-io/xmake-skills` at commit `ef67caa` (Apache-2.0).
 
 | | |
 |---|---|
-| Provenance, and the 12-category map | `.agents/skills/XMAKE-ATTRIBUTION.md` |
-| License text | `.agents/skills/XMAKE-LICENSE.txt` |
-| Integrity check | `.agents/skills/XMAKE-MANIFEST.sha256` (convention C5) |
+| Provenance, and the 12-category map | `docs/reference/xmake-skills/XMAKE-ATTRIBUTION.md` |
+| License text | `docs/reference/xmake-skills/XMAKE-LICENSE.txt` |
+| Integrity check | `docs/reference/xmake-skills/XMAKE-MANIFEST.sha256` (convention C5) |
 
 Coverage: addon / plugin / rule authoring, Lua scripting, package management and
 Xrepo, toolchains and cross-compilation, testing, build performance, and 13

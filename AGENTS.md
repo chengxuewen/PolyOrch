@@ -32,7 +32,8 @@ PolyOrch/
 ├── .agents/
 │   ├── memorys/   # status / conventions / decisions / pitfalls (only status + conventions load every turn — see instructions[])
 │   ├── rules/     # common + 12 languages + web; ported, generic-only
-│   └── skills/    # 10 generic + 58 vendored xmake-*/xrepo-* (book-to-skill is vendored Python)
+│   └── skills/    # 10 generic (book-to-skill is vendored Python); the 58 xmake-*/xrepo-*
+│                #   skills retired to docs/reference/xmake-skills/ on 2026-10-08 (D31)
 ├── .opencode/     # opencode config + 3 wrappers (.mjs: 2 MCP launchers, 1 LSP wrapper)
 ├── .omo/          # OMO agent config
 └── package.json   # single devDependency: @colbymchenry/codegraph
@@ -76,8 +77,9 @@ Deviations that actually bind here. Runnable checks live in `.agents/memorys/con
   absent from the whitepaper. Generation enforced this; keep enforcing it.
 - **Do not reintroduce MediaServo / mediasoup / WebRTC content.** It was deliberately removed
   (see D1). `.agents/rules/*` must stay domain-neutral and `.agents/skills/*` must stay free of
-  that removed domain — a gate checks both. Vendored third-party skills are the one exception, and
-  they are named explicitly in `.agents/skills/XMAKE-ATTRIBUTION.md`.
+  that removed domain — a gate checks both. Since the 2026-10-08 retirement (D31) the vendored
+  set lives OUTSIDE the scanned surface (`docs/reference/xmake-skills/`), so no exception is
+  needed; its provenance is recorded in `docs/reference/xmake-skills/XMAKE-ATTRIBUTION.md`.
 - **Do not write forbidden literals into a directory a gate scans.** A check that scans a file
   which lists its own forbidden patterns self-matches. See PIT-1.
 - **Do not treat `docs/derived/outline.md` milestones as agreed scope.** They are proposals.
@@ -130,4 +132,5 @@ python3 -m json.tool .opencode/opencode.json > /dev/null && echo "config valid"
   skills and 2 disguised-domain rules (`platform.md`, `docker.md`) were removed. A 9th generic
   skill, `doc-audit`, was ported from a sibling repository later — see `decisions.md` D9.
   Separately, 58 `xmake-*` / `xrepo-*` skills are a vendored third-party set pinned to an upstream
-  commit — see `.agents/skills/XMAKE-ATTRIBUTION.md`. They are not part of the port.
+  commit — see `docs/reference/xmake-skills/XMAKE-ATTRIBUTION.md`. They are not part of the port,
+  and since 2026-10-08 (D31) they are not loader-active either: reference corpus only.

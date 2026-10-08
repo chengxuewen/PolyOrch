@@ -148,14 +148,16 @@ PY
 
 ## C5: "Vendored third-party skills stay byte-identical to their pinned upstream commit"
 
-`.agents/skills/xmake-*` and `.agents/skills/xrepo-*` are a vendored third-party set
-(`xmake-io/xmake-skills`, commit `ef67caa`, Apache-2.0). They are copied verbatim and are **not**
-part of the generic port. A local edit silently becomes an unstated modification under
-Apache-2.0 section 4(b), so such an edit must be impossible to make by accident.
+The 58 `xmake-*`/`xrepo-*` skills are a vendored third-party set (`xmake-io/xmake-skills`,
+commit `ef67caa`, Apache-2.0), copied verbatim and **not** part of the generic port. Since
+the 2026-10-08 retirement (D31) they live in the research zone --
+`docs/reference/xmake-skills/` -- outside the skill loader's reach, kept as reference
+corpus only. A local edit silently becomes an unstated modification under Apache-2.0
+section 4(b), so such an edit must be impossible to make by accident.
 
 ```bash
 # Run from the repository root. Offline; 58 entries expected.
-cd .agents/skills && python3 - <<'CHK'
+cd docs/reference/xmake-skills && python3 - <<'CHK'
 import hashlib, pathlib, sys
 bad = []
 for line in pathlib.Path("XMAKE-MANIFEST.sha256").read_text().splitlines():
@@ -169,7 +171,7 @@ CHK
 ```
 
 A `MODIFIED` entry means vendored content was edited. Either revert it, or record the change in
-`.agents/skills/XMAKE-ATTRIBUTION.md` and regenerate the manifest.
+`docs/reference/xmake-skills/XMAKE-ATTRIBUTION.md` and regenerate the manifest.
 
 
 ## C6: "The two sibling projects' design documents never name each other"

@@ -39,7 +39,7 @@ Consumption is `include()` / `add_subdirectory()` -- no registry, no cache direc
 lockfile shadow (the D6 addon-drift hole retired with the addon form; the consumer pins
 the checkout itself). Xmake's standing roles are the reference corpus and a
 package-management source (vcpkg/conan via xrepo, O4 open); the pinned vendored skill set
-under `.agents/skills/xmake-*` is research material, not shipped payload.
+under `docs/reference/xmake-skills/` is research material, not shipped payload.
 
 ## Modules
 

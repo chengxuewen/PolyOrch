@@ -38,7 +38,7 @@ docs/          规格说明 —— 从 docs/README.md 开始
 .agents/
   rules/         恒常约束
   memorys/       易变事实（status / conventions / decisions / pitfalls）
-  skills/        agent 技能，含 58 个 vendored Xmake 技能
+  skills/        agent 技能（58 个 vendored Xmake 技能已移入 docs/reference/xmake-skills/）
 .opencode/     opencode 配置
 scripts/       空 —— 计划中的门禁运行器
 AGENTS.md      agent 知识库，每轮加载
@@ -58,9 +58,9 @@ SKILL.md       技能登记表
 
 Apache-2.0 —— 见 [`LICENSE`](./LICENSE)。
 
-`.agents/skills/` 下的 58 个 `xmake-*` / `xrepo-*` 技能是同一许可证下的第三方内容，vendored 自
+`docs/reference/xmake-skills/` 下的 58 个 `xmake-*` / `xrepo-*` 技能是同一许可证下的第三方内容（2026-10-08 起退出技能加载器，仅作参考语料），vendored 自
 `xmake-io/xmake-skills`；其来源、pinned commit 与修改声明记录在
-[`.agents/skills/XMAKE-ATTRIBUTION.md`](./.agents/skills/XMAKE-ATTRIBUTION.md)。
+[`docs/reference/xmake-skills/XMAKE-ATTRIBUTION.md`](./docs/reference/xmake-skills/XMAKE-ATTRIBUTION.md)。
 
 ---
 

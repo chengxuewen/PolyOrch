@@ -95,7 +95,8 @@ Check self-consistency across `.agents/rules/`, `.agents/memorys/`, `.agents/ski
   `description` — and does `name` equal its directory name? (The loader requires both.)
 - Does `.opencode/opencode.json` → `instructions[]` still resolve every entry?
 - **Does the vendored third-party set still verify?** Gate C5 checks the 58 `xmake-*` /
-  `xrepo-*` skills against `XMAKE-MANIFEST.sha256`. A modified vendored file is a HIGH finding:
+  `xrepo-*` skills in `docs/reference/xmake-skills/` (retired from the loader, D31) against
+  the `XMAKE-MANIFEST.sha256` beside them. A modified vendored file is a HIGH finding:
   it is an unstated modification under Apache-2.0 section 4(b) unless recorded in
   `XMAKE-ATTRIBUTION.md`.
 - Is `XMAKE-ATTRIBUTION.md` still accurate as to the pinned commit and the category map?

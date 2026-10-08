@@ -365,3 +365,23 @@ linker plane -- scoped to the REAL rust wasm targets (emscripten rejected:
 .cdylib is a .so pair there; the existing t-rust-executables negative leg
 caught the first over-broad regex the same day -- reject-unknown doctrine
 survived feature growth because a test pinned it).
+
+## D31: the vendored xmake-skill set retires from the loader to the research zone (2026-10-08, user ruling "C" after lead analysis)
+
+58 `xmake-*`/`xrepo-*` skills (C5-manifested, commit ef67caa) moved
+byte-identical from `.agents/skills/` to `docs/reference/xmake-skills/`.
+Rationale: after D16/D3-amendment retired the addon product form, the set's
+entire remaining value is look-up-when-needed (D16's "reference corpus"
+pillar, and the open O4 xrepo work), while its cost is per-session: 58
+descriptions injected into every context turn plus routing noise in a
+68-entry picker where ~58 candidates can never match the current domain.
+Deletion was rejected (would orphan the reference-corpus promise and force
+re-vendoring at O4); keeping them active was rejected (paying the tax for
+a standby posture nothing uses). The manifest/attribution/license move
+with the bytes; C5's cd path updated; the domain-leak gate's exception
+disappears because the scanned surface no longer contains them -- its
+provenance note moves to AGENTS anti-patterns as a location fact. Loader
+list is now the 10 generic skills. (C4 note: the skill-phrase allowance's
+`.agents/skills` scoping now matches exactly the ten generic files; the
+retired set lives outside it and needs no allowance -- its English bytes
+pass the plain scan from their new path.)

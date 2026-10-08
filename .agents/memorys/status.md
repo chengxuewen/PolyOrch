@@ -12,7 +12,7 @@
 | Brand / CLI | `PolyOrch` / `polyorch` |
 | Official acronym | **PBOS** (Polyglot Build Orchestration System) |
 | Stack | PolyOrch itself: **CMake helper surface** (D16 + D3 amendment 2026-09-23: the Lua/Xmake-addon form is retired, not deferred). Environment: Pixi. xmake = reference corpus + package-management source (vcpkg · Conan via Xrepo, not bridges) |
-| Vendored deps | `.agents/skills/xmake-*` / `xrepo-*` -- 58 Xmake agent skills (Apache-2.0, pinned commit `ef67caa`). See `XMAKE-ATTRIBUTION.md` |
+| Vendored deps | 58 Xmake agent skills (Apache-2.0, pinned commit `ef67caa`) -- retired from the loader to `docs/reference/xmake-skills/` on 2026-10-08 (D31), C5-verified there. See `XMAKE-ATTRIBUTION.md` |
 | Language policy | **English for all artifacts.** Chinese only for AI chat and plan docs under `.omo/` — see C4 |
 | Git | `main`; docs-first history superseded -- `cmake/`, `tests/`, `examples/`, `docs/` all carry committed substance since 2026-09-21 |
 

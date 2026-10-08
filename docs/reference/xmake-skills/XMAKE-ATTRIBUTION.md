@@ -3,6 +3,10 @@
 Content in this directory is **not authored by PolyOrch**. It is copied verbatim from the
 Xmake project's own agent-skill bundle.
 
+> **2026-10-08 (D31)**: the set was retired from `.agents/skills/` (the skill loader) to this
+> research zone -- byte-identical, still verified by gate C5, but no longer loader-active.
+> Reference corpus: read on demand, never auto-injected.
+
 | Field | Value |
 |---|---|
 | Project | `xmake-skills` |

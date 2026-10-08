@@ -131,14 +131,14 @@ runb64 "C4" \
 # ---- C5 (verbatim from conventions.md; do not edit here) ----
 runb64 "C5" \
 "IyBSdW4gZnJvbSB0aGUgcmVwb3NpdG9yeSByb290LiBPZmZsaW5lOyA1OCBlbnRyaWVzIGV4cGVj"\
-"dGVkLgpjZCAuYWdlbnRzL3NraWxscyAmJiBweXRob24zIC0gPDwnQ0hLJwppbXBvcnQgaGFzaGxp"\
-"YiwgcGF0aGxpYiwgc3lzCmJhZCA9IFtdCmZvciBsaW5lIGluIHBhdGhsaWIuUGF0aCgiWE1BS0Ut"\
-"TUFOSUZFU1Quc2hhMjU2IikucmVhZF90ZXh0KCkuc3BsaXRsaW5lcygpOgogICAgZGlnZXN0LCBy"\
-"ZWwgPSBsaW5lLnNwbGl0KCIgICIsIDEpCiAgICBwID0gcGF0aGxpYi5QYXRoKHJlbCkKICAgIGlm"\
-"IG5vdCBwLmlzX2ZpbGUoKTogYmFkLmFwcGVuZCgiTUlTU0lORyAiICsgcmVsKQogICAgZWxpZiBo"\
-"YXNobGliLnNoYTI1NihwLnJlYWRfYnl0ZXMoKSkuaGV4ZGlnZXN0KCkgIT0gZGlnZXN0OiBiYWQu"\
-"YXBwZW5kKCJNT0RJRklFRCAiICsgcmVsKQpwcmludCgidmVuZG9yZWQgZHJpZnQ6IiwgYmFkIG9y"\
-"ICJub25lIikKc3lzLmV4aXQoMSBpZiBiYWQgZWxzZSAwKQpDSEs="
+"dGVkLgpjZCBkb2NzL3JlZmVyZW5jZS94bWFrZS1za2lsbHMgJiYgcHl0aG9uMyAtIDw8J0NISycK"\
+"aW1wb3J0IGhhc2hsaWIsIHBhdGhsaWIsIHN5cwpiYWQgPSBbXQpmb3IgbGluZSBpbiBwYXRobGli"\
+"LlBhdGgoIlhNQUtFLU1BTklGRVNULnNoYTI1NiIpLnJlYWRfdGV4dCgpLnNwbGl0bGluZXMoKToK"\
+"ICAgIGRpZ2VzdCwgcmVsID0gbGluZS5zcGxpdCgiICAiLCAxKQogICAgcCA9IHBhdGhsaWIuUGF0"\
+"aChyZWwpCiAgICBpZiBub3QgcC5pc19maWxlKCk6IGJhZC5hcHBlbmQoIk1JU1NJTkcgIiArIHJl"\
+"bCkKICAgIGVsaWYgaGFzaGxpYi5zaGEyNTYocC5yZWFkX2J5dGVzKCkpLmhleGRpZ2VzdCgpICE9"\
+"IGRpZ2VzdDogYmFkLmFwcGVuZCgiTU9ESUZJRUQgIiArIHJlbCkKcHJpbnQoInZlbmRvcmVkIGRy"\
+"aWZ0OiIsIGJhZCBvciAibm9uZSIpCnN5cy5leGl0KDEgaWYgYmFkIGVsc2UgMCkKQ0hL"
 # ---- END C5 ----
 
 # ---- C6 (verbatim from conventions.md; do not edit here) ----

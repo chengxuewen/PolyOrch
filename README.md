@@ -41,7 +41,7 @@ docs/          the specification — start at docs/README.md
 .agents/
   rules/         permanent constraints
   memorys/       mutable facts (status / conventions / decisions / pitfalls)
-  skills/        agent skills, including 58 vendored Xmake skills
+  skills/        agent skills (the 58 vendored Xmake skills live in docs/reference/xmake-skills/)
 .opencode/     opencode configuration
 scripts/       activation trio (pixi.sh/.bat/.ps1); gate runner planned
 AGENTS.md      the agent knowledge base, loaded on every turn
@@ -61,7 +61,7 @@ SKILL.md       the skills registry
 
 Apache-2.0 — see [`LICENSE`](./LICENSE).
 
-The 58 `xmake-*` / `xrepo-*` skills under `.agents/skills/` are third-party content
+The 58 `xmake-*` / `xrepo-*` skills under `docs/reference/xmake-skills/` (retired from the skill loader 2026-10-08; reference corpus) are third-party content
 under the same license, vendored from `xmake-io/xmake-skills`; their provenance,
 pinned commit, and modification statement are recorded in
-[`.agents/skills/XMAKE-ATTRIBUTION.md`](./.agents/skills/XMAKE-ATTRIBUTION.md).
+[`docs/reference/xmake-skills/XMAKE-ATTRIBUTION.md`](./docs/reference/xmake-skills/XMAKE-ATTRIBUTION.md).

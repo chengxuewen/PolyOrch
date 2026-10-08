@@ -1,6 +1,8 @@
 # PolyOrch Reference — Project Profiles
 
-> Research zone. This directory is **externally sourced**: it is the one place in `docs/` that may state facts about other projects. The sourcing rule below is the project-wide rule from `.agents/memorys/conventions.md` C2, applied here in its most demanding form — nothing here may rest on the v1.0 record.
+> Research zone -- plus one resident bundle: `xmake-skills/` holds the 58 vendored Xmake
+> agent skills, retired from the skill loader here on 2026-10-08 (D31; C5-verified, reference
+> corpus only). This directory is **externally sourced**: it is the one place in `docs/` that may state facts about other projects. The sourcing rule below is the project-wide rule from `.agents/memorys/conventions.md` C2, applied here in its most demanding form — nothing here may rest on the v1.0 record.
 
 ## Purpose
 
