@@ -124,6 +124,70 @@ function(polyorch_requires cap out)
             set(_ok TRUE)
         endif()
 
+    elseif(cap STREQUAL "python")
+        # the python face's toolchain (D32): an interpreter. PATH ->
+        # ~/.pixi/bin -> any pixi env's bin/python3 (the node probe's shape;
+        # parent/child PATH alignment identical to system-rust's rationale).
+        find_program(_pr_py NAMES python3 python)
+        if(NOT _pr_py)
+            find_program(_pr_py NAMES python3 python PATHS "$ENV{HOME}/.pixi/bin")
+        endif()
+        if(NOT _pr_py)
+            file(GLOB _pr_pypx
+                "$ENV{HOME}/.pixi/envs/*/bin/python3"
+                "/tmp/opencode/*/.pixi/envs/default/bin/python3")
+            list(LENGTH _pr_pypx _pr_n)
+            if(_pr_n GREATER 0)
+                list(GET _pr_pypx 0 _pr_py)
+            endif()
+        endif()
+        if(_pr_py)
+            set(_ok TRUE)
+        endif()
+
+    elseif(cap STREQUAL "no-python")
+        # inverse probe (the no-node shape): degradation legs may only run
+        # where PATH and the pixi glob truly hold no interpreter.
+        set(_py_absent TRUE)
+        find_program(_pr_no_py NAMES python3 python)
+        if(NOT _pr_no_py)
+            file(GLOB _pr_no_pypx "$ENV{HOME}/.pixi/envs/*/bin/python3")
+            if(_pr_no_pypx)
+                set(_py_absent FALSE)
+            endif()
+        else()
+            set(_py_absent FALSE)
+        endif()
+        if(_py_absent AND NOT PolyOrchPythonExe)
+            set(_ok TRUE)
+        endif()
+
+    elseif(cap STREQUAL "debugpy")
+        # python present AND debugpy importable (the DAP e2e's dependency,
+        # T5). Filesystem+import probe only -- never installs, never network.
+        polyorch_requires(python _dp_py)
+        if(_dp_py)
+            find_program(_dp_pyexe NAMES python3 python)
+            if(NOT _dp_pyexe)
+                find_program(_dp_pyexe NAMES python3 python
+                    PATHS "$ENV{HOME}/.pixi/bin")
+            endif()
+            if(NOT _dp_pyexe)
+                file(GLOB _dp_g
+                    "$ENV{HOME}/.pixi/envs/*/bin/python3"
+                    "/tmp/opencode/*/.pixi/envs/default/bin/python3")
+                list(LENGTH _dp_g _dp_n)
+                if(_dp_n GREATER 0)
+                    list(GET _dp_g 0 _dp_pyexe)
+                endif()
+            endif()
+            execute_process(COMMAND "${_dp_pyexe}" -c "import debugpy"
+                RESULT_VARIABLE _dp_rc ERROR_QUIET OUTPUT_QUIET)
+            if(_dp_rc EQUAL 0)
+                set(_ok TRUE)
+            endif()
+        endif()
+
     elseif(cap STREQUAL "pixi")
         find_program(_pr_pixi NAMES pixi PATHS
             "$ENV{HOME}/.pixi/bin" "$ENV{PIXI_HOME}/bin")
