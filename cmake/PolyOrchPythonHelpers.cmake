@@ -17,6 +17,9 @@
 # order inverted -- python follows the contract, not the bug.
 # ===========================================================================
 
+option(PolyOrch_PYTHON_VSCODE_DEBUG
+    "Generate .vscode debugpy launch configs for polyorch_python_run targets" OFF)
+
 # _polyorch_python_apply_prefix(OUT <name>)
 # Same caller-key grammar as node (A2): PolyOrch_PYTHON_TARGET_PREFIX is the
 # python face's own knob; <PROJECT_NAME>_POLYORCH_TARGET_PREFIX (set by the
@@ -147,6 +150,10 @@ function(polyorch_python_run)
                 "polyorch_python_run: ENVS entry '${_kv}' contains reserved '|'")
         endif()
     endforeach()
+    if(R_SCRIPT MATCHES "\\|" OR R_WORKING_DIRECTORY MATCHES "\\|")
+        message(FATAL_ERROR
+            "polyorch_python_run: path contains the reserved '|' (debug-spec separator)")
+    endif()
     _polyorch_python_apply_prefix(_rh "run-${_st}")
     if(R_WORKING_DIRECTORY)
         set(_cwd "${R_WORKING_DIRECTORY}")
@@ -163,5 +170,77 @@ function(polyorch_python_run)
         WORKING_DIRECTORY "${_cwd}"
         USES_TERMINAL
         COMMENT "python: ${_nm} (${_rh})")
-    # T3 seam: debug-spec registration lands here (gate-gated).
+    # T3: debug-spec registration (gate OFF -> zero footprint).
+    if(PolyOrch_PYTHON_VSCODE_DEBUG)
+        string(REPLACE ";" "," _argsj "${R_ARGS}")
+        string(REPLACE ";" "," _envsj "${R_ENVS}")
+        set_property(GLOBAL APPEND PROPERTY POLYORCH_PYTHON_DEBUG_SPECS
+            "${_nm}|${PolyOrchPython_EXECUTABLE}|${R_SCRIPT}|${_cwd}|${_argsj}|${_envsj}")
+    endif()
 endfunction()
+
+# _polyorch_python_vscode_rows(SPECS LAUNCH_OUT)
+# Pure spec-table -> JSONC region text (the rust rows function's sibling;
+# no tasks rows -- debugpy launches need no preLaunchTask). Spec row shape:
+# NAME|INTERP|SCRIPT|CWD|ARGS|ENVS  (exactly five '|'; ARGS/ENVS comma-
+# joined; empty trailing fields still serialize the pipes). Values with
+# embedded double-quotes are unescaped -- same known-deviation 2 class as
+# the rust rows (paths with \\ inside JSON; revisit only if a consumer
+# ever needs it).
+function(_polyorch_python_vscode_rows SPECS LAUNCH_OUT)
+    set(_L "")
+    foreach(_row ${SPECS})
+        string(REPLACE "|" ";" _f "${_row}")
+        list(GET _f 0 _nm)
+        list(GET _f 1 _py)
+        list(GET _f 2 _script)
+        list(GET _f 3 _cwd)
+        list(GET _f 4 _args)
+        list(GET _f 5 _envs)
+        string(APPEND _L
+"        {\n"
+"            \"name\": \"PolyOrch: ${_nm}\",\n"
+"            \"type\": \"debugpy\",\n"
+"            \"request\": \"launch\",\n"
+"            \"program\": \"${_script}\",\n"
+"            \"python\": \"${_py}\",\n"
+"            \"cwd\": \"${_cwd}\",\n"
+"            \"console\": \"integratedTerminal\",\n"
+"            \"justMyCode\": true")
+        if(NOT _args STREQUAL "")
+            string(REPLACE "," ";" _al "${_args}")
+            set(_aj "")
+            foreach(_a ${_al})
+                string(APPEND _aj "\"${_a}\", ")
+            endforeach()
+            string(APPEND _L ",\n            \"args\": [${_aj}]")
+        endif()
+        if(NOT _envs STREQUAL "")
+            string(REPLACE "," ";" _el "${_envs}")
+            set(_eo "")
+            foreach(_kv ${_el})
+                string(FIND "${_kv}" "=" _eq)
+                string(SUBSTRING "${_kv}" 0 "${_eq}" _k)
+                math(EXPR _v1 "${_eq} + 1")
+                string(SUBSTRING "${_kv}" "${_v1}" -1 _v)
+                string(APPEND _eo "\"${_k}\": \"${_v}\", ")
+            endforeach()
+            string(APPEND _L ",\n            \"env\": {${_eo}}")
+        endif()
+        string(APPEND _L "\n        },\n")
+    endforeach()
+    set(${LAUNCH_OUT} "${_L}" PARENT_SCOPE)
+endfunction()
+
+# ===========================================================================
+# Per-round include hook: register the SHARED end-of-configure generator
+# ONCE per tree while this face's gate is ON (collapses with the rust face's
+# identical hook via the shared POLYORCH_VSCODE_HOOKED flag -- single writer,
+# one region, both faces' rows merged; see PolyOrchVSCodeDebugHelpers).
+# ===========================================================================
+include("${CMAKE_CURRENT_LIST_DIR}/PolyOrchVSCodeDebugHelpers.cmake")
+get_property(_polyorch_pyv_hooked GLOBAL PROPERTY POLYORCH_VSCODE_HOOKED)
+if(PolyOrch_PYTHON_VSCODE_DEBUG AND NOT _polyorch_pyv_hooked)
+    set_property(GLOBAL PROPERTY POLYORCH_VSCODE_HOOKED TRUE)
+    cmake_language(DEFER CALL _polyorch_vscode_debug_generate)
+endif()
