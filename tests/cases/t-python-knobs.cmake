@@ -39,6 +39,10 @@ endif()
 set(_pass2 "-DPolyOrchPythonExe=${_stub_dir}/py")
 list(APPEND _pass2 "-DPolyOrch_PYTHON_TARGET_PREFIX=po-py")
 _polyorch_pixi_scratch(_s2)
+# appended AFTER the scratch exists: list(APPEND) expands ${_s2} NOW, not at
+# use time -- the empty-dir variant silently fell back to the fixture source
+# tree (caught by this very leg on first run).
+list(APPEND _pass2 "-DPolyOrch_PYTHON_VSCODE_DEBUG=ON" "-DPolyOrch_VSCODE_DIR=${_s2}/vs")
 set(_b2 "${_s2}/knobs-pref")
 drv_run(_dlog2 _rc2 SKIP_VAR _skip2
     FIXTURE "${CMAKE_CURRENT_LIST_DIR}/../fixtures/python-run"
@@ -50,6 +54,12 @@ string(FIND "${_td2}" "po-py-greet-run.dir" _hit)
 if(_hit LESS 0)
     message(FATAL_ERROR "check failed: python knob did not prefix the button")
 endif()
+# D32 host-contact parity: the debug label carries the PREFIXED handle too
+# (bare "greet" collides across packages in a fused host -- the rust rows
+# are namespaced; python must not be the odd family out).
+file(READ "${_s2}/vs/launch.json" _lj2)
+ck(_lj2 MATCHES "PolyOrch: po-py-greet")
+ck(NOT _lj2 MATCHES "po-py-greet-run")
 
 # ---- leg 3: caller-key precedence (the D28 formula, python flavor) -------
 # <PROJECT>_POLYORCH_PYTHON_TARGET_PREFIX wins over the classic knob. The
@@ -65,4 +75,4 @@ ck(_rc3 EQUAL 0)
 string(JOIN "" _o3all "${_o3}" "${_e3}")
 ck(_o3all MATCHES "py-knobs-caller-child: OK")
 
-message(STATUS "t-python-knobs: OK (non-leak + prefix + caller-key)")
+message(STATUS "t-python-knobs: OK (non-leak + prefix + label-parity + caller-key)")

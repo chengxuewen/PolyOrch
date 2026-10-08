@@ -111,7 +111,7 @@ function(polyorch_python_setup)
 endfunction()
 
 # polyorch_python_run(TARGET <t> SCRIPT <s> [NAME <label>] [ARGS <a>...]
-#                     [ENVS <K=V>...] [WORKING_DIRECTORY <dir>])
+#                     [ENVS <K=V>...] [WORKING_DIRECTORY <dir>] [FOLDER <ide>])
 # Registers the button <t>-run (the rust face's grammar; prefixed
 # through the D28 grammar): cmake -E env <K=V>... <interp> <script> <args>
 # WORKING_DIRECTORY defaults to the script's directory. ENVS flows through
@@ -120,7 +120,7 @@ endfunction()
 # a normal environment (PATH/HOME/encodings) and the interpreter itself is
 # pinned, which is the half that mattered (PIT-14's shape does not port).
 function(polyorch_python_run)
-    set(_one TARGET SCRIPT NAME WORKING_DIRECTORY)
+    set(_one TARGET SCRIPT NAME WORKING_DIRECTORY FOLDER)
     set(_multi ARGS ENVS)
     cmake_parse_arguments(PARSE_ARGV 0 R "" "${_one}" "${_multi}")
     if(NOT R_TARGET OR NOT R_SCRIPT)
@@ -156,6 +156,12 @@ function(polyorch_python_run)
             "polyorch_python_run: path contains the reserved '|' (debug-spec separator)")
     endif()
     _polyorch_python_apply_prefix(_rh "${_st}-run")
+    # Debug-row label default = the PREFIXED handle (host-contact parity
+    # 2026-10-08: the rust face labels its rows with the namespaced handle
+    # -- "PolyOrch: polyorch-rust-basic-greet (debug)" -- a bare "greet"
+    # collides across packages in a fused host; no verb suffix on the label
+    # (a debug config debugs the script, not the button)). Explicit NAME wins.
+    _polyorch_python_apply_prefix(_lh "${_st}")
     if(R_WORKING_DIRECTORY)
         set(_cwd "${R_WORKING_DIRECTORY}")
     else()
@@ -171,12 +177,26 @@ function(polyorch_python_run)
         WORKING_DIRECTORY "${_cwd}"
         USES_TERMINAL
         COMMENT "python: ${_nm} (${_rh})")
+    # IDE folder: explicit FOLDER wins; default = the fusion loop's shared
+    # per-example root (PolyOrch_RUST_FOLDER_ROOT -- the rust helper's
+    # idiom, consumed by node's example too). Standalone leaves it unset.
+    if(NOT R_FOLDER)
+        set(R_FOLDER "${PolyOrch_RUST_FOLDER_ROOT}")
+    endif()
+    if(R_FOLDER)
+        set_target_properties("${_rh}" PROPERTIES FOLDER "${R_FOLDER}")
+    endif()
     # T3: debug-spec registration (gate OFF -> zero footprint).
     if(PolyOrch_PYTHON_VSCODE_DEBUG)
         string(REPLACE ";" "," _argsj "${R_ARGS}")
         string(REPLACE ";" "," _envsj "${R_ENVS}")
+        if(R_NAME)
+            set(_lbl "${_nm}")
+        else()
+            set(_lbl "${_lh}")
+        endif()
         set_property(GLOBAL APPEND PROPERTY POLYORCH_PYTHON_DEBUG_SPECS
-            "${_nm}|${PolyOrchPython_EXECUTABLE}|${R_SCRIPT}|${_cwd}|${_argsj}|${_envsj}")
+            "${_lbl}|${PolyOrchPython_EXECUTABLE}|${R_SCRIPT}|${_cwd}|${_argsj}|${_envsj}")
     endif()
 endfunction()
 

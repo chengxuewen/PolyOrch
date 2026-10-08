@@ -83,6 +83,36 @@ if(_py_req)
             message(FATAL_ERROR "check failed: fused python target '${_t}' absent from host tree")
         endif()
     endforeach()
+    # D32 host-contact fix: the python button must sit in the SAME IDE
+    # group shape its rust siblings carry (the fused-FOLDER complaint from
+    # the real host tree). File API codemodel is the only truth source for
+    # the FOLDER property on non-IDE generators -- seed a query, re-drive
+    # configure (incremental), read the target's folder field.
+    file(MAKE_DIRECTORY "${_h}/b/.cmake/api/v1/query/codemodel-v2")
+    execute_process(
+        COMMAND "${CMAKE_COMMAND}" -S "${_h}" -B "${_h}/b"
+        ENVIRONMENT "PATH=$ENV{PATH}:$ENV{HOME}/.cargo/bin:$ENV{HOME}/.pixi/bin"
+        RESULT_VARIABLE _rcf OUTPUT_QUIET ERROR_QUIET)
+    ck(_rcf EQUAL 0)
+    set(_foldpy "")
+    file(GLOB _tjs "${_h}/b/.cmake/api/v1/reply/target-*.json")
+    foreach(_tj ${_tjs})
+        file(READ "${_tj}" _j)
+        string(JSON _nm GET "${_j}" name)
+        if(_nm STREQUAL "polyorch-python-basic-greet-run")
+            string(JSON _fp ERROR_VARIABLE _fe GET "${_j}" folder)
+            if(_fe)
+                message(FATAL_ERROR "python button carries NO FOLDER property (IDE misgroup): ${_fe}")
+            endif()
+            # codemodel folder fields are $ref objects: {"name": "..."}
+            string(JSON _fpn GET "${_fp}" name)
+            set(_foldpy "${_fpn}")
+        endif()
+    endforeach()
+    if(_foldpy STREQUAL "")
+        message(FATAL_ERROR "codemodel reply never produced the python target json")
+    endif()
+    ck_str("${_foldpy}" "fused-host/examples/python-basic")
 else()
     foreach(_t ${_py_names})
         string(FIND "${_tdirs}" "${_t}.dir" _hit)
