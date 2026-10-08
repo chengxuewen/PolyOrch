@@ -15,7 +15,7 @@ The deliverable is the CMake helper surface: plain files under `cmake/`, consume
 ```cmake
 list(APPEND CMAKE_MODULE_PATH "<path>/PolyOrch/cmake")
 include(PolyOrchRustHelpers)     # rust face (brings PolyOrchFindRust)
-include(PolyOrchNodeHelpers)     # node face (D29)
+include(PolyOrchNodeHelpers)     # node face (D29/D33)
 include(PolyOrchPythonHelpers)   # python face (D32)
 include(PolyOrchPixiHelpers)     # environment face
 ```
@@ -60,7 +60,7 @@ Covered by: `t-rust-findrust`, `t-rust-setup-*`, `t-rust-rustc-version`, `t-rust
 
 Covered by: the `t-rust-*` family (`build`/`import`/`setters`/`linkplan`/`crossplan`/`install*`/`cxxbridge`/`cbindgen`/`pyext`/`vscodedebug`/...).
 
-### `PolyOrchNodeHelpers.cmake` -- node/npm workspaces (D29)
+### `PolyOrchNodeHelpers.cmake` -- node/npm workspaces + js-debug (D29/D33)
 
 | Function | Signature (source comment) |
 |---|---|
@@ -69,8 +69,9 @@ Covered by: the `t-rust-*` family (`build`/`import`/`setters`/`linkplan`/`crossp
 | `polyorch_node_build` | `polyorch_node_build(TARGET <handle> MANIFEST <package.json> [OUTPUT_DIR <dir>])` |
 | `polyorch_node_test` | `polyorch_node_test(TARGET <handle>)` |
 | `polyorch_node_run` | `polyorch_node_run(TARGET <handle> SCRIPT <name> [ARGS ...])` |
+| `polyorch_node_debug` | `polyorch_node_debug(TARGET <handle> [NAME <label>] [ARGS <a>...] [ENVS <K=V>...] [OUTFILES <glob,...>])` |
 
-Covered by: `t-rust-node`, `t-rust-noderun`, `t-rust-nodebadargs`, `t-rust-nodeknobs`, `t-rust-nodesetup-missing`, `t-rust-fusion`.
+Covered by: `t-rust-node`, `t-rust-noderun`, `t-rust-nodebadargs`, `t-rust-nodeknobs`, `t-rust-nodesetup-missing`, `t-rust-fusion`, `t-node-vscode`, `t-node-debug`.
 
 ### `PolyOrchPythonHelpers.cmake` -- python interpreter + run buttons + debugpy (D32)
 
@@ -114,7 +115,7 @@ Covered by: `t-bootstrap-*`, `t-find-real`, `t-env-arg`, `t-json-array*`, `t-scr
 - `PolyOrchOptionHelpers.cmake` -- `polyorch_option` (option with
   `PROJECT_IS_TOP_LEVEL`-derived default) plus the expression helpers
   `polyorch_parse_all_arguments` and the genex evaluation shims used by the
-  rust/node faces.
+  rust/node/python faces.
 - `PolyOrchCMakeHelpers.cmake` -- CxxKit-lineage shared utilities
   (`polyorch_normalize_name`, `polyorch_evaluate_expression`,
   `polyorch_path_join`, `polyorch_fetch_3rdparty`, `polyorch_add_subdirectory`

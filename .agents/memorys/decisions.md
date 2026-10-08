@@ -342,8 +342,8 @@ silently drop a node prefix); the fusion loop sets both knobs symmetrically.
 (A3) t-rust-fusion pins the node family BOTH ways: targets asserted present
 when node+pm reachable, asserted ABSENT when not (the degradation itself is
 locked). Deliberate v0.1 edges: no install/EXPORT chain, no yarn/bun
-specifics (corepack absorbs them), no VSCode debug surface, no FROM pixi
-form. Implementation-smoke fixes beyond the plan: string(JSON) array
+specifics (corepack absorbs them), no VSCode debug surface
+(backfilled by D33), no FROM pixi form. Implementation-smoke fixes beyond the plan: string(JSON) array
 iteration is GET-with-index-path (MEMBER is OBJECT-key-only, measured);
 PolyOrchNode_EXECUTABLE is CACHE FORCEd like the PM/FOUND knobs; the
 PASSTHROUGH channel takes a proper list (pre-escaped ';' per _inc.cmake's
@@ -452,3 +452,81 @@ against rust run():1867's <handle>-run -- aligned before first commit; (3) examp
 project() placement after the opt-in gate (rust-basic idiom) or discovery dies on
 REQUIRED. Incident: the Momus review dispatch role-crept into implementing + committing
 (PIT-45; archived, reverted; edit-safety #25 written).
+
+## D33: the node face's debug surface (the D29 deferral backfilled, 2026-10-08)
+
+D29 shipped the npm bridge with "no VSCode debug surface" as a declared v0.1
+edge; the python round (D32) proved the debug methodology end to end, and the
+user directed the node backfill. Ruling (the one design fork put to the user):
+the debug entry is the package ENTRY (main -> module -> exports["."],
+`_polyorch_node_read_entry`), not an npm script -- option A. The
+runtimeExecutable=npm script shape (option B) was rejected because the
+corepack abstraction gives two PM command shapes (npm `-w` vs pnpm
+`--filter`) and dev-server scripts are not debug targets (D29 ruling 3);
+scripts dispatch stays build-graph-only. TS debugging needs no separate
+mechanism: js-debug launches the built entry and maps breakpoints back
+through source-map globs -- and js-debug is VSCode built-in, the only family
+of the three needing no extension install (rust: CodeLLDB, python: debugpy).
+
+- **gate-first** `polyorch_node_debug`: with the gate OFF the verb returns
+  before ANY validation -- the strongest zero footprint (a ghost handle
+  passes in silence). The loud contracts (unknown handle, no runtime, empty
+  entry, reserved '|', ENVS shape) hold inside the gate-ON domain. This
+  OVERRIDES the review-interval proposal to make validation unconditional
+  (that law belongs to `polyorch_node_run`, a build verb; registration is a
+  debug-surface side effect). Review provenance: Momus x3 + an independent
+  Oracle pass; the plan's test machinery was rewritten around three measured
+  findings (see the doctrine below).
+- spec grammar `NAME|RUNTIME|PROGRAM|CWD|ARGS|ENVS|OUTFILES` (seven fields,
+  six '|'); RUNTIME is pinned at registration (three-tier doctrine: the VSCode
+  GUI PATH will not know a pixi-env node); program = PACKAGE-ROOT-relative
+  join (npm `main` semantics; `./` stripped, IS_ABSOLUTE verbatim; dist/ is
+  NEVER re-added -- the review-round formula bug, pinned by a `dist/dist`
+  negative and a real-file EXISTS); per-row default `outFiles` glob;
+  three sources now merge into ONE managed launch region through the single
+  writer (rust+python+node), tasks.json stays rust-only with the byte-frozen
+  marker; `_ext` is three-state (a node-only tree never names CodeLLDB).
+- **option-placement deviation**: `PolyOrch_NODE_VSCODE_DEBUG` is declared
+  AFTER the module's own cmake_minimum_required, unlike the python/rust gates
+  at file top (they carry no cmr). Measured: under CMP0077 OLD option()
+  WIPES a consumer's preceding set() -- the standalone opt-in would silently
+  no-op, and no node-less host could ever see it. `examples/node-web` gained
+  the missing cmake_minimum_required header line for the same reason.
+- FOLDER consumed at the four node creation sites (import loop, build, test,
+  run) -- the python 02df192 idiom. Deliberate behavior change: standalone
+  node-web loses its relative-path FOLDER fallback (standalone stays unset,
+  family law).
+- **test doctrine from this round (measured on cmake 4.4.3)**:
+  (1) `cmake_language(DEFER)` is ILLEGAL under `cmake -P` (hard error) --
+  script-mode cases include faces with the gate OFF and raise it per branch;
+  a subleg child handed the gate on the command line dies at the tail hook
+  BEFORE its guard, so rc-only assertions go green on the wrong death --
+  FATAL sublegs must assert the child's STDERR TEXT.
+  (2) The zero-footprint proof must ride a real configure (the hook never
+  registers -> no file); a direct generator call always writes (region_write
+  has no empty-rows short-circuit).
+  (3) CMake lists do NOT drop empty elements under REPLACE+GET (the
+  grammar-collapse hypothesis was measured false; middle and trailing
+  empties survive).
+  (4) Every configure-mode product leg needs an offline twin (stub tier-a
+  knobs) or it never executes before commit -- the node family's
+  requires-gated legs are exactly the CI-only detonators.
+- Three-face hook quirk (pre-existing, python shares it, recorded not fixed
+  -- YAGNI until corpus): `POLYORCH_VSCODE_HOOKED` is consumed by the FIRST
+  opt-in directory; in the fused examples tree only that directory's rows
+  land. Standalone opt-in is the intended UX; a host that includes PolyOrch
+  once at its root gets all families' rows (verified in the real host).
+- beta list (not built, not claimed, no corpus): browser debug (pwa-chrome),
+  ts-node direct, preLaunchTask auto-build, jest/vitest debug, attach mode,
+  js<->native mixed debug, sourcemap path-rewrite surface, FROM-pixi node
+  form. Known-deviation 2 inherited: values with embedded quotes/commas are
+  unescaped (same class as rust/python).
+- `examples/node-web` registers hello-ts ONLY -- @scope/hello-js declares no
+  entry; registering it under the baked-ON gate would FATAL every
+  node-having host (review round B1). Top-level `"exports":"x.js"` shortform
+  remains unresolved by the shipped read_entry (v0.1 contract; import falls
+  back to the dist directory).
+- Field status: the live legs (t-node-debug, nodeknobs label pin, fusion
+  node codemodel folder pin) contract-SKIP on this node-less host -- exact
+  lines recorded in their commits; the offline stub-driven polarity pair
+  executes the same hook->DEFER->generator chain here in both polarities.
