@@ -18,7 +18,7 @@
 | [This index](./README.md) | Documentation index, navigation table, and reading paths for three audience types |
 | [Architecture Design](./architecture.md) | Design baseline: invariants, layered view, data flow, debug surface, reproducibility boundary, bridge priority, and open decisions |
 | [Tutorials](./tutorials.md) | **Hands-on learning path** -- getting started, first rust build, bindings track, pixi environments, host embedding, test suites |
-| [Module Reference](./modules/00-overview.md) | Internals reference: the contract, dependency and development workflow, error model, and testing strategy |
+| [Module Reference](./modules/00-overview.md) | Internals reference: the contract, dependency and development workflow, error model, testing strategy, and the shipped function inventory |
 | [Adapters](./derived/adapters.md) | CMake / Xmake / Meson / Colcon adapter details and IDE debugging |
 | [Environment & Dependencies](./derived/environment.md) | Pixi environment management and vcpkg / Conan / Xrepo dependency unification |
 | [CLI](./derived/cli.md) | `polyorch` command reference and `polyorch.toml` / `xmake.lua` configuration examples |

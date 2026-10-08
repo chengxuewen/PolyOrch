@@ -12,7 +12,7 @@
 | Derive | `<name>` = build target driving the native tool; `<name>_bin` = debuggable binary target |
 | Artifacts | intermediates to `build/.<tool>/<name>/`; final debuggable binaries to `build/<plat>/<arch>/<mode>/<name>`. Bridged-native outputs may reach those paths by **staged copy** (D17): the uniform path is the engine's layout convention, and a bridge may additionally expose the ecosystem-native location as debug metadata |
 | Debug metadata | each bridge exposes what a debugger needs: program, cwd, environment |
-| Zero intrusion | no xmake file may be written inside `third_party/<name>/` |
+| Zero intrusion | no xmake file may be written inside `third_party/<name>/` (D16 generalizes: no PolyOrch-generated file of any kind, CMake fragments included) |
 | Uniqueness | derived names must not collide with names the project generator emits |
 
 **Package-source contract** (vcpkg · conan):
@@ -43,7 +43,7 @@ How a bridged project becomes targets:
 
 ```
 ┌ bridge ────────────────────────────────────────────────────────────────────┐
-│ third_party/<name>/<native manifest>                                       │  pure native; no xmake file inside
+│ third_party/<name>/<native manifest>                                       │  pure native; no PolyOrch file inside (D16)
 ├────────────────────────────────────────────────────────────────────────────┤
 │     |  scan, on every configure                                            │
 │     v                                                                      │

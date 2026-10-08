@@ -5,67 +5,41 @@
 
 ## What PolyOrch is
 
-PolyOrch is delivered as **one Xmake addon**. The addon extension system maps one-to-one onto the three deliverables:
+Under D16 (2026-09-22; D3 amended 2026-09-23) PolyOrch **is the CMake helper surface**:
+plain `cmake/*.cmake` modules plus their fixture test suites and examples. There is no
+compiled PolyOrch binary and no addon wrapper -- the earlier "Lua shipped as an Xmake
+addon" delivery form is retired, not deferred. The whitepaper's CLI (`init`/`enter`/
+`build`/`debug`/`doctor`) remains the v1.0 record's product model; v0.1 ships the library
+face it will sit on.
 
-| Deliverable | Addon construct |
+| Deliverable | Shipped construct (D16) |
 |---|---|
-| CLI commands (`init` / `enter` / `build` / `debug` / `doctor`) | **plugins** |
-| Bridge library (cargo · cmake · pixi · npm) | **rules** |
-| `init` scaffolding | **project templates** |
-| The contract itself | versioned document plus a `doctor` plugin that validates it |
+| Environment face (pixi) | `cmake/PolyOrchPixiHelpers.cmake` -- find/setup/install/env_target/paths/activate/workspace-declaration verbs |
+| Rust build graph | `cmake/PolyOrchFindRust.cmake` (toolchain discovery) + `cmake/PolyOrchRustHelpers.cmake` (build/import/test/run/install/cxxbridge/cbindgen/pyext) |
+| Node build graph (D29) | `cmake/PolyOrchNodeHelpers.cmake` -- setup/import/build/test/run over npm-pnpm workspaces |
+| Option/platform plumbing | `PolyOrchOptionHelpers`, `PolyOrchCMakeHelpers`, `PolyOrchPlatformSupport` |
+| The contract itself | [01-contract.md](./01-contract.md) + the executable case suite in `tests/` |
 
-## Addon payload layout
+The full function index lives in [05-surface-inventory.md](./05-surface-inventory.md).
 
-Xmake fixes the payload layout, and it maps directly onto the deliverables:
+## Module layout
 
 ```
-┌ polyorch/   installs to ~/.xmake/addons/polyorch/<version>/ ─────────────┐
-│ addon.lua                                                                │  manifest; the only required file
-│ tests/test.lua                                                           │  NOT installed (set_sourcedir isolates it)
-│ src/                                                                     │  the payload root
-│   plugins/<cmd>/                                                         │  -> xmake <cmd>                        CLI
-│   rules/<bridge>/                                                        │  -> add_rules("@addon/polyorch/<b>")  bridges
-│   templates/...                                                          │  -> xmake create -t ...                init
-│   modules/                                                               │  -> import("@addon.polyorch.foo")      shared Lua
-│   includes/                                                              │  -> includes("@addon/polyorch/<x>")   package defs
-│   toolchains/<name>/                                                     │  -> set_toolchains("@addon/polyorch")  toolchains
-└──────────────────────────────────────────────────────────────────────────┘
+cmake/
+├── PolyOrchPixiHelpers.cmake      environment face (one module, D12)
+├── PolyOrchFindRust.cmake         rust toolchain layer (D16 file split)
+├── PolyOrchRustHelpers.cmake      rust build-graph API
+├── PolyOrchNodeHelpers.cmake      node/npm workspaces (D29)
+├── PolyOrchOptionHelpers.cmake    polyorch_option + expression helpers
+├── PolyOrchCMakeHelpers.cmake     shared utilities (CxxKit lineage)
+└── PolyOrchPlatformSupport.cmake  platform/triple detection (external rewrite in flight)
 ```
 
-PolyOrch claims `plugins/`, `rules/`, `templates/`, `modules/` and `includes/`. `toolchains/` is
-**available but unused in v0.1** -- PolyOrch ships no compiler. It is listed because Xmake, not
-PolyOrch, decides which payload directories exist.
-
-Two rules follow and are part of the contract:
-
-- **Payloads must never hardcode their own addon name.** They refer to each other through `@self` (`import("@self.private.board")`), which is what lets the same code run both installed and from a working copy.
-- **Only payload directories are installed**, so `tests/`, CI files, and the README never reach the user's cache. `set_sourcedir("src")` is what enforces that.
-
-## Reference styles
-
-```lua
-includes("@addon/polyorch/board")           -- an includes file
-add_rules("@addon/polyorch/cmake")          -- a rule
-import("@addon.polyorch.graph")             -- a module (dots, not slashes)
-```
-
-| Reference | Points at |
-|---|---|
-| `@addon/<name>/<payload>` | a rule, toolchain or includes file used by the project APIs |
-| `@addon.<name>.<module>` | a Lua module used by `import()` |
-| `@self.<module>` | a module of the addon that owns the running script |
-
-## Where things live
-
-```text
-~/.xmake/addons/<name>/<version>/    the installed payloads (a cache, not a source of truth)
-~/.xmake/addons/addons.conf          the registry Xmake reads on startup
-<project>/xmake-addons.lock          the versions this project resolved (committed)
-```
-
-The precedent for this shape is the official catalogue: `esp32-devel`, `stm32-devel` and `avr-devel` each ship
-a toolchain, build rules and project templates; `doxygen-plugin`, `format-plugin` and `serial-tools` register
-a command each.
+Consumption is `include()` / `add_subdirectory()` -- no registry, no cache directory, no
+lockfile shadow (the D6 addon-drift hole retired with the addon form; the consumer pins
+the checkout itself). Xmake's standing roles are the reference corpus and a
+package-management source (vcpkg/conan via xrepo, O4 open); the pinned vendored skill set
+under `.agents/skills/xmake-*` is research material, not shipped payload.
 
 ## Modules
 
@@ -75,6 +49,7 @@ a command each.
 | [`02-dependency-workflow.md`](./02-dependency-workflow.md) | how a consumer depends on PolyOrch; the two development loops |
 | [`03-error-model.md`](./03-error-model.md) | degrade versus fail hard |
 | [`04-testing-strategy.md`](./04-testing-strategy.md) | the five executable layers |
+| [`05-surface-inventory.md`](./05-surface-inventory.md) | the shipped function index (44 public verbs, D16 form) |
 
 ## Related documents
 
