@@ -20,6 +20,19 @@ ck_str("${f}" "libgreet.so")
 # darwin shared
 _polyorch_rust_artifact_names(TRIPLE aarch64-apple-darwin KIND shared CRATE greet FILE_OUT f)
 ck_str("${f}" "libgreet.dylib")
+# wasm family (D29 field contact, 2026-10-08): cargo's bin/cdylib artifact on
+# a wasm triple is <crate>.wasm -- no lib prefix, no import library; the
+# staticlib stays an archive like the elf family.
+_polyorch_rust_artifact_names(TRIPLE wasm32-unknown-unknown KIND shared CRATE greet
+    FILE_OUT f IMPLIB_OUT i)
+ck_str("${f}" "greet.wasm")
+ck_str("${i}" "")
+_polyorch_rust_artifact_names(TRIPLE wasm32-unknown-unknown KIND bin CRATE greet FILE_OUT f)
+ck_str("${f}" "greet.wasm")
+_polyorch_rust_artifact_names(TRIPLE wasm32-wasip1 KIND bin CRATE greet FILE_OUT f)
+ck_str("${f}" "greet.wasm")
+_polyorch_rust_artifact_names(TRIPLE wasm32-unknown-unknown KIND static CRATE greet FILE_OUT f)
+ck_str("${f}" "libgreet.a")
 # windows-msvc: .exe bin, greet.lib static, greet.dll shared + <crate>.dll.lib implib
 _polyorch_rust_artifact_names(TRIPLE x86_64-pc-windows-msvc KIND bin CRATE greet FILE_OUT f)
 ck_str("${f}" "greet.exe")

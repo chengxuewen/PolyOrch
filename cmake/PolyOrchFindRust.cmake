@@ -117,6 +117,16 @@ function(_polyorch_rust_triple_family TRIPLE OUT)
         set(_family macho)
     elseif(_t MATCHES "linux|android|bsd|solaris|illumos|dragonfly|nto|qnx|haiku")
         set(_family elf)
+    elseif(_t MATCHES "^wasm32-(unknown-unknown|wasi|wasip1|wasip2)$"
+            OR _t MATCHES "^wasm64-unknown-unknown$")
+        # D29 field contact (2026-10-08): the wasm triples -- artifact is a
+        # .wasm module, there is no C linker plane (rust's wasm backend
+        # links), a staticlib stays an elf-style archive. The set is the
+        # REAL rust targets on purpose: wasm32-unknown-emscripten stays
+        # rejected (its cdylib is a .so pair, not a module), and so does
+        # any invented *-polyorch shape (t-rust-executables' negative leg
+        # pins the rejection).
+        set(_family wasm)
     else()
         message(FATAL_ERROR
             "polyorch_rust: unrecognized target triple '${TRIPLE}' "
@@ -183,6 +193,8 @@ function(_polyorch_rust_artifact_names)
     if(A_KIND STREQUAL "bin")
         if(_family MATCHES "^(msvc|gnu)$")
             set(_file "${A_CRATE}.exe")
+        elseif(_family STREQUAL "wasm")
+            set(_file "${A_CRATE}.wasm")
         else()
             set(_file "${A_CRATE}")
         endif()
@@ -201,6 +213,8 @@ function(_polyorch_rust_artifact_names)
             set(_implib "lib${A_CRATE}.dll.a")
         elseif(_family STREQUAL "macho")
             set(_file "${_lib}.dylib")
+        elseif(_family STREQUAL "wasm")
+            set(_file "${A_CRATE}.wasm")    # cdylib -> the module itself; no implib
         else()
             set(_file "${_lib}.so")
         endif()
