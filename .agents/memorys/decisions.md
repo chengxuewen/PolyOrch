@@ -88,6 +88,7 @@
 
 ## D10: The validation repository is the sibling monorepo hosting this checkout
 
+- **Numbering note**: the sub-items D10.1-D10.4 (selection criteria, experiment rounds, field-coverage gaps, prototype residual) exist ONLY in the git-excluded plan zone per C6; the tokens are quoted in status.md by design and resolve there.
 - **Date**: 2026-09-20
 - **Source**: user directive ("use the ../../ project as the experiment field, improve this project step by step, and transform it; analyze and conclude") plus the separation constraint that produced C6.
 - **Decision**: O1 is decided. The v0.1 validation target is the sibling polyglot monorepo whose working tree currently hosts this checkout — a real repository with workspace-scale cargo build as its native authority, a multi-feature Pixi environment, and the `bootstrap.*` + `pixi.*` + launcher trio that PolyOrch promises to replace. Its identity is deliberately **not written into any formal document**: per C6 the two projects' design documents never name each other; the naming record lives only in the git-excluded plan zone (`.omo/plans/`).

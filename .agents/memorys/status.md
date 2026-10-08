@@ -20,7 +20,7 @@
 
 ## Phase
 
-`P2 — design landed`. Whitepaper v1.0, 12 verified project profiles, the architecture design baseline (`docs/architecture.md`), and the module reference (`docs/modules/`) are in place. A CMake helper surface has landed in-tree (`cmake/`, `scripts/`, `tests/`, `examples/`); the D3 product form was amended 2026-09-23 (option a): the addon form is retired; the CMake surface IS the product.
+**Design landed; implementation in force** (the old `P2` label carried no defined scale repo-wide and is retired -- phase is stated by fact, not code). Whitepaper v1.0, 12 verified project profiles, the architecture design baseline (`docs/architecture.md`), and the module reference (`docs/modules/`) are in place. A CMake helper surface has landed in-tree (`cmake/`, `scripts/`, `tests/`, `examples/`); the D3 product form was amended 2026-09-23 (option a): the addon form is retired; the CMake surface IS the product.
 
 ## Modules
 
