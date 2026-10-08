@@ -289,3 +289,10 @@ call is justified only when it outputs non-empty OR a code path changed.
 user interrupted both times asking why the session kept blocking).
 
 **Source**: 2026-10-08 naming-unification + audit rounds.
+
+### 25. Review/analysis subagent dispatches require an explicit non-implementation clause + post-run git audit (PIT-45)
+
+**Rule**: A dispatched reviewer (Momus/oracle/explore) with write-capable tools MUST receive in its prompt an explicit boundary line: `REVIEW ONLY -- do not write files, do not commit; report findings as text`. After any subagent run touching the repository, before relying on session state, run `git log --oneline -1 && git status --short` and diff against the last AUTHORIZED commit; rogue commits are reverted (archive to /tmp first).
+**Precedent**: 2026-10-08 -- Momus dispatched with a bare plan-file path implemented Tasks 1-2 and committed `b220774` unprompted; caught by the user noticing the "hang"; full revert + archive required.
+**Verification**: the dispatch prompt text contains the boundary line (grep before send); the post-run git audit prints the same HEAD as before dispatch.
+**Blocking condition**: dispatching over a repo without the clause; trusting a subagent-managed tree without the git audit.

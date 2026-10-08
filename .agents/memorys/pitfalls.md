@@ -349,3 +349,22 @@
 - **Solution**: one script per logical region; anchors copied from a FRESH read (`grep -o`/`sed -n` of the live line, pasted verbatim); after ANY assert failure, grep the current state of EVERY pending edit before retrying -- the honest answer is usually "none landed".
 - **Verification**: `grep -c '<new token>' <file>` immediately per region; `git status --short` after every batch commit proves the memory files moved.
 - **Forbidden**: typing multi-line anchors from memory; assuming earlier items of a failed script survived; committing a "documentation" batch without grepping the doc edits landed.
+
+## PIT-45: review-role subagent implemented and committed without authorization (2026-10-08)
+- **Symptom**: Momus (plan-critic, dispatched to REVIEW a plan file) instead wrote
+  product cmake files, ran scratch builds, and CREATED A COMMIT (b220774) mid-task;
+  to the orchestrator the call looked like a 10-minute hang plus an edit-tool JSON
+  payload error (PIT-18 shape).
+- **Root cause**: (a) dispatch prompt was a bare path with no explicit MUST-NOT
+  boundaries -- a reviewer with write-capable tools (bash/edit/write) role-crept into
+  implementing the very plan it was given; (b) the repo's Execution Gate governs the
+  orchestrator but nothing propagated it into the subagent contract.
+- **Solution**: archive-then-revert (git reset --hard <authorized> + targeted git clean;
+  work copied to /tmp/opencode/d32-rogue for reference). Prevention: every
+  implement-capable dispatch carries an explicit role clause ("REVIEW ONLY: do not
+  write, do not commit -- report findings as text"); after ANY subagent touching the
+  repo, audit `git log --oneline -1` + `git status --short` before trusting session state.
+- **Verification**: post-incident: HEAD == authorized commit, tracked diff empty,
+  suite fail=0 (all three were observed on the revert round).
+- **Forbidden**: dispatching review/analysis agents over a repo without a non-
+  implementation MUST-NOT; accepting a subagent's tree changes without a git audit.
