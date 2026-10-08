@@ -328,3 +328,24 @@
 - `file(COPY src dst DESTINATION dir)` -- DESTINATION is mandatory even copying in-place; hit twice before writing it once (t-rust-noderun, t-rust-nodeknobs).
 - helper functions that resolve tools must publish via `CACHE ... FORCE` (or PARENT_SCOPE) -- a plain `set()` inside a function dies with the scope; `PolyOrchNode_EXECUTABLE` forgot while the rust face already does (DEBUG found=TRUE exe=[] was the tell).
 - STATUS lines of `cmake -P` children arrive in ERROR_VARIABLE -- child assertions read `${_out}${_err}` merged (PIT-36 sub-fact, pinned separately because it bit a PASS/FAIL judgment round).
+
+## PIT-42: subagent-report citations must be lead-re-verified before any fix lands (2026-10-08, doc-audit round)
+- **Symptom**: the 5-member audit team produced FOUR fabricated citations: text quoted at `architecture.md:179` that the line does not contain; `:217` in a 192-line file; a whitepaper sentence quoted in the OPPOSITE sense ("does not integrate Pixi" -- it says "integrates Pixi"); a phantom "uncommitted +30/-10 diff" in a clean tree. Acting on any would have "fixed" a non-existent defect.
+- **Root cause**: subagents (like session memory before them, PIT-25) compose plausible file:line citations from summaries, not from fresh reads. This is the same failure class that put unsupported claims into the whitepaper (PIT-2) -- the channel is now team messages instead of the doc author.
+- **Solution**: member findings are LEADS, not evidence. Before any fix: `sed -n 'Np'` / `grep -c` the exact cited span. A citation that misses is logged "dissolved" -- and the dissolution pass is itself productive: chasing the two bogus bridge-narrative quotes surfaced two REAL D16-sweep stragglers (:49, :155) that the token-grep had missed.
+- **Verification**: every audit fix commit cites spans the lead ran itself; the two dissolved findings are recorded as dissolved in the session report, not silently dropped.
+- **Forbidden**: batching member findings straight into edits; quoting a member's line number without opening the line.
+
+## PIT-43: a check body ending in an unconditional echo can NEVER fail (2026-10-08, the C2 no-teeth incident)
+- **Symptom**: C2's root-set classification was violated for 8+ days (tutorials.md landed unclassified) while `gate.sh` reported green every run; only a verbatim manual execution showed rc=1.
+- **Root cause**: the C2 block ends `python3 <<CHECK ... sys.exit(1) ; echo "PASS"` -- under `bash -c` without `set -e`, python's exit code is dropped and the LAST command (echo, rc=0) becomes the gate's verdict. The embedded base64 copy in gate.sh faithfully propagated the defect, and the dated "pass (2026-09-20)" cell in status.md kept re-certifying a check that had literally never been observed to fail.
+- **Solution**: propagate the rc (`rc=$?; [ $rc -eq 0 ] && echo "PASS"; exit $rc`), regenerate the gate snapshot (scripts/gate-gen.py), and PROVE THE TEETH: plant a stray file, watch C2 go red, remove it, green. C0 amended same commit: no check is trusted until it has been observed to fail once.
+- **Verification**: both-direction proof recorded in 533f84a (planted stray -> rc=1; clean -> rc=0).
+- **Forbidden**: adding a convention check without ever seeing it red; trusting a check whose failure branch is unreachable by construction (trailing echo/tail `|| true`/piped rc swallowing).
+
+## PIT-44: write-at-end python batches + typed anchors roll back silently as a unit (2026-10-08, recurrence of the #10 class)
+- **Symptom**: three misfires in one window: (a) a 5-rename script asserted on item 2 (the real file wraps the quoted sentence across a newline) and wrote NOTHING -- the traceback pointed at item 2, and item 1's "success" was an illusion; (b) em-dash vs `--` in a quoted anchor mismatched the actual bytes; (c) the same phantom-anchor rollback on the decisions/status pair -- commits proceeded while the memory note silently did not.
+- **Root cause**: file prose wraps mid-phrase and uses Unicode dashes; anchors TYPED from conversation memory drift from the bytes; and write-at-end makes every assert failure roll the whole batch back while stdout suggests partial progress.
+- **Solution**: one script per logical region; anchors copied from a FRESH read (`grep -o`/`sed -n` of the live line, pasted verbatim); after ANY assert failure, grep the current state of EVERY pending edit before retrying -- the honest answer is usually "none landed".
+- **Verification**: `grep -c '<new token>' <file>` immediately per region; `git status --short` after every batch commit proves the memory files moved.
+- **Forbidden**: typing multi-line anchors from memory; assuming earlier items of a failed script survived; committing a "documentation" batch without grepping the doc edits landed.

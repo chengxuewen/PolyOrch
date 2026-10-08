@@ -271,3 +271,21 @@ grep -c "duplicate-pattern" <file>    # expect 1; >1 = edit inserted duplicates
 **Verification**: `grep -n 'FOLDER' <file>` count equals the intended number of assignment sites; the codemodel (File API) shows the knob's value on every target.
 
 **Blocking condition**: committing a knob wiring while a second literal writer for the same property-target pair survives.
+
+### 24. Match verification scope to change scope -- the full gate is not a ritual (PIT round, user aborted twice)
+
+**Rule**: before invoking `scripts/gate.sh` (3-8 min), classify what changed:
+`git diff --cached --name-only | grep -vE '\.md$|^\.agents/'` -- if EMPTY, the change is
+docs/memory-only: run ONLY the affected convention block(s) verbatim from conventions.md
+(seconds each). The full gate belongs to code-touching commits, pre-session-close, and phase
+boundaries. Docs-only commits that only add prose may skip even the block run when the scan
+cannot reach them (e.g. memory appends that contain no forbidden literals -- check C1/C4/C6
+relevance first).
+
+**Verification**: the classify one-liner above, run before every gate invocation; the gate
+call is justified only when it outputs non-empty OR a code path changed.
+
+**Blocking condition**: running full gate.sh on a docs-only change (burned 3-8 min twice,
+user interrupted both times -- "为什么一直阻塞卡住").
+
+**Source**: 2026-10-08 naming-unification + audit rounds.

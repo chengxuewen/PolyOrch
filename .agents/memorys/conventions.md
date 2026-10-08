@@ -6,7 +6,7 @@
 
 ## C0: "Constraints must be executable"
 
-Every constraint must carry a concrete command and a pass/fail criterion. "Be careful about X" is not a constraint.
+Every constraint must carry a concrete command and a pass/fail criterion. "Be careful about X" is not a constraint. A check is not trusted until it has been OBSERVED to fail at least once (negative proof: plant a violation, see red; remove, see green) -- an unfalsifiable check is decoration (PIT-43, the C2 no-teeth incident: its body ended in an unconditional `echo PASS` and had never once gone red).
 
 ```bash
 # Template: replace the placeholders with a real check
