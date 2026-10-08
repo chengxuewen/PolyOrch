@@ -28,6 +28,21 @@
 cmake_minimum_required(VERSION 3.25)
 
 # ---------------------------------------------------------------------------
+# options
+# ---------------------------------------------------------------------------
+
+# PolyOrch_NODE_VSCODE_DEBUG -- emit js-debug launch rows for handles
+# registered by polyorch_node_debug() (default OFF; examples opt in).
+# Declared AFTER the module's own cmake_minimum_required above and NOT at
+# the file top like the python/rust gates (they carry no cmr): under
+# CMP0077 NEW a consumer's preceding set() survives option(); declared
+# before any cmr the policy context is OLD and option() WIPES the pre-set
+# variable -- the standalone opt-in would silently no-op, invisible on
+# node-less hosts (measured, D33).
+option(PolyOrch_NODE_VSCODE_DEBUG
+    "Generate VSCode js-debug launch configs for polyorch_node_debug handles" OFF)
+
+# ---------------------------------------------------------------------------
 # discovery
 # ---------------------------------------------------------------------------
 
@@ -324,6 +339,8 @@ function(polyorch_node_import)
                 "${_name}")
             set_property(GLOBAL PROPERTY "POLYORCH_NODE_ROOT_${_handle}"
                 "${_root_dir}")
+            set_property(GLOBAL PROPERTY "POLYORCH_NODE_DIR_${_handle}"
+                "${_mdir}")
         endforeach()
     endforeach()
 
@@ -431,6 +448,8 @@ function(polyorch_node_build)
         "${_mdir}")
     set_property(GLOBAL PROPERTY "POLYORCH_NODE_PKG_${_handle}"
         "${_name}")
+    set_property(GLOBAL PROPERTY "POLYORCH_NODE_DIR_${_handle}"
+        "${_mdir}")
     message(STATUS
         "polyorch_node_build: ${_handle} registered (single package ${_name})")
 endfunction()
@@ -493,4 +512,153 @@ function(polyorch_node_run)
         WORKING_DIRECTORY "${_root}"
         USES_TERMINAL
         COMMENT "node: ${R_SCRIPT} (${_rh})")
+endfunction()
+
+# polyorch_node_debug(TARGET <handle> [NAME <label>] [ARGS <a>...]
+#                     [ENVS <K=V>...] [OUTFILES <glob,...>])
+#
+# Registers a js-debug launch row for the handle's package entry (main ->
+# module -> exports["."]; npm entry semantics: relative to the PACKAGE
+# ROOT, which is where dist/ lives in the dist/ convention -- the join
+# NEVER re-adds dist/). TS debugging rides source maps: the launch points
+# at the built entry and VSCode maps breakpoints back through outFiles.
+# Pure configure-time registration -- no process, no PM call.
+#
+# GATE-FIRST (D33 ruling): with PolyOrch_NODE_VSCODE_DEBUG OFF the verb
+# returns before ANY validation -- zero footprint in the strongest sense
+# (no spec, no FATAL, not even for a ghost handle). The registration is a
+# debug-surface side effect, not a build verb; the loud contracts below
+# hold inside the gate-ON domain.
+function(polyorch_node_debug)
+    if(NOT PolyOrch_NODE_VSCODE_DEBUG)
+        return()
+    endif()
+    set(_one TARGET NAME OUTFILES)
+    set(_multi ARGS ENVS)
+    cmake_parse_arguments(PARSE_ARGV 0 D "" "${_one}" "${_multi}")
+    if(NOT D_TARGET)
+        message(FATAL_ERROR "polyorch_node_debug: TARGET is required")
+    endif()
+    _polyorch_node_apply_prefix(_dh "${D_TARGET}")
+    get_property(_dir GLOBAL PROPERTY "POLYORCH_NODE_DIR_${_dh}")
+    get_property(_mf GLOBAL PROPERTY "POLYORCH_NODE_MANIFEST_${_dh}")
+    if(NOT _dir OR NOT _mf)
+        message(FATAL_ERROR
+            "polyorch_node_debug: unknown handle '${D_TARGET}'")
+    endif()
+    if(NOT PolyOrchNode_EXECUTABLE)
+        message(FATAL_ERROR
+            "polyorch_node_debug: no node runtime -- run polyorch_node_setup first")
+    endif()
+    _polyorch_node_read_entry(_entry "${_mf}")
+    if(_entry STREQUAL "")
+        message(FATAL_ERROR
+            "polyorch_node_debug: '${D_TARGET}' declares no entry (main/module/exports)")
+    endif()
+    string(REGEX REPLACE "^\\./" "" _entry "${_entry}")
+    if(IS_ABSOLUTE "${_entry}")
+        set(_prog "${_entry}")
+    else()
+        set(_prog "${_dir}/${_entry}")
+    endif()
+    if(D_NAME)
+        _polyorch_node_sanitize_name(_lbl "${D_NAME}")
+    else()
+        set(_lbl "${_dh}")
+    endif()
+    foreach(_f "${_lbl}" "${_prog}" "${_dir}" ${D_OUTFILES})
+        if(_f MATCHES "\\|")
+            message(FATAL_ERROR
+                "polyorch_node_debug: field '${_f}' contains the reserved '|'")
+        endif()
+    endforeach()
+    foreach(_a ${D_ARGS})
+        if(_a MATCHES "\\|")
+            message(FATAL_ERROR
+                "polyorch_node_debug: ARGS entry '${_a}' contains reserved '|'")
+        endif()
+    endforeach()
+    foreach(_kv ${D_ENVS})
+        if(NOT _kv MATCHES "^[A-Za-z_][A-Za-z0-9_]*=")
+            message(FATAL_ERROR
+                "polyorch_node_debug: ENVS entry '${_kv}' is not NAME=VALUE")
+        endif()
+        if(_kv MATCHES "\\|")
+            message(FATAL_ERROR
+                "polyorch_node_debug: ENVS entry '${_kv}' contains reserved '|'")
+        endif()
+    endforeach()
+    string(REPLACE ";" "," _argsj "${D_ARGS}")
+    string(REPLACE ";" "," _envsj "${D_ENVS}")
+    set(_outj "${D_OUTFILES}")
+    if(_outj STREQUAL "")
+        set(_outj "${_dir}/**/*.map")
+    endif()
+    # RUNTIME joins the spec NOW (not at generate time): the row carries
+    # the discovered tool of THIS configure -- three-tier doctrine, the
+    # whole point of the discovery is that node may live only in a pixi
+    # env and the VSCode GUI PATH will not know it.
+    set_property(GLOBAL APPEND PROPERTY POLYORCH_NODE_DEBUG_SPECS
+        "${_lbl}|${PolyOrchNode_EXECUTABLE}|${_prog}|${_dir}|${_argsj}|${_envsj}|${_outj}")
+endfunction()
+
+# _polyorch_node_vscode_rows(SPECS LAUNCH_OUT)
+# Pure spec-table -> JSONC region text (the python/rust rows siblings).
+# Spec row shape: NAME|RUNTIME|PROGRAM|CWD|ARGS|ENVS|OUTFILES (exactly
+# SIX '|', seven fields; ARGS/ENVS/OUTFILES comma-joined; empty fields
+# still serialize the pipes). js-debug is VSCode built-in -- no extension
+# install (unlike CodeLLDB/debugpy). Embedded double-quotes unescaped:
+# the family's known-deviation 2 (python rows header, same class).
+function(_polyorch_node_vscode_rows SPECS LAUNCH_OUT)
+    set(_L "")
+    foreach(_row ${SPECS})
+        string(REPLACE "|" ";" _f "${_row}")
+        list(GET _f 0 _nm)
+        list(GET _f 1 _rt)
+        list(GET _f 2 _prog)
+        list(GET _f 3 _cwd)
+        list(GET _f 4 _args)
+        list(GET _f 5 _envs)
+        list(GET _f 6 _out)
+        string(APPEND _L
+"        {\n"
+"            \"name\": \"PolyOrch: ${_nm}\",\n"
+"            \"type\": \"node\",\n"
+"            \"request\": \"launch\",\n"
+"            \"runtimeExecutable\": \"${_rt}\",\n"
+"            \"program\": \"${_prog}\",\n"
+"            \"cwd\": \"${_cwd}\",\n"
+"            \"console\": \"integratedTerminal\",\n"
+"            \"skipFiles\": [\"<node_internals>/**\"]")
+        if(NOT _out STREQUAL "")
+            string(REPLACE "," ";" _ol "${_out}")
+            set(_oj "")
+            foreach(_o ${_ol})
+                string(APPEND _oj "\"${_o}\", ")
+            endforeach()
+            string(APPEND _L ",\n            \"outFiles\": [${_oj}]")
+        endif()
+        if(NOT _args STREQUAL "")
+            string(REPLACE "," ";" _al "${_args}")
+            set(_aj "")
+            foreach(_a ${_al})
+                string(APPEND _aj "\"${_a}\", ")
+            endforeach()
+            string(APPEND _L ",\n            \"args\": [${_aj}]")
+        endif()
+        if(NOT _envs STREQUAL "")
+            string(REPLACE "," ";" _el "${_envs}")
+            set(_eo "")
+            foreach(_kv ${_el})
+                string(FIND "${_kv}" "=" _eq)
+                string(SUBSTRING "${_kv}" 0 "${_eq}" _k)
+                math(EXPR _v1 "${_eq} + 1")
+                string(SUBSTRING "${_kv}" "${_v1}" -1 _v)
+                string(APPEND _eo "\"${_k}\": \"${_v}\", ")
+            endforeach()
+            string(APPEND _L ",\n            \"env\": {${_eo}}")
+        endif()
+        string(APPEND _L "\n        },\n")
+    endforeach()
+    set(${LAUNCH_OUT} "${_L}" PARENT_SCOPE)
 endfunction()
