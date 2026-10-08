@@ -246,6 +246,37 @@ toolchain downloads, binaryen) are the known egress hazard -- --dev +
 no-install + pixi binaryen is the documented restricted-host set.
 
 
+## D27: example target naming unified into the directory grammar (2026-09-30, user ruling: plan B)
+
+The nine hand-literal CamelCase `PolyOrchExample*` convenience buttons were
+the only naming style with no mechanism behind them while ~43 real targets
+already followed the lowercase directory grammar. Mainstream survey
+(llvm AddLLVM.cmake enforces lowercase `check-*` utilities with a
+FATAL_ERROR, commit 8b90c3ed, fetched 2026-09-30; fmt
+`add_library(fmt::${target} ALIAS ${target})` and googletest `GTest::gtest`
+reserve CamelCase for the exported `::` namespace; Corrosion embeds behind
+a `CMAKE_PROJECT_NAME` install guard, commit c4786e7): CamelCase belongs to
+exports, never local targets. The buttons joined the grammar --
+pixi-bootstrap / pixi-configure / pixi-workspace / pixi-env-run /
+rust-import-pixi / rust-link-c-pixi / rust-bindings-standalone / rust-cross
+/ rust-install-export -- and the same commit closed the prefix leaks (the
+pyext demo through the helper, the nodejs demo by idiom; the
+`PolyOrchExample_*` variable namespace deliberately untouched). Same day,
+the rule consumed the remaining bare-CamelCase locals: `PolyOrchTest` ->
+`polyorch-test` (beside its kebab siblings), and the root embed sentinel
+`add_custom_target(${PROJECT_NAME})` ->
+`add_library(PolyOrch::PolyOrch INTERFACE IMPORTED GLOBAL)` -- the
+Threads::Threads package-existence form ('::' requires IMPORTED; real
+targets cannot carry it, measured both ways). The boundary now reads:
+kebab real targets, `::` for exported/imported names (PolyOrchRust::
+{Rustc,Cargo} stay CamelCase by design), `PolyOrch_*` for variables and
+options. Commit-time memory edits referenced this ruling as D27 but the
+entry itself was never inserted (the 2026-10-08 doc-audit finding 1,
+CRITICAL); this text was reconstructed from the commit record
+(36a0582 / 4cf8271 / d0bc0ef). D28 later added the polyorch- namespace
+over the whole fused surface -- including these button names -- and
+`<dir>-all` aggregates moved to `polyorch-<dir>-all`.
+
 ## D28: fused-tree target namespace polyorch-<dir> + caller-project prefix key (2026-09-30, user ruling: plan 4)
 
 Fused (host-embedded) rust example targets all carry the `polyorch-<directory>`
