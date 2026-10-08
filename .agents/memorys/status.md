@@ -26,7 +26,7 @@
 
 | Module | What |
 |---|---|
-| `cmake/PolyOrchPythonHelpers.cmake` | the python face (D32): setup (three-tier discovery, tier-a knob WINS; NO_CACHE pre-set footgun fixed in contact) + run (`<t>-run` buttons, `-E env` injection, caller-key prefix helper) + debugpy rows + gate-gated spec registration into the shared region; test/wheel/import verbs deferred pending corpus |
+| `cmake/PolyOrchPythonHelpers.cmake` | the python face (D32): setup (three-tier discovery, tier-a knob WINS; NO_CACHE pre-set footgun fixed in contact) + run (`<t>-run` buttons, `-E env` injection, caller-key prefix helper, FOLDER via the rust idiom, debugpy label = prefixed handle) + debugpy rows + gate-gated spec registration into the shared region; test/wheel/import verbs deferred pending corpus |
 | `cmake/PolyOrchVSCodeDebugHelpers.cmake` | shared `.vscode` managed-region machinery (D32 T1): single writer, rust+python rows merge into ONE launch region; tasks.json rust-only with byte-frozen marker; one-shot legacy-marker migration proven live |
 | `cmake/PolyOrchPixiHelpers.cmake` | single pixi module (~1500 lines, D12): find / tool_ensure / tool_install / install / env_target / env_paths / activate_script / scripts_install / setup / report / bootstrap + manifest-mutating actions |
 | `cmake/PolyOrchOptionHelpers.cmake` | `polyorch_option` + expression helpers |

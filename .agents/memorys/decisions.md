@@ -417,6 +417,19 @@ rows are debugpy (`type: "debugpy"`, discovered interpreter in `python`, ENVS in
 default, examples opt in). Spec grammar NAME|INTERP|SCRIPT|CWD|ARGS|ENVS with '|
 rejected at every boundary.
 
+Host-contact fixes (round 2, same day, user-reported on the real fused tree,
+commit 02df192): run() (a) now sets FOLDER via the rust helper's idiom
+(consume PolyOrch_RUST_FOLDER_ROOT, explicit FOLDER arg wins) -- the
+buttons had been landing in the directory-default IDE group; pinned by a
+File API codemodel leg in t-rust-fusion ($ref folder object, equality on
+fused-host/examples/python-basic); (b) the debugpy row label defaults to the
+PREFIXED handle without the verb suffix (bare 'greet' collided with the
+rust rows' namespaced convention in the same launch.json; explicit NAME
+still wins) -- pinned in t-python-knobs leg2. Test-authoring catches of the
+round: codemodel folder fields are $ref objects; PASSTHROUGH appends expand
+variables at APPEND time (scratch-first ordering, the #22 prologue lesson
+in miniature).
+
 Fused entry: examples/python-basic is the loop's tenth subtree (knobs set/unset
 symmetrically per PIT-35; D32 caller key <HOST>_POLYORCH_PYTHON_TARGET_PREFIX honored by
 _polyorch_python_apply_prefix). Button: polyorch-python-basic-greet-run.
