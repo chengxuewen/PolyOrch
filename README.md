@@ -15,13 +15,13 @@ repository gains a single entry point for build, run, debug, and introspection.
 ## Status
 
 **The deliverable is a CMake helper surface plus its test suites** — `cmake/` modules
-(pixi environment face, rust face), `tests/` (offline units + fixture e2e + generator
+(pixi environment, rust, node, python faces), `tests/` (offline units + fixture e2e + generator
 matrix), `examples/`. Documentation remains the specification layer; the whitepaper is a
 frozen v1.0 record (see D16 in `.agents/memorys/decisions.md`).
 
 | | |
 |---|---|
-| Phase | Implementation underway — CMake helper surfaces (pixi environment face, rust face), fixture test suite, local generator matrix; D16 supersedes the old Lua/Xmake-addon delivery form |
+| Phase | Implementation underway — CMake helper surfaces (pixi environment, rust, node, python faces), fixture test suite, local generator matrix; D16 supersedes the old Lua/Xmake-addon delivery form |
 | Stack | CMake helper surface; Pixi environments; xmake = reference corpus + package-management source (vcpkg · Conan via Xrepo) |
 | Tests | `bash tests/run.sh` (offline) · `POLYORCH_TEST_E2E=1 bash tests/run.sh` · `bash tests/matrix.sh` |
 

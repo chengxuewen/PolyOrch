@@ -385,3 +385,57 @@ list is now the 10 generic skills. (C4 note: the skill-phrase allowance's
 `.agents/skills` scoping now matches exactly the ten generic files; the
 retired set lives outside it and needs no allowance -- its English bytes
 pass the plain scan from their new path.)
+
+## D30: numbering continuity -- UNVERIFIED GAP, not a decision (2026-10-08, doc-audit follow-up)
+
+decisions.md jumps D29 -> D31 with no D30 heading and no git-excluded plan-zone note
+found either. Either a ruling was never recorded or a number was skipped. Nothing in
+any live document REFERENCES "D30", so the gap is harmless; this stub exists to make
+the gap itself recorded fact so future audits stop re-flagging it and so D31/D32 are
+provably real decisions. If the original D30 content is ever recovered, replace this
+stub with the actual record.
+
+## D32: the python face (setup/run + VSCode debugpy, 2026-10-08, user-approved inline execution)
+
+Scope (the D29 precedent held): `PolyOrchPythonHelpers.cmake` ships exactly two verbs --
+`polyorch_python_setup()` (three-tier interpreter discovery; tier-a knob WINS over PATH,
+following node's documented contract where its code inverted it -- known-deviation 1)
+and `polyorch_python_run(TARGET/SCRIPT/NAME/ARGS/ENVS/WORKING_DIRECTORY)` registering
+the `<t>-run` button (the rust face's grammar) with `-E env` as the build-time injection
+point (no cargo-style host scrub: python legitimately needs PATH/HOME, the pinned
+interpreter is the half that matters -- PIT-14's shape does not port). Test/wheel/import
+verbs: NOT built, awaiting real consumer pressure (YAGNI, node-beta precedent).
+
+Debug surface: the WP11 machinery was LIFTED into a shared `PolyOrchVSCodeDebugHelpers`
+with a single-writer guarantee -- rust and python rows merge into ONE managed region in
+launch.json (two face-owned regions would overwrite each other on reconfigure; found in
+planning, reviewed as F1); tasks.json stays rust-only with its marker string byte-frozen
+(existing user trees must keep parsing, else PLACED_NEW orphans), and a one-shot
+legacy-marker migration converts pre-D32 launch regions in place (proven live). Python
+rows are debugpy (`type: "debugpy"`, discovered interpreter in `python`, ENVS into
+`env`, no preLaunchTask -- no build step), gated by PolyOrch_PYTHON_VSCODE_DEBUG (OFF
+default, examples opt in). Spec grammar NAME|INTERP|SCRIPT|CWD|ARGS|ENVS with '|
+rejected at every boundary.
+
+Fused entry: examples/python-basic is the loop's tenth subtree (knobs set/unset
+symmetrically per PIT-35; D32 caller key <HOST>_POLYORCH_PYTHON_TARGET_PREFIX honored by
+_polyorch_python_apply_prefix). Button: polyorch-python-basic-greet-run.
+
+Verification layers (all live on the build host): offline stub-driven contract
+(t-python-run: argv/env effects asserted, not rule text), the naming trio
+(t-python-knobs: rust-knob non-leak / python prefix / caller-key), the live debug chain
+(t-python-vscode: rows tables, merged region, migration, gate both polarities) and the
+REAL user chain (t-python-vsdbg: standalone python3 run, 3x "hello, fused!",
+byte-idempotent launch.json, zero tasks footprint), plus the honest proof-of-breakpoint
+(t-python-dap: pure-stdlib DAP client; contract-SKIP on this host, exact lines recorded
+in bc85202 -- the leg is executed nowhere yet). Fusion sentinel extended (t-rust-fusion).
+Suite 57/0/29 fail=0.
+
+Product findings from contact: (1) CMake NO_CACHE find_program SHORT-CIRCUITS when the
+result variable is already defined, even to "" -- the defensive set(_py "") blinded tier-b
+in a real standalone configure (controlled t5/t6 isolated it in one round; the node face
+never pre-sets and carries no bug); (2) the planned button grammar run-<t> was stale
+against rust run():1867's <handle>-run -- aligned before first commit; (3) examples need
+project() placement after the opt-in gate (rust-basic idiom) or discovery dies on
+REQUIRED. Incident: the Momus review dispatch role-crept into implementing + committing
+(PIT-45; archived, reverted; edit-safety #25 written).

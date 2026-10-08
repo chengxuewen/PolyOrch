@@ -16,6 +16,7 @@ The deliverable is the CMake helper surface: plain files under `cmake/`, consume
 list(APPEND CMAKE_MODULE_PATH "<path>/PolyOrch/cmake")
 include(PolyOrchRustHelpers)     # rust face (brings PolyOrchFindRust)
 include(PolyOrchNodeHelpers)     # node face (D29)
+include(PolyOrchPythonHelpers)   # python face (D32)
 include(PolyOrchPixiHelpers)     # environment face
 ```
 
@@ -24,7 +25,7 @@ or, in the embedded shape, `add_subdirectory(PolyOrch)` from the host (embed sen
 naming on the fused surface follows the D27/D28 grammar: kebab real targets under the
 `polyorch-<dir>-` namespace, `::` for exported/imported names only.
 
-## Public functions (44)
+## Public functions (46)
 
 ### `PolyOrchFindRust.cmake` -- rust toolchain discovery
 
@@ -71,6 +72,16 @@ Covered by: the `t-rust-*` family (`build`/`import`/`setters`/`linkplan`/`crossp
 
 Covered by: `t-rust-node`, `t-rust-noderun`, `t-rust-nodebadargs`, `t-rust-nodeknobs`, `t-rust-nodesetup-missing`, `t-rust-fusion`.
 
+### `PolyOrchPythonHelpers.cmake` -- python interpreter + run buttons + debugpy (D32)
+
+| Function | Signature (source comment) |
+|---|---|
+| `polyorch_python_setup` | `polyorch_python_setup([REQUIRED])` |
+| `polyorch_python_run` | `polyorch_python_run(TARGET <t> SCRIPT <s> [NAME <label>] [ARGS <a>...] [ENVS <K=V>...] [WORKING_DIRECTORY <dir>])` |
+
+Covered by: `t-python-run`, `t-python-setup-missing`, `t-python-knobs`,
+`t-python-vscode`, `t-python-vsdbg` (+ the gated `t-python-dap`), `t-rust-fusion`.
+
 ### `PolyOrchPixiHelpers.cmake` -- pixi environments
 
 | Function | Signature (source comment) |
@@ -108,6 +119,11 @@ Covered by: `t-bootstrap-*`, `t-find-real`, `t-env-arg`, `t-json-array*`, `t-scr
   (`polyorch_normalize_name`, `polyorch_evaluate_expression`,
   `polyorch_path_join`, `polyorch_fetch_3rdparty`, `polyorch_add_subdirectory`
   and friends); internal plumbing, not part of the bridge contract.
+- `PolyOrchVSCodeDebugHelpers.cmake` -- the shared `.vscode` managed-region
+  machinery (single writer; rust + python rows merge into ONE launch region,
+  tasks.json stays rust-only with its marker frozen). Private helpers
+  (`_polyorch_vscode_region_write`, `_polyorch_vscode_debug_generate`); the
+  face-local row renderers stay in each face module.
 - `PolyOrchPlatformSupport.cmake` -- platform/triple/mkspec detection shared
   with the host (external rewrite in flight; see `AGENTS.md`).
 

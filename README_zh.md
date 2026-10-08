@@ -13,17 +13,18 @@ PolyOrch 面向多语言 monorepo：多种语言、多套构建系统、一张�
 
 ## 状态
 
-**本仓库不含任何源码。** 它是文档优先的：当前阶段的交付物是 v1.0 规格说明，以及将来用于构建它的
-AI agent 工具链。这里没有 `src/`、没有构建入口、没有测试套件 —— 不必寻找。
+**交付物是 CMake 辅助面及其测试套件** —— `cmake/` 模块（pixi 环境面、rust 面、node 面、python
+面），`tests/`（离线单元 + fixture e2e + 生成器矩阵），`examples/`。文档仍是规格层；白皮书是
+冻结的 v1.0 记录（见 `.agents/memorys/decisions.md` 的 D16）。
 
 | | |
 |---|---|
-| 阶段 | 设计已落地 —— 白皮书 v1.0、架构设计基线、模块参考、12 个项目画像 |
-| 计划技术栈 | Lua，以 Xmake addon 形式分发（Xmake 作引擎，Pixi 管环境） |
-| 源码树 | 尚未加入 |
+| 阶段 | 实施进行中 —— CMake 辅助面（pixi 环境、rust、node、python 面）、fixture 测试套件、本地生成器矩阵；D16 取代旧的 Lua/Xmake-addon 交付形态 |
+| 技术栈 | CMake 辅助面；Pixi 环境；xmake = 参考语料 + 包管理来源（vcpkg · Conan 经 Xrepo） |
+| 测试 | `bash tests/run.sh`（离线）· `POLYORCH_TEST_E2E=1 bash tests/run.sh` · `bash tests/matrix.sh` |
 
-当下真正的门禁是 `.agents/memorys/conventions.md` 里的 shell 检查（C0–C5）；
-没有可运行的构建或测试系统。
+约束性门禁是 `.agents/memorys/conventions.md` 的 shell 检查（C0–C6），由 `scripts/gate.sh` 一并执行；
+测试体系即 `tests/` 的 cmake 用例套件。
 
 ## 仓库结构
 
@@ -40,7 +41,7 @@ docs/          规格说明 —— 从 docs/README.md 开始
   memorys/       易变事实（status / conventions / decisions / pitfalls）
   skills/        agent 技能（58 个 vendored Xmake 技能已移入 docs/reference/xmake-skills/）
 .opencode/     opencode 配置
-scripts/       空 —— 计划中的门禁运行器
+scripts/       激活三件套（pixi.sh/.bat/.ps1）+ 门禁运行器（gate.sh/ctest.sh）
 AGENTS.md      agent 知识库，每轮加载
 SKILL.md       技能登记表
 ```
