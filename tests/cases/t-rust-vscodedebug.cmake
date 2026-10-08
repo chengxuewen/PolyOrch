@@ -40,32 +40,32 @@ set(_E "// __POLYORCH_GENERATED_END__")
 set(_shell "{\n  \"arr\": [\n%ROWS%\n  ]\n}")
 set(_f "${_s}/vdir/launch.json")          # vdir does not exist yet
 
-_polyorch_rust_region_write("${_f}" "${_B}" "${_E}" "    {row:1},\n" "${_shell}" _st)
+_polyorch_vscode_region_write("${_f}" "${_B}" "${_E}" "    {row:1},\n" "${_shell}" _st)
 ck(_st STREQUAL "CREATED")
 file(SHA256 "${_f}" _h1)
 
 # idempotent replace: same rows -> byte-identical file
-_polyorch_rust_region_write("${_f}" "${_B}" "${_E}" "    {row:1},\n" "${_shell}" _st)
+_polyorch_vscode_region_write("${_f}" "${_B}" "${_E}" "    {row:1},\n" "${_shell}" _st)
 ck(_st STREQUAL "REPLACED")
 file(SHA256 "${_f}" _h2)
 ck(_h1 STREQUAL _h2)
 
 # content update: region swaps, shell bytes outside markers preserved
-_polyorch_rust_region_write("${_f}" "${_B}" "${_E}"
+_polyorch_vscode_region_write("${_f}" "${_B}" "${_E}"
     "    {row:1},\n    {row2:2},\n" "${_shell}" _st)
 ck(_st STREQUAL "REPLACED")
 file(READ "${_f}" _t)
 ck(_t MATCHES "row2")
 ck(_t MATCHES "  \\]\n")            # shell tail line survives the swap                # shell tail line survives the swap
 # stale-row removal: a SHRINKING region must leave nothing behind
-_polyorch_rust_region_write("${_f}" "${_B}" "${_E}" "" "${_shell}" _st)
+_polyorch_vscode_region_write("${_f}" "${_B}" "${_E}" "" "${_shell}" _st)
 file(READ "${_f}" _t2)
 ck(NOT _t2 MATCHES "row2")
 ck(_t2 MATCHES "__POLYORCH_GENERATED_END__")
 
 # user content above the markers survives replacement
 file(WRITE "${_f}" "{\n  \"arr\": [\n    {\"user\": true},\n${_B}\n    {row:1},\n${_E}\n  ]\n}\n")
-_polyorch_rust_region_write("${_f}" "${_B}" "${_E}" "    {row:9},\n" "${_shell}" _st)
+_polyorch_vscode_region_write("${_f}" "${_B}" "${_E}" "    {row:9},\n" "${_shell}" _st)
 ck(_st STREQUAL "REPLACED")
 file(READ "${_f}" _t3)
 ck(_t3 MATCHES "\\{\"user\": true\\}")
@@ -75,7 +75,7 @@ ck(_t3 MATCHES "row:9")
 set(_manual "${_s}/manual/launch.json")
 file(MAKE_DIRECTORY "${_s}/manual")
 file(WRITE "${_manual}" "{\"keepme\": 1}\n")
-_polyorch_rust_region_write("${_manual}" "${_B}" "${_E}" "    {x:1},\n" "${_shell}" _st)
+_polyorch_vscode_region_write("${_manual}" "${_B}" "${_E}" "    {x:1},\n" "${_shell}" _st)
 ck(_st STREQUAL "PLACED_NEW")
 file(READ "${_manual}" _m)
 ck(_m STREQUAL "{\"keepme\": 1}\n")

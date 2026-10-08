@@ -2965,81 +2965,18 @@ endfunction()
 # SHELL = full document template used when FILE is absent (contains %ROWS%);
 # BEGIN/END = column-0 marker comment lines; ROWS = comma-terminated rows.
 # Returns via out-var: OK | REPLACED | CREATED | PLACED_NEW.
-function(_polyorch_rust_region_write FILE BEGIN END ROWS SHELL OUT)
-    if(NOT EXISTS "${FILE}")
-        string(REPLACE "%ROWS%" "${BEGIN}\n${ROWS}${END}" _full "${SHELL}")
-        get_filename_component(_par "${FILE}" DIRECTORY)
-        file(MAKE_DIRECTORY "${_par}")
-        file(WRITE "${FILE}" "${_full}\n")
-        set(${OUT} "CREATED" PARENT_SCOPE)
-        return()
-    endif()
-    file(READ "${FILE}" _t)
-    string(FIND "${_t}" "${BEGIN}" _b)
-    string(FIND "${_t}" "${END}" _e)
-    if(_b GREATER -1 AND _e GREATER _b)
-        string(LENGTH "${_t}" _len)
-        string(SUBSTRING "${_t}" 0 "${_b}" _pre)
-        string(LENGTH "${END}" _endlen)
-        math(EXPR _e2 "${_e} + ${_endlen}")
-        string(SUBSTRING "${_t}" "${_e2}" "${_len}" _post)
-        set(_new "${_pre}${BEGIN}\n${ROWS}${END}${_post}")
-        if(NOT _new STREQUAL _t)
-            file(WRITE "${FILE}" "${_new}")
-        endif()
-        set(${OUT} "REPLACED" PARENT_SCOPE)
-        return()
-    endif()
-    # no markers: never rewrite a file we do not own -- park beside it
-    string(REPLACE "%ROWS%" "${BEGIN}\n${ROWS}${END}" _full "${SHELL}")
-    file(WRITE "${FILE}.polyorch-new" "${_full}\n")
-    set(${OUT} "PLACED_NEW" PARENT_SCOPE)
-endfunction()
 
-# End-of-configure deferred generator (hooked at include time, once per tree).
-function(_polyorch_rust_vscode_debug_generate)
-    get_property(_specs GLOBAL PROPERTY POLYORCH_RUST_DEBUG_SPECS)
-    _polyorch_rust_vscode_rows("${_specs}" _launch _tasks)
-    set(_dir "${PolyOrch_RUST_VSCODE_DIR}")
-    if(NOT _dir)
-        set(_dir "${CMAKE_SOURCE_DIR}/.vscode")
-    endif()
-    if(EXISTS "${_dir}" AND NOT IS_DIRECTORY "${_dir}")
-        # a FILE squatting on the directory path: skip loudly, never unlink
-        message(WARNING
-            "PolyOrch_RUST_VSCODE_DIR: '${_dir}' exists as a file -- "
-            "rust debug surface skipped")
-        return()
-    endif()
-    set(_st "")
-    _polyorch_rust_region_write("${_dir}/launch.json"
-        "// __POLYORCH_GENERATED_BEGIN__ (PolyOrch rust debug configs; keep this block last, regenerate via reconfigure)"
-        "// __POLYORCH_GENERATED_END__"
-        "${_launch}"
-"{\n    \"version\": \"0.2.0\",\n    \"configurations\": [\n%ROWS%\n    ]\n}"
-        _st)
-    set(_st2 "")
-    _polyorch_rust_region_write("${_dir}/tasks.json"
-        "// __POLYORCH_GENERATED_BEGIN__ (PolyOrch rust build tasks; keep this block last, regenerate via reconfigure)"
-        "// __POLYORCH_GENERATED_END__"
-        "${_tasks}"
-"{\n    \"version\": \"2.0.0\",\n    \"tasks\": [\n%ROWS%\n    ]\n}"
-        _st2)
-    get_property(_nspecs GLOBAL PROPERTY POLYORCH_RUST_DEBUG_SPECS)
-    list(LENGTH _nspecs _n)
-    string(TIMESTAMP _ts "%H:%M:%S")
-    message(STATUS
-        "PolyOrch: rust debug configs -> ${_dir} at ${_ts} "
-        "(launch ${_st}, tasks ${_st2}; ${_n} run target(s); "
-        "CodeLLDB extension required)")
-endfunction()
+# The managed-region machinery moved to PolyOrchVSCodeDebugHelpers.cmake
+# (D32 T1): rust and python faces share ONE region under a single writer;
+# this face contributes _polyorch_rust_vscode_rows and the register above.
+include("${CMAKE_CURRENT_LIST_DIR}/PolyOrchVSCodeDebugHelpers.cmake")
 
 # Per-round include hook: register the end-of-configure generator ONCE per
 # configure round while the option is ON (GLOBAL properties reset every
 # round, so re-registration across configures stays correct; multiple
-# includes across directories collapse via the flag).
-get_property(_polyorch_dbg_hooked GLOBAL PROPERTY POLYORCH_RUST_DEBUG_HOOKED)
+# includes across directories collapse via the shared flag).
+get_property(_polyorch_dbg_hooked GLOBAL PROPERTY POLYORCH_VSCODE_HOOKED)
 if(PolyOrch_RUST_VSCODE_DEBUG AND NOT _polyorch_dbg_hooked)
-    set_property(GLOBAL PROPERTY POLYORCH_RUST_DEBUG_HOOKED TRUE)
-    cmake_language(DEFER CALL _polyorch_rust_vscode_debug_generate)
+    set_property(GLOBAL PROPERTY POLYORCH_VSCODE_HOOKED TRUE)
+    cmake_language(DEFER CALL _polyorch_vscode_debug_generate)
 endif()
