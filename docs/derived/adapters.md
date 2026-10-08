@@ -15,6 +15,12 @@ PolyOrch's core differentiator is its **adapter architecture**. Adapters are res
 
 The adapter mechanism allows PolyOrch to bring polyglot projects into a single build graph without rewriting existing build logic.
 
+> **D16 lens (decisions.md, 2026-09-22).** This document derives the whitepaper's *adapter
+> surface*; the *delivery model* belongs to `docs/architecture.md` -- under D16 the delivery is
+> the CMake helper surface and Xmake's standing roles are reference corpus + package-management
+> source. Where lines below say "Xmake is the engine", they state the whitepaper's v1.0 model;
+> read them as the prototype-era dual-role resolution that D16 then reframed.
+>
 > **Terminology.** The whitepaper calls these *adapters*. The design baseline reframes the same role for v0.1 as **bridges** and ships four of them — cargo, cmake, pixi, npm — deferring meson and ros/colcon; see `docs/architecture.md` ⑤ and `decisions.md` D8. The Xmake row above is the **engine**, not a bridge: its dual role is resolved, with Xmake as the substrate.
 
 ## Adapter Details
@@ -35,7 +41,7 @@ The adapter mechanism allows PolyOrch to bring polyglot projects into a single b
 | :--- | :--- | :--- |
 | Target system | Native Xmake modules | §6.2 |
 | Integration method | Direct drive | §6.2, §5.3 |
-| Artifacts consumed | Does not consume external artifacts; Xmake also serves as the native build engine — a dual role that is now **resolved** (Xmake is the engine), see `docs/architecture.md` | §5.1, §9.2 |
+| Artifacts consumed | Does not consume external artifacts; Xmake also serves as the native build engine — a dual role that is now **resolved** (v1.0 model: Xmake is the engine; under D16 every project's native build system is its own engine -- see the D16 lens at the head of this file and `docs/architecture.md`) | §5.1, §9.2 |
 | Incremental build capability | Enjoying full caching and incremental builds | §6.2 |
 | Current status | Core build engine | §5.1 architecture diagram, §9.2 `xmake = { enabled = true, core = true }` |
 

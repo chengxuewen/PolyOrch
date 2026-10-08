@@ -2,6 +2,11 @@
 
 > **Authoritative for the CLI and configuration surface.** The v1.0 record for this topic is whitepaper §9.1 and §9.2. Provides the `polyorch` command reference and the `polyorch.toml` / `xmake.lua` examples.
 
+> **D16 lens (decisions.md, 2026-09-22).** The CLI/`xmake.lua` surface below is the whitepaper's
+> v1.0 model. The shipped form (D16/D3-amended) is the CMake helper surface -- `xmake = { core =
+> true }` and "Xmake is the engine" read as the prototype-era engine claim, reframed by D16 to
+> reference corpus + package-management source. See the D16 lens in `docs/architecture.md`.
+
 ## Command Reference (§9.1)
 
 | Command | Purpose | Example |
