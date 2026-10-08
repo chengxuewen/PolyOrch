@@ -1,3 +1,4 @@
+# requires: posix-shell
 include("${CMAKE_CURRENT_LIST_DIR}/_inc.cmake")
 include("${CMAKE_CURRENT_LIST_DIR}/../../cmake/PolyOrchRustHelpers.cmake")
 include("${CMAKE_CURRENT_LIST_DIR}/_requires.cmake")

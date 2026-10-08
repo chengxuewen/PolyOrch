@@ -274,3 +274,57 @@
 - **Solution**: the contract write sits immediately after the module setup, before every gate/return; degradation legs then SKIP at the case level with their true reason.
 - **Verification**: `grep -n 'FIXTURE_ARTIFACTS' <example CMakeLists>` line number is less than the first `return()` line.
 - **Forbidden**: placing the artifacts contract after any conditional return in a driver-driven tree.
+
+## PIT-35: `if(NOT DEFINED)` in a loop is "ever defined", not "defined this iteration" (2026-09-30, D28 round / Momus blocker 1)
+- **Symptom**: guarded fusion-loop knob sets (`if(NOT DEFINED PolyOrch_RUST_TARGET_PREFIX) set(...)`) make iterations 2..N silently inherit iteration 1's prefix; aggregates then collide via the helper's `if(NOT TARGET)` guard -- exactly the silent merge the naming grammar exists to prevent.
+- **Root cause**: the loop's unset() ran ONCE after `endforeach()`; normal variables persist across iterations in the same directory scope, so DEFINED is true from iteration 2 onward and the guarded set never re-fires.
+- **Solution**: move `unset(PolyOrch_RUST_TARGET_PREFIX)`/`unset(PolyOrch_RUST_AGGREGATE_NAME)`/`unset(PolyOrch_RUST_FOLDER_ROOT)` to the END of every iteration (inside the loop); host-override semantics are then per-scope, not per-first-iteration.
+- **Verification**: `awk '/unset\(PolyOrch_RUST_TARGET_PREFIX\)/{u=NR} /endforeach/{e=NR} END{exit !(u<e)}' examples/CMakeLists.txt` exits 0 (unset precedes endforeach); the fused `--target help` shows DISTINCT prefixes per family.
+- **Forbidden**: guarded loop-knob sets with a loop-tail-only unset; assuming DEFINED tracks iteration scope.
+
+## PIT-36: `cmake -P` script mode is not configure mode -- four gotchas, one session (2026-09-30, t-rust-node round)
+- **Symptom**: four distinct failures while writing script-mode cases: (1) `add_custom_target ... is not scriptable`; (2) `project ... is not scriptable`; (3) `file(WRITE ${CMAKE_CURRENT_BINARY_DIR}/...)` lands in the CWD or empty dir (binary dir does not exist in script mode); (4) STATUS lines from a `cmake -P` child appear in ERROR_VARIABLE, not OUTPUT_VARIABLE.
+- **Root cause**: script mode has no generator, no project scope, and no binary-dir concept; `message(STATUS)` writes to stderr.
+- **Solution**: script-mode unit tests exercise only the TARGET-FREE layer (pure functions like `_polyorch_node_apply_prefix`); anything registering targets runs through the drv_run fixture route; writable scratch comes from `_polyorch_pixi_scratch`; child assertions read `${_out}${_err}` merged.
+- **Verification**: `cmake -P <(echo 'project(x)')` fails fast (known); a case that writes files checks `${CMAKE_CURRENT_BINARY_DIR}` is non-empty before use.
+- **Forbidden**: project()/add_custom_target()/add_custom_command() inside a `# requires:`-style case or a `-P` child script.
+
+## PIT-37: `string(JSON MEMBER)` iterates OBJECT keys; array index access is GET with the index path tail (2026-09-30, node import)
+- **Symptom**: `string(JSON out MEMBER "${arr_text}" ${i})` -- both on an extracted array string AND on the document with an index path -- errors "MEMBER needs to be called with an element of type OBJECT, got ARRAY".
+- **Root cause**: MEMBER enumerates object keys; the array element path is the GET subcommand with trailing index arguments.
+- **Solution**: `string(JSON _v GET "${doc}" <path...> ${i})` for `["packages/*"]`-style arrays; TYPE/LENGTH first to validate the shape.
+- **Verification**: `cmake -P <(echo 'set(j {"a":[1,2]}) string(JSON v GET "${j}" a 1) message(STATUS "v=${v})')` prints v=2.
+- **Forbidden**: MEMBER on arrays (two failed rounds before the docs-clicked).
+
+## PIT-38: `add_custom_target` rejects '@'-headed names (2026-09-30, A1 sanitize amendment)
+- **Symptom**: `add_custom_target(polyorch-node-web-@scope-hello-js-build)` fails with "The target name ... is reserved or not valid for certain CMake features, such as generator expressions" -- a hard configure error on every fused build.
+- **Root cause**: leading '@' is reserved (source_group / legacy object semantics); the npm scope '@' therefore cannot survive into a target name at all.
+- **Solution**: sanitize '@org/pkg' -> 'org-pkg' (strip '@', '/' -> '-'); the duplicate-handle FATAL guards the org/pkg-vs-bare-pkg collision the stripping introduces.
+- **Verification**: the t-rust-node fixture pins '@scope/hello-ui' -> handle 'scope-hello-ui'; a bare '@' name still hard-errors if reintroduced.
+- **Forbidden**: carrying npm scope '@' into any CMake target name.
+
+## PIT-39: `polyorch_requires()` without the `# requires:` marker trips the SKIP veto (2026-09-30, hit 3 cases at once)
+- **Symptom**: three new cases passed standalone but FAILED the offline suite as "SKIP veto -- unmarked case skipped as...": the drivers veto any want-pass case whose output contains ": SKIP (" while its header lacks the marker.
+- **Root cause**: the marker contract is DOUBLE-registered by design -- the in-first-three-lines `# requires: <cap>` comment (driver exemption) AND the `polyorch_requires(<cap> _req)` call (the probe). Calling only the function satisfies the probe but not the exemption.
+- **Solution**: a case that calls polyorch_requires always starts `# requires: <cap>` as line 1.
+- **Verification**: `grep -l 'polyorch_requires(' tests/cases/t-*.cmake | xargs grep -L '^# requires:'` prints nothing (t- prefix excludes the _inc/_requires infrastructure files themselves).
+- **Forbidden**: relying on the function call alone to earn a legitimate skip.
+
+## PIT-40: word-boundary rename sweeps hit directory/path arguments (2026-09-30, D28 button sweep)
+- **Symptom**: after prefixing every occurrence of the button names, configure died on `add_subdirectory(polyorch-pixi-configure)` -- "given source ... is not an existing directory": the sweep renamed TARGET names and DIRECTORY path arguments in one pass.
+- **Root cause**: a name like `pixi-configure` is both a target identifier and a real path segment; word-boundary regex cannot distinguish the roles.
+- **Solution**: rename sweeps replace only at registration/property/status sites, then diff-review EVERY match line by role (path args in `add_subdirectory`, `include`, `file()` commands stay bare); or scope the regex to the enclosing command.
+- **Verification**: after the sweep, `grep -n 'add_subdirectory\|include(\|file(' examples/CMakeLists.txt` paths exist on disk (`cmake -S` succeeds).
+- **Forbidden**: trusting a global word-boundary replace for identifiers that double as paths.
+
+## PIT-41: a new family member must COPY a sibling's include/discovery idiom, not re-invent it (2026-09-30, examples/node-web)
+- **Symptom**: the node-web example's module-include block (guard variable + relative path + `.cmake` suffix) failed "include could not find requested file" three rounds running (absolute-path variant included), while every working sibling example carries the same three-line idiom verbatim: `project(<dir> LANGUAGES NONE)` first, then `list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/../../cmake")`, then `include(PolyOrchXxx)` SUFFIXLESS.
+- **Root cause**: debugging a novel variant instead of diffing against the working shape -- the family idioms (include block, STATUS degrade gate, fixture-artifacts placement, FOLDER fallback) are load-bearing and already solved.
+- **Solution**: when adding a family member, copy the working sibling block line-for-line, then adapt names only; invent nothing unless the copy demonstrably fails.
+- **Verification**: `diff <(sed -n '1,12p' examples/rust-nodejs/CMakeLists.txt) <(sed -n '1,12p' examples/node-web/CMakeLists.txt)` shows only name/comment deltas.
+- **Forbidden**: novel include/discovery blocks in family examples (3+ rounds burned per invention).
+
+## Minor captures (2026-09-30, one-liner class)
+- `file(COPY src dst DESTINATION dir)` -- DESTINATION is mandatory even copying in-place; hit twice before writing it once (t-rust-noderun, t-rust-nodeknobs).
+- helper functions that resolve tools must publish via `CACHE ... FORCE` (or PARENT_SCOPE) -- a plain `set()` inside a function dies with the scope; `PolyOrchNode_EXECUTABLE` forgot while the rust face already does (DEBUG found=TRUE exe=[] was the tell).
+- STATUS lines of `cmake -P` children arrive in ERROR_VARIABLE -- child assertions read `${_out}${_err}` merged (PIT-36 sub-fact, pinned separately because it bit a PASS/FAIL judgment round).
