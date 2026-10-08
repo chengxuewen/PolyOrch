@@ -46,7 +46,7 @@ Status: **design baseline**. Diagrams show the target; current reality is tracke
 └──────────────────────────────────────────────────────────────────────────────┘
 ```
 
-The whitepaper's product-level view is a four-layer stack (orchestration / adapter / build engine / environment-dependency). The view above is the implementation form of the same thing: the whitepaper's "adapter layer" and "build engine layer" both resolve to the single Xmake tree, and its "environment and dependency layer" resolves to Pixi plus package-source declarations.
+The whitepaper's product-level view is a four-layer stack (orchestration / adapter / build engine / environment-dependency). The view above is the implementation form of the same thing: under the whitepaper's v1.0 model the "adapter layer" and "build engine layer" both resolved to the single Xmake tree; under D16 each project's native build system is its own engine and the bridge roles are carried by the CMake helper surface (rust / node / pixi faces). The "environment and dependency layer" resolves to Pixi plus package-source declarations (O4 open).
 
 ## ② Data Flow
 ```
@@ -152,7 +152,7 @@ The risk this table exposes: the prototype's most-refined bridges (cmake, ros) a
 
 | # | Question | State |
 |---|---|---|
-| O1 | Which real repository is the validation target? | **decided 2026-09-20 (D10)**: the sibling polyglot monorepo whose working tree currently hosts this checkout — selected by the user. Its identity is recorded only in the git-excluded plan zone (C6), never named in formal documents. Selection criteria it meets: workspace-scale cargo build as the native authority, a multi-feature Pixi environment, and the `bootstrap.*` + `pixi.*` + launcher trio being replaced. Zero coverage there: the npm build surface, third-party CMake dependencies, and vcpkg/conan usage — the npm bridge and O4 stay unvalidated by this choice |
+| O1 | Which real repository is the validation target? | **decided 2026-09-20 (D10)**: the sibling polyglot monorepo whose working tree currently hosts this checkout — selected by the user. Its identity is recorded only in the git-excluded plan zone (C6), never named in formal documents. Selection criteria it meets: workspace-scale cargo build as the native authority, a multi-feature Pixi environment, and the `bootstrap.*` + `pixi.*` + launcher trio being replaced. Zero FIELD coverage there: the npm bridge shipped since D29 (cargo/cmake/pixi/npm — all four bridges now have code and repo-proven tests) but the validation target has not consumed it yet; third-party CMake dependencies and vcpkg/conan usage likewise remain unvalidated by this choice |
 | O2 | Does `xmake-idea` actually provide DAP native debugging, and from which CLion version? | **unverified**. The plugin's existence is confirmed; the whitepaper's debugging claim is not. The vendored corpus has zero matches for `xmake-idea` or DAP, so the claim should be removed or annotated |
 | O3 | ~~What is the exact syntax for a project to declare an addon?~~ | **resolved**: `add_addons("<name> [<range>]")` plus a committed `xmake-addons.lock`. Xmake auto-installs missing addons on project load |
 | O4 | Can vcpkg and conan themselves be brought inside Pixi? | **narrowed 2026-09-20**: consuming them **as Xrepo package sources is confirmed** (`xrepo install vcpkg::zlib`, `conan::zlib/1.2.11`). The open half is bringing them inside a **Pixi-managed environment**; Pixi appears nowhere in the vendored corpus. Still the last invariant-1 violation |
