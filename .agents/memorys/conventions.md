@@ -112,9 +112,10 @@ Chinese is permitted in three places:
 # the parser. Same rationale as excluding node_modules.
 # Skill TRIGGER PHRASES are the same class of functional data (2026-09-30): the Chinese
 # phrases in a skill's description/trigger section must match the user's own wording or the
-# skill never activates. They are activation surface, not prose -- lines inside
-# .agents/skills/*/SKILL.md that sit inside the description/trigger-phrase context are
-# allowed; everything else in a skill file stays English.
+# skill never activates. They are activation surface, not prose -- the code's exemption is
+# deliberately the narrow reading: a line inside .agents/skills/*/SKILL.md whose CJK is
+# entirely within double quotes (a phrase list) counts as functional data; everything else,
+# including the rest of a skill file and all of .agents/rules/, stays English.
 python3 - <<'PY'
 import re, pathlib, sys
 CJK = re.compile(r"[\u4e00-\u9fff]")

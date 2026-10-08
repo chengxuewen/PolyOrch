@@ -21,11 +21,12 @@ methodology, applicable to every project, so this file does not enumerate them.
 
 Two groups: the nine authored for this repository, and a vendored third-party set.
 
-### 2a. Authored here (9)
+### 2a. Authored here (10)
 
 | Skill | Type | What it does |
 |---|---|---|
 | `think-before-act` | Meta-constraint | Investigate before acting; present options for approval |
+| `adjudication-walkthrough` | Meta-constraint | Walk design adjudications ONE at a time, plain text, seven-part template |
 | `skill-router` | Meta-constraint | Analyze intent and recommend a skill set |
 | `ecosystem-scan` | Meta-constraint | Audit `.agents/` and scan for adoptable skills |
 | `lesson-review` | Memory | Batch session review; write lessons into `.agents/memorys/` |
