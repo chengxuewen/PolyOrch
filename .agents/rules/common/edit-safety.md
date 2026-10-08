@@ -286,6 +286,6 @@ relevance first).
 call is justified only when it outputs non-empty OR a code path changed.
 
 **Blocking condition**: running full gate.sh on a docs-only change (burned 3-8 min twice,
-user interrupted both times -- "为什么一直阻塞卡住").
+user interrupted both times asking why the session kept blocking).
 
 **Source**: 2026-10-08 naming-unification + audit rounds.
