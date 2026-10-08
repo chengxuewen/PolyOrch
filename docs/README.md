@@ -27,7 +27,7 @@
 | [Project Outline](./derived/outline.md) | Goals / Non-Goals, layer breakdown, doc map, and milestones (proposed) |
 | [Reference Profiles](./reference/README.md) | Externally-sourced profiles of 12 related projects (build orchestrators, build engines, environment/packaging managers). A research zone, bound by C2's sourcing rule |
 
-**Authority note**: authority is federated -- each document answers for its own subject, and `whitepaper.md` is the frozen v1.0 record rather than the arbiter of product facts. The directory a document lives in states its class: `derived/` is the working product surface, `modules/` together with `architecture.md` is the design baseline (decisions, invariants, and empirically verified findings), and `reference/` is externally sourced. This directory's root holds only three anchors: this hub, the record, and the design baseline. **Every document must source its external facts** -- see `.agents/memorys/conventions.md` C2.
+**Authority note**: authority is federated -- each document answers for its own subject, and `whitepaper.md` is the frozen v1.0 record rather than the arbiter of product facts. The directory a document lives in states its class: `derived/` is the working product surface, `modules/` together with `architecture.md` is the design baseline (decisions, invariants, and empirically verified findings), and `reference/` is externally sourced. This directory's root holds four anchors: this hub, the record, the design baseline, and the learning path ([Tutorials](./tutorials.md)). **Every document must source its external facts** -- see `.agents/memorys/conventions.md` C2.
 
 ---
 

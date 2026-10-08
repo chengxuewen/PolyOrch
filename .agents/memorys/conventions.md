@@ -45,13 +45,15 @@ grep -qF 'Adapter-based integration for heterogeneous build systems, environment
 grep -qF '面向多语言 monorepo 的可扩展构建编排器。' docs/whitepaper.md || { echo "FAIL: Chinese main description missing"; exit 1; }
 # The record must declare itself frozen, or the authority model silently reverts.
 grep -qF 'Frozen v1.0 record' docs/whitepaper.md || { echo "FAIL: whitepaper archive status missing"; exit 1; }
-# docs/ may hold at its root only three anchors: the hub, the authoritative source, and the
-# design baseline. Everything else is classified by the subdirectory it lives in: derived/
-# (bound by this convention), modules/ (design), reference/ (externally sourced).
+# docs/ may hold at its root only four anchors: the hub, the authoritative source, the
+# design baseline, and the learning path (tutorials.md, added 2026-09-30; the audit that
+# promoted it is the 2026-10-08 doc-audit). Everything else is classified by the subdirectory
+# it lives in: derived/ (bound by this convention), modules/ (design), reference/
+# (externally sourced).
 python3 - <<'CHECK'
 import pathlib, sys
 DOCS = pathlib.Path("docs")
-ROOT_ALLOWED = {"README.md", "whitepaper.md", "architecture.md"}
+ROOT_ALLOWED = {"README.md", "whitepaper.md", "architecture.md", "tutorials.md"}
 root_actual = {p.name for p in DOCS.glob("*.md")}
 stray = sorted(root_actual - ROOT_ALLOWED)
 derived = sorted(p.name for p in (DOCS / "derived").glob("*.md")) if (DOCS / "derived").is_dir() else []
@@ -63,7 +65,9 @@ print("modules:", mods)
 ok = not stray and derived and "00-overview.md" in mods
 sys.exit(0 if ok else 1)
 CHECK
-echo "PASS"
+rc=$?
+[ $rc -eq 0 ] && echo "PASS"
+exit $rc
 ```
 
 ## C3: "docs cross-links must resolve"
