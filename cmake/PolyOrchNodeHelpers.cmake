@@ -662,3 +662,19 @@ function(_polyorch_node_vscode_rows SPECS LAUNCH_OUT)
     endforeach()
     set(${LAUNCH_OUT} "${_L}" PARENT_SCOPE)
 endfunction()
+
+# ===========================================================================
+# Per-round include hook: register the SHARED end-of-configure generator
+# ONCE per tree while this face's gate is ON (collapses with the rust and
+# python faces' identical hooks via the shared POLYORCH_VSCODE_HOOKED flag
+# -- single writer, one region, all rows merged; see
+# PolyOrchVSCodeDebugHelpers). DEFER is configure-mode-only: script-mode
+# cases (t-node-vscode) include this face with the gate OFF, so the branch
+# never reaches cmake_language(DEFER) there (illegal under -P, measured).
+# ===========================================================================
+include("${CMAKE_CURRENT_LIST_DIR}/PolyOrchVSCodeDebugHelpers.cmake")
+get_property(_polyorch_ndv_hooked GLOBAL PROPERTY POLYORCH_VSCODE_HOOKED)
+if(PolyOrch_NODE_VSCODE_DEBUG AND NOT _polyorch_ndv_hooked)
+    set_property(GLOBAL PROPERTY POLYORCH_VSCODE_HOOKED TRUE)
+    cmake_language(DEFER CALL _polyorch_vscode_debug_generate)
+endif()

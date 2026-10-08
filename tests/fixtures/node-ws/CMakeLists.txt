@@ -36,3 +36,8 @@ polyorch_node_test(TARGET "hello-js")         # none here either -> skip line in
 polyorch_node_run(TARGET "hello-js" SCRIPT hello)
 polyorch_node_run(TARGET "scope-hello-ui" SCRIPT hello)
 polyorch_node_run(TARGET "hello-js" SCRIPT args ARGS "--port=8080")
+
+# debug registration for the vscode legs (D33): gate-first -- inert unless
+# PolyOrch_NODE_VSCODE_DEBUG is ON, so every other node-ws case (gate OFF)
+# configures untouched. hello-js declares main (dist/index.js).
+polyorch_node_debug(TARGET "hello-js")

@@ -54,6 +54,9 @@ set(_pass2 "-DPolyOrchNodeExe=${_stub_dir}/node")
 list(APPEND _pass2 "-DPolyOrchNodeNpm=${_stub_dir}/npm")
 list(APPEND _pass2 "-DPolyOrch_NODE_TARGET_PREFIX=po-node")
 _polyorch_pixi_scratch(_s2)
+# D33: the gate + a PARKED output dir ride leg2. Appended after the scratch
+# exists -- list(APPEND) expands ${_s2} NOW (the 02df192 catch, kept warm).
+list(APPEND _pass2 "-DPolyOrch_NODE_VSCODE_DEBUG=ON" "-DPolyOrch_VSCODE_DIR=${_s2}/vs")
 set(_b2 "${_s2}/knobs-pref")
 drv_run(_dlog2 _rc SKIP_VAR _skip
     FIXTURE "${CMAKE_CURRENT_LIST_DIR}/../fixtures/node-ws"
@@ -62,6 +65,13 @@ drv_run(_dlog2 _rc SKIP_VAR _skip
 ck(_rc EQUAL 0)
 file(READ "${_b2}/_configure.log" _clog2)
 ck(_clog2 MATCHES "2 handle\\(s\\) imported \\[po-node-hello-js;po-node-scope-hello-ui\\]")
+# D33 label parity (runs on node hosts; on this host the whole case
+# contract-SKIPs -- exact line recorded in the commit): debug rows carry
+# the PREFIXED handle and NO verb tail -- the host-contact fix the python
+# face learned late, born fixed here.
+file(READ "${_s2}/vs/launch.json" _lj2)
+ck(_lj2 MATCHES "PolyOrch: po-node-hello-js")
+ck(NOT _lj2 MATCHES "po-node-hello-js-run")
 
 # ---- leg 3: caller-key precedence (the D28 formula, node flavor) ----------
 # <PROJECT>_POLYORCH_NODE_TARGET_PREFIX wins over the classic knob. The key

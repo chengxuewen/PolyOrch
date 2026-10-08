@@ -1,6 +1,8 @@
 cmake_policy(SET CMP0219 NEW)
 include("${CMAKE_CURRENT_LIST_DIR}/_inc.cmake")
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_LIST_DIR}/../../cmake")
+include(PolyOrchRustHelpers)
+include(PolyOrchPythonHelpers)
 include(PolyOrchNodeHelpers)
 
 # t-node-vscode -- the js-debug registration contract (D33 T1).
@@ -170,4 +172,73 @@ _polyorch_node_vscode_rows("" _EL)
 string(COMPARE EQUAL "${_EL}" "" _e0)
 ck(_e0)
 
-message(STATUS "t-node-vscode: OK (FATAL family with stderr-text pins + gate-off silence + rows tables)")
+# ---- three-source merge (direct generator call, t-python-vscode leg-2
+# shape: OVERWRITING set_property seeds -- APPEND would mix the parent's
+# (a)-leg residue into the row-count assertions) ---------------------------
+set(_vd "${_s}/vsmerge")
+set(PolyOrch_VSCODE_DIR "${_vd}")
+set_property(GLOBAL PROPERTY POLYORCH_RUST_DEBUG_SPECS
+    "alpha|/b/alpha|/src/alpha|debug")
+set_property(GLOBAL PROPERTY POLYORCH_PYTHON_DEBUG_SPECS
+    "greet|/usr/bin/python3|/src/main.py|/src||")
+set_property(GLOBAL PROPERTY POLYORCH_NODE_DEBUG_SPECS
+    "runme|/stub/node|${_pkg}/dist/index.js|${_pkg}|||${_pkg}/**/*.map")
+_polyorch_vscode_debug_generate()
+file(READ "${_vd}/launch.json" _c)
+ck(_c MATCHES "PolyOrch debug configs")              # combined marker
+ck(_c MATCHES "\"type\": \"lldb\"")                # rust row
+ck(_c MATCHES "\"type\": \"debugpy\"")             # python row
+ck(_c MATCHES "\"type\": \"node\"")                # node row
+ck(_c MATCHES "\"runtimeExecutable\": \"/stub/node\"")
+ck(NOT _c MATCHES "rust debug configs")              # legacy marker gone
+file(SHA256 "${_vd}/launch.json" _h1)
+_polyorch_vscode_debug_generate()                    # idempotent
+file(SHA256 "${_vd}/launch.json" _h2)
+ck(_h1 STREQUAL _h2)
+file(READ "${_vd}/tasks.json" _tj)                   # rust specs -> tasks
+ck(_tj MATCHES "PolyOrch rust build tasks")          # frozen marker
+
+# ---- configure-mode polarity legs (B-4: the HOOK is product code and must
+# run HERE, not only where the GUI is). Stub-driven tier-a knobs: node-ws
+# configures offline (setup REQUIRED is honored by the stubs, the import
+# never invokes the PM at configure). T2 tail hook: gate ON at include time
+# registers the DEFER -- legal in real configure mode, the exact path a
+# user's workspace takes.
+set(_stub_dir "${_s}/stubs")
+file(MAKE_DIRECTORY "${_stub_dir}")
+file(WRITE "${_stub_dir}/npm" "#!/bin/sh\nexit 0\n")
+file(WRITE "${_stub_dir}/node" "#!/bin/sh\necho v22\n")
+file(COPY "${_stub_dir}/npm" "${_stub_dir}/node" DESTINATION "${_stub_dir}"
+     FILE_PERMISSIONS OWNER_READ OWNER_WRITE OWNER_EXECUTE)
+
+drv_run(_dl _rc SKIP_VAR _skip
+    FIXTURE "${CMAKE_CURRENT_LIST_DIR}/../fixtures/node-ws"
+    BUILD "${_s}/ws-on"
+    PASSTHROUGH "-DPolyOrchNodeExe=${_stub_dir}/node"
+        "-DPolyOrchNodeNpm=${_stub_dir}/npm"
+        "-DPolyOrch_NODE_VSCODE_DEBUG=ON"
+        "-DPolyOrch_VSCODE_DIR=${_s}/vson")
+ck(_rc EQUAL 0)
+file(READ "${_s}/vson/launch.json" _on)
+string(FIND "${_on}" "\"name\": \"PolyOrch: hello-js\"" _h)
+ck(NOT _h LESS 0)                                    # live chain -> label
+string(FIND "${_on}" "\"runtimeExecutable\": \"${_stub_dir}/node\"" _h)
+ck(NOT _h LESS 0)                                    # tier-a knob -> RUNTIME
+ck(NOT _on MATCHES "hello-js-run")                   # no verb tail (parity)
+string(FIND "${_on}" "\"type\": \"node\"" _h)
+ck(NOT _h LESS 0)
+
+drv_run(_dl2 _rc2 SKIP_VAR _skip2
+    FIXTURE "${CMAKE_CURRENT_LIST_DIR}/../fixtures/node-ws"
+    BUILD "${_s}/ws-off"
+    PASSTHROUGH "-DPolyOrchNodeExe=${_stub_dir}/node"
+        "-DPolyOrchNodeNpm=${_stub_dir}/npm"
+        "-DPolyOrch_VSCODE_DIR=${_s}/vsoff")
+ck(_rc2 EQUAL 0)
+# the honest OFF shape: the tail hook never registers the DEFER -> the
+# generator never runs -> NO file at all (asserting this via a direct
+# generator call would lie: region_write has no empty-rows short-circuit,
+# B-1/Momus-r3 mutual finding)
+ck(NOT EXISTS "${_s}/vsoff/launch.json")
+
+message(STATUS "t-node-vscode: OK (FATAL family + gate-off silence + rows tables + 3-source merge + configure polarity both ways)")
