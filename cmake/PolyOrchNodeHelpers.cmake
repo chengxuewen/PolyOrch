@@ -42,6 +42,12 @@ cmake_minimum_required(VERSION 3.25)
 option(PolyOrch_NODE_VSCODE_DEBUG
     "Generate VSCode js-debug launch configs for polyorch_node_debug handles" OFF)
 
+# IDE grouping: every node creation site below consumes the fusion loop's
+# PolyOrch_RUST_FOLDER_ROOT (the family root knob despite the historical
+# RUST substring) exactly like the python face's run() does since 02df192.
+# Deliberate behavior change recorded in D33: standalone node-web no longer
+# synthesizes a relative-path FOLDER -- standalone stays unset, family law.
+
 # ---------------------------------------------------------------------------
 # discovery
 # ---------------------------------------------------------------------------
@@ -324,6 +330,11 @@ function(polyorch_node_import)
                 WORKING_DIRECTORY "${_root_dir}"
                 USES_TERMINAL
                 COMMENT "node: build ${_name} (${_handle})")
+            if(PolyOrch_RUST_FOLDER_ROOT)
+                set_target_properties("${_handle}-build" PROPERTIES
+                    FOLDER "${PolyOrch_RUST_FOLDER_ROOT}")
+            endif()
+
             # entry + LOCATION (adjudication 2: dist/ convention)
             _polyorch_node_read_entry(_entry "${_mf}")
             set(_out_dir "${_mdir}/dist")
@@ -442,6 +453,11 @@ function(polyorch_node_build)
         WORKING_DIRECTORY "${_mdir}"
         USES_TERMINAL
         COMMENT "node: build ${_name} (${_handle})")
+    if(PolyOrch_RUST_FOLDER_ROOT)
+        set_target_properties("${_handle}-build" PROPERTIES
+            FOLDER "${PolyOrch_RUST_FOLDER_ROOT}")
+    endif()
+
     set_property(GLOBAL PROPERTY "POLYORCH_NODE_MANIFEST_${_handle}"
         "${B_MANIFEST}")
     set_property(GLOBAL PROPERTY "POLYORCH_NODE_ROOT_${_handle}"
@@ -482,6 +498,10 @@ function(polyorch_node_test)
         WORKING_DIRECTORY "${_root}"
         USES_TERMINAL
         COMMENT "node: test ${_pkg} (${_th})")
+    if(PolyOrch_RUST_FOLDER_ROOT)
+        set_target_properties("${_th}-test" PROPERTIES
+            FOLDER "${PolyOrch_RUST_FOLDER_ROOT}")
+    endif()
 endfunction()
 
 # polyorch_node_run(TARGET <handle> SCRIPT <name> [ARGS ...])
@@ -512,6 +532,10 @@ function(polyorch_node_run)
         WORKING_DIRECTORY "${_root}"
         USES_TERMINAL
         COMMENT "node: ${R_SCRIPT} (${_rh})")
+    if(PolyOrch_RUST_FOLDER_ROOT)
+        set_target_properties("${_rh}-run-${R_SCRIPT}" PROPERTIES
+            FOLDER "${PolyOrch_RUST_FOLDER_ROOT}")
+    endif()
 endfunction()
 
 # polyorch_node_debug(TARGET <handle> [NAME <label>] [ARGS <a>...]

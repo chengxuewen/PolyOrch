@@ -61,6 +61,33 @@ if(_node_req)
             message(FATAL_ERROR "check failed: fused node target '${_t}' absent from host tree")
         endif()
     endforeach()
+    # D33: node buttons/mediators sit in the loop's per-example IDE group
+    # (the host-contact FOLDER contract, python leg's twin below; the
+    # reply files carry the folder as a $ref object).
+    file(MAKE_DIRECTORY "${_h}/b/.cmake/api/v1/query/codemodel-v2")
+    execute_process(
+        COMMAND "${CMAKE_COMMAND}" -S "${_h}" -B "${_h}/b"
+        ENVIRONMENT "PATH=$ENV{PATH}:$ENV{HOME}/.cargo/bin:$ENV{HOME}/.pixi/bin"
+        RESULT_VARIABLE _rcn OUTPUT_QUIET ERROR_QUIET)
+    ck(_rcn EQUAL 0)
+    set(_foldnd "")
+    file(GLOB _tjs "${_h}/b/.cmake/api/v1/reply/target-*.json")
+    foreach(_tj ${_tjs})
+        file(READ "${_tj}" _j)
+        string(JSON _nm GET "${_j}" name)
+        if(_nm STREQUAL "polyorch-node-web-hello-ts-build")
+            string(JSON _fp ERROR_VARIABLE _fe GET "${_j}" folder)
+            if(_fe)
+                message(FATAL_ERROR "node mediator carries NO FOLDER (IDE misgroup): ${_fe}")
+            endif()
+            string(JSON _fpn GET "${_fp}" name)
+            set(_foldnd "${_fpn}")
+        endif()
+    endforeach()
+    if(_foldnd STREQUAL "")
+        message(FATAL_ERROR "codemodel reply never produced the node target json")
+    endif()
+    ck_str("${_foldnd}" "fused-host/examples/node-web")
 else()
     foreach(_t ${_node_names})
         string(FIND "${_tdirs}" "${_t}.dir" _hit)

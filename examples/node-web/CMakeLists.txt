@@ -13,8 +13,18 @@
 #   fused:       part of the examples umbrella (PolyOrch_BUILD_RUST_EXAMPLES=ON
 #                runs this loop; targets carry the polyorch-node-web- prefix)
 #   run:         cmake --build build --target <prefix>hello-ts-run-hello
+#   debug:       js-debug rows (VSCode built-in, no extension) land in the
+#                shared managed region; standalone usage parks the output:
+#                cmake -S examples/node-web -B build -DPolyOrch_VSCODE_DIR=build/.vscode
 
+cmake_minimum_required(VERSION 3.22)
 project(node-web LANGUAGES NONE)
+
+# D33 opt-in (before the include: the tail hook reads the gate at include
+# time). hello-ts ONLY -- @scope/hello-js declares no entry (main/module/
+# exports), registering it would FATAL inside the gate on every node-having
+# host (momus-v2 B1).
+set(PolyOrch_NODE_VSCODE_DEBUG ON)
 
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/../../cmake")
 include(PolyOrchNodeHelpers)
@@ -40,17 +50,6 @@ set(POLYORCH_FIXTURE_ARTIFACTS
 string(JOIN "\n" _af ${POLYORCH_FIXTURE_ARTIFACTS})
 file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/polyorch-fixture-artifacts.txt" "${_af}\n")
 
-# FOLDER idiom: the fusion loop injects PolyOrch_RUST_FOLDER_ROOT for the
-# whole family (it is the family root despite the historical RUST substring);
-# standalone falls back to this directory's relative name.
-if(PolyOrch_RUST_FOLDER_ROOT)
-    set(_nfolder "${PolyOrch_RUST_FOLDER_ROOT}")
-else()
-    file(RELATIVE_PATH _nfolder
-        "${CMAKE_SOURCE_DIR}"
-        "${CMAKE_CURRENT_SOURCE_DIR}")
-endif()
-
 polyorch_node_import(ROOT "${CMAKE_CURRENT_LIST_DIR}/package.json")
 
 # family verbs over the imported handles:
@@ -62,18 +61,7 @@ polyorch_node_test(TARGET "scope-hello-js")     # no scripts.test -> loud STATUS
 polyorch_node_test(TARGET "hello-ts")           # has scripts.test  -> registered
 polyorch_node_run(TARGET "scope-hello-js" SCRIPT hello)
 
-# FOLDER: the registered names are PREFIXED in the fused tree (the rust-nodejs
-# demo idiom -- compose both branches, or reuse the loop's knobs directly)
-if(PolyOrch_NODE_TARGET_PREFIX)
-    set(_h1 "${PolyOrch_NODE_TARGET_PREFIX}-scope-hello-js-build")
-    set(_h2 "${PolyOrch_NODE_TARGET_PREFIX}-hello-ts-build")
-    set(_h3 "${PolyOrch_NODE_TARGET_PREFIX}-hello-ts-test")
-    set(_h4 "${PolyOrch_NODE_TARGET_PREFIX}-scope-hello-js-run-hello")
-else()
-    set(_h1 "scope-hello-js-build")
-    set(_h2 "hello-ts-build")
-    set(_h3 "hello-ts-test")
-    set(_h4 "scope-hello-js-run-hello")
-endif()
-set_target_properties("${_h1}" "${_h2}" "${_h3}" "${_h4}"
-    PROPERTIES FOLDER "${_nfolder}")
+polyorch_node_debug(TARGET "hello-ts")
+
+# FOLDER is set at the four helper creation sites (root sweep, D33) -- the
+# example composes nothing.
