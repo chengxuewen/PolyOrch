@@ -354,3 +354,14 @@ surface is the PM's workspace machinery, not a compiler); case:
 t-rust-node (4 legs, `# requires: node` = node AND pm, contract skip at
 the gate). (Momus-reviewed; NEEDS-WORK 3 text-level blockers fixed in-plan
 before implementation.)
+
+D29 FIELD CONTACT (2026-10-08, first external consumption): the validation
+host's web-glue cargo step wired via polyorch_rust_build at TRIPLE
+wasm32-unknown-unknown (route C skeleton -- bindgen/opt stay in the host
+script for round 2). It earned its keep immediately: the cross naming table
+rejected wasm triples outright, and the landing added the wasm family --
+bin/cdylib -> <crate>.wasm, staticlib stays the elf-style archive, no C
+linker plane -- scoped to the REAL rust wasm targets (emscripten rejected:
+.cdylib is a .so pair there; the existing t-rust-executables negative leg
+caught the first over-broad regex the same day -- reject-unknown doctrine
+survived feature growth because a test pinned it).
