@@ -263,5 +263,11 @@ include("${CMAKE_CURRENT_LIST_DIR}/PolyOrchVSCodeDebugHelpers.cmake")
 get_property(_polyorch_pyv_hooked GLOBAL PROPERTY POLYORCH_VSCODE_HOOKED)
 if(PolyOrch_PYTHON_VSCODE_DEBUG AND NOT _polyorch_pyv_hooked)
     set_property(GLOBAL PROPERTY POLYORCH_VSCODE_HOOKED TRUE)
-    cmake_language(DEFER CALL _polyorch_vscode_debug_generate)
+    # DEFER TO THE TOP-LEVEL DIRECTORY'S END, not the including
+    # directory's: faces opted in by LATER sibling subdirs must have
+    # registered their specs before the single writer runs (measured
+    # defect 2026-10-08: python-first subdirectory fired the generator
+    # with "node 0" and the later node rows were orphaned forever).
+    cmake_language(DEFER DIRECTORY "${CMAKE_SOURCE_DIR}"
+        CALL _polyorch_vscode_debug_generate)
 endif()

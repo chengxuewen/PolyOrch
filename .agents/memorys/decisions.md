@@ -511,11 +511,19 @@ of the three needing no extension install (rust: CodeLLDB, python: debugpy).
   (4) Every configure-mode product leg needs an offline twin (stub tier-a
   knobs) or it never executes before commit -- the node family's
   requires-gated legs are exactly the CI-only detonators.
-- Three-face hook quirk (pre-existing, python shares it, recorded not fixed
-  -- YAGNI until corpus): `POLYORCH_VSCODE_HOOKED` is consumed by the FIRST
-  opt-in directory; in the fused examples tree only that directory's rows
-  land. Standalone opt-in is the intended UX; a host that includes PolyOrch
-  once at its root gets all families' rows (verified in the real host).
+- Three-face hook ORDERING defect (pre-existing since D32 -- python shared
+  it -- FOUND via the user's node-web report 2026-10-08, FIXED): the hook's
+  `cmake_language(DEFER CALL ...)` deferred to the END OF THE INCLUDING
+  DIRECTORY, so the first opt-in subdirectory fired the generator before
+  later siblings registered their specs -- their rows were orphaned forever
+  (reproduced offline: python-earlier dirA + node-later dirB landed
+  "python 1, node 0"). All three faces now defer with DIRECTORY
+  "${CMAKE_SOURCE_DIR}" -- a single write at the true end of configure,
+  any include order, any directory depth. Pinned by t-node-vscode's
+  cross-sibling ordering leg (scratch order-host, stub knobs, both rows
+  asserted; the leg also carries the written-CMakeLists escaping traps:
+  every ${VAR} destined for the child must be escaped \${VAR} at write
+  time -- three hits while authoring it).
 - beta list (not built, not claimed, no corpus): browser debug (pwa-chrome),
   ts-node direct, preLaunchTask auto-build, jest/vitest debug, attach mode,
   js<->native mixed debug, sourcemap path-rewrite surface, FROM-pixi node

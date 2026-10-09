@@ -241,4 +241,40 @@ ck(_rc2 EQUAL 0)
 # B-1/Momus-r3 mutual finding)
 ck(NOT EXISTS "${_s}/vsoff/launch.json")
 
-message(STATUS "t-node-vscode: OK (FATAL family + gate-off silence + rows tables + 3-source merge + configure polarity both ways)")
+# ---- cross-sibling ordering regression (the measured defect: with the
+# hook DEFER-ing to the INCLUDING directory, the first opt-in subdir fires
+# the generator before later siblings register -- "node 0" orphan rows).
+# The fix defers to the TOP-LEVEL end; this leg pins the invariant offline:
+# python opts in EARLIER (dirA), node LATER (dirB), both rows must land.
+set(_mh "${_s}/orderhost")
+file(MAKE_DIRECTORY "${_mh}/dirA" "${_mh}/dirB")
+file(WRITE "${_mh}/CMakeLists.txt"
+"cmake_minimum_required(VERSION 3.25)\nproject(order-host LANGUAGES NONE)\nadd_subdirectory(dirA)\nadd_subdirectory(dirB)\n")
+file(WRITE "${_mh}/dirA/CMakeLists.txt"
+"list(APPEND CMAKE_MODULE_PATH \"\${POLYORCH_ORDER_MODDIR}\")\ninclude(PolyOrchPythonHelpers)\npolyorch_python_setup()\npolyorch_python_run(TARGET greet SCRIPT \"\${CMAKE_CURRENT_SOURCE_DIR}/m.py\")\n")
+file(WRITE "${_mh}/dirA/m.py" "print(1)\n")
+file(WRITE "${_mh}/dirB/CMakeLists.txt"
+"list(APPEND CMAKE_MODULE_PATH \"\${POLYORCH_ORDER_MODDIR}\")\ninclude(PolyOrchNodeHelpers)\npolyorch_node_setup()\npolyorch_node_build(TARGET hi-ts MANIFEST \"\${CMAKE_CURRENT_SOURCE_DIR}/package.json\")\npolyorch_node_debug(TARGET hi-ts)\n")
+file(WRITE "${_mh}/dirB/package.json" "{\"name\":\"hi-ts\",\"main\":\"dist/index.js\",\"scripts\":{\"build\":\"echo stub\"}}\n")
+file(MAKE_DIRECTORY "${_mh}/dirB/dist")
+file(WRITE "${_mh}/dirB/dist/index.js" "console.log(1)\n")
+execute_process(
+    COMMAND "${CMAKE_COMMAND}" -S "${_mh}" -B "${_mh}/b"
+        "-DPolyOrch_VSCODE_DIR=${_s}/vsorder"
+        "-DPolyOrch_PYTHON_VSCODE_DEBUG=ON" "-DPolyOrch_NODE_VSCODE_DEBUG=ON"
+        "-DPolyOrchNodeExe=${_stub_dir}/node" "-DPolyOrchNodeNpm=${_stub_dir}/npm"
+        "-DPolyOrchPythonExe=${_stub_dir}/node"
+        "-DPOLYORCH_ORDER_MODDIR=${CMAKE_CURRENT_LIST_DIR}/../../cmake"
+    RESULT_VARIABLE _rco OUTPUT_QUIET ERROR_VARIABLE _erco)
+if(NOT _rco EQUAL 0)
+    message(FATAL_ERROR "order-host configure failed: ${_erco}")
+endif()
+file(READ "${_s}/vsorder/launch.json" _ord)
+string(FIND "${_ord}" "PolyOrch: greet" _h)          # earlier sibling
+ck(NOT _h LESS 0)
+string(FIND "${_ord}" "PolyOrch: hi-ts" _h)          # LATER sibling -- no orphan
+ck(NOT _h LESS 0)
+ck(_ord MATCHES "\"type\": \"debugpy\"")
+ck(_ord MATCHES "\"type\": \"node\"")
+
+message(STATUS "t-node-vscode: OK (FATAL family + gate-off silence + rows tables + 3-source merge + configure polarity both ways + cross-sibling ordering)")
