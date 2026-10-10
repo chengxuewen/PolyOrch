@@ -302,7 +302,7 @@ function(_polyorch_python_vscode_rows SPECS LAUNCH_OUT)
         # 7th field, optional (legacy rows carry six). list(GET) out of range
         # is FATAL, so the length guard is mandatory, not stylistic.
         list(LENGTH _f _fn)
-        set(_jmc ON)
+        set(_jmc "ON")
         if(_fn GREATER 6)
             list(GET _f 6 _jmc)
         endif()

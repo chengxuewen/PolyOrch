@@ -63,11 +63,13 @@ polyorch_node_run(TARGET "scope-hello-js" SCRIPT hello)
 
 # Cross-package stepping: hello-ts imports hello-js via workspace:*; the
 # runtime resolves the linked package to its REALPATH under
-# packages/hello-js -- outside the row's default per-package glob. OUTFILES
-# (comma-separated) extends outFiles to both packages' generated js so
-# breakpoint prediction survives the hop. Never glob .map here (PIT-63).
+# packages/hello-js -- outside the row's default per-package glob. An
+# explicit comma-separated OUTFILES REPLACES the defaults with both
+# packages' dist globs plus the node_modules exclusion the defaults
+# carried, so breakpoint prediction survives the hop. Never glob .map
+# here (PIT-63).
 polyorch_node_debug(TARGET "hello-ts"
-    OUTFILES "${CMAKE_CURRENT_SOURCE_DIR}/packages/hello-ts/dist/**/*.js,${CMAKE_CURRENT_SOURCE_DIR}/packages/hello-js/dist/**/*.js")
+    OUTFILES "${CMAKE_CURRENT_SOURCE_DIR}/packages/hello-ts/dist/**/*.js,${CMAKE_CURRENT_SOURCE_DIR}/packages/hello-js/dist/**/*.js,!${CMAKE_CURRENT_SOURCE_DIR}/packages/**/node_modules/**")
 
 # FOLDER is set at the four helper creation sites (root sweep, D33) -- the
 # example composes nothing.

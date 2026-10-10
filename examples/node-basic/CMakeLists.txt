@@ -6,7 +6,8 @@
 # `program` resolves to the real source file and js-debug binds
 # breakpoints in it directly -- plain JS needs no source maps. Like every
 # node debug row it carries a preLaunchTask; here that rebuilds the stub
-# `node-basic-build` mediator (a harmless echo) -- the no-maps story is unchanged.
+# `node-basic-build` mediator (an offline npm install of the file: dep
+# plus an echo) -- the no-maps story is unchanged.
 # Single-package registration (polyorch_node_build + polyorch_node_debug);
 # the workspace machinery is node-web's subject, not repeated here.
 #

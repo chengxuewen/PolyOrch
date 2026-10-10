@@ -141,8 +141,10 @@ execute_process(
     COMMAND "${_npm}" install --no-audit --no-fund
     WORKING_DIRECTORY "${_ex}"
     ENVIRONMENT "${_env}"
-    RESULT_VARIABLE _irc OUTPUT_QUIET ERROR_QUIET)
-ck(_irc EQUAL 0)
+    RESULT_VARIABLE _irc OUTPUT_VARIABLE _iout ERROR_VARIABLE _ierr)
+if(NOT _irc EQUAL 0)
+    message(FATAL_ERROR "t-node-basic-launch: npm install failed (rc=${_irc}):\n${_iout}${_ierr}")
+endif()
 execute_process(
     COMMAND "${_node}" "${_script}"
     WORKING_DIRECTORY "${_ex}"
