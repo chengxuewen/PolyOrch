@@ -121,7 +121,9 @@ import re, pathlib, sys
 CJK = re.compile(r"[\u4e00-\u9fff]")
 ALLOWED = "面向多语言 monorepo 的可扩展构建编排器。"
 EXTS = {".md", ".mjs", ".js", ".json", ".jsonc", ".toml", ".sh", ".txt", ".py", ".yaml", ".yml"}
-SKIP = {".git", "node_modules", ".omo", "target", ".pixi", "book-to-skill"}
+# .superpowers is the subagent-dev scratch (git-ignored, holds Chinese plan-excerpt
+# briefs like .omo); SKIP excludes both.
+SKIP = {".git", "node_modules", ".omo", ".superpowers", "target", ".pixi", "book-to-skill"}
 # trigger-phrase allowance: a line whose CJK is inside double quotes (phrase lists) counts
 # as functional data
 def triggers_only(line):

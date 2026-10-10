@@ -61,6 +61,10 @@ Thumbs.db
 out
 log
 dist
+# The node-debug fixture's dist/index.js is a checked-in demo entry (see
+# tests/fixtures/node-debug/CMakeLists.txt); re-include it under the bare dist rule.
+!tests/fixtures/node-debug/dist/
+!tests/fixtures/node-debug/dist/index.js
 build
 target
 *.node
@@ -124,3 +128,6 @@ CMakeFiles/
 
 # ctest drops Testing/Temporary logs when run from a source dir (standard hygiene)
 /Testing/
+
+# SDD scratch workspaces (git-ignored)
+.superpowers/

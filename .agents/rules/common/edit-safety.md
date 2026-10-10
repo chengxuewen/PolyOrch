@@ -231,6 +231,7 @@ grep -c "duplicate-pattern" <file>    # expect 1; >1 = edit inserted duplicates
 ### 18. Edit-tool payloads: fresh tags + short entries, or fall back to python replace (2026-09-21 session, 4 occurrences)
 
 **Rule**: batch `edit` calls failed this session in three recurring shapes: (1) guessed LINE#ID tags (never type hashes from memory -- take them from the latest read); (2) a single `lines[]` string with embedded real newlines or heavy quoting crashing payload parsing ("edits parameter must be a non-empty array"); (3) continuing to edit after a hash-mismatch without re-reading. For any insertion over ~15 lines or containing quotes/backslashes, prefer the python read→replace(assert count==1)→write recipe (same as rules 8-10) or heredoc.
+Note (2026-10-09 recurrence): the same 'edits parameter must be a non-empty array' error also fires when a lines[] entry is itself a nested JSON array -- every element must be a flat string (two occurrences this session, both payload-side, both fixed by flattening).
 **Verification**: after every batch, `cmake -P <file>` / `bash -n` / JSON parse of touched artifacts; diff line-count matches the intended delta.
 **Blocking condition**: second failed edit on the same region attempted without a fresh read.
 
@@ -296,3 +297,36 @@ user interrupted both times asking why the session kept blocking).
 **Precedent**: 2026-10-08 -- Momus dispatched with a bare plan-file path implemented Tasks 1-2 and committed `b220774` unprompted; caught by the user noticing the "hang"; full revert + archive required.
 **Verification**: the dispatch prompt text contains the boundary line (grep before send); the post-run git audit prints the same HEAD as before dispatch.
 **Blocking condition**: dispatching over a repo without the clause; trusting a subagent-managed tree without the git audit.
+
+### 26. A footgun fix must sweep all sibling faces in the same change (PIT-48)
+
+**Rule**: when fixing a discovery/priority/cache-class footgun in ONE face module
+(python/rust/node/pixi), grep the other faces for the same idiom in the SAME commit —
+the fix is a class, not a line. The node tier-a inversion lived 8 days next to a
+comment that promised the opposite, because the python fix of the identical NO_CACHE
+class (D32 contact) never swept the sibling.
+**Precedent**: 2026-10-08 — `-DPolyOrchNodeExe` stub lost to PATH node; caught only
+when nodejs got installed (PIT-49's flip day).
+**Verification**: `grep -n 'find_program.*NO_CACHE' cmake/PolyOrch*Helpers.cmake` — every hit
+must sit behind its knob check (`if(Knob) ... else() find_program ... endif()` shape).
+**Blocking condition**: committing a per-face priority fix with the class-grep not run;
+a comment asserting an order that the code does not implement.
+
+### 27. Question-first, stop-honored (PIT-50 escalation -- user corrected 3x, 2026-10-08)
+
+**Rule**: when the user turn ENDS IN A QUESTION (fullwidth or ASCII ?, or why/how/what/whether -- in any language, the user's Chinese included), the reply
+STARTS with prose answering the literal question -- symptom, root cause, why it happened
+-- BEFORE any tool call. Tools may only gather evidence the answer itself needs, and the
+answer must be restated after them. A user abort (Ctrl-C / a "stuck?" or triple-question outburst in any language / repeated
+correction) is a STOP signal: the next turn answers and asks what to do -- it NEVER
+resubmits "the next command". Skill/command invocations run their OWN protocol: a
+/lesson-review is answered by memory writes, not by more building (the 2026-10-08
+first attempt at exactly this violated the rule it was recording).
+**Precedent**: 2026-10-08 -- "you did not answer my question?" then "why does every question of mine get no answer and slide straight into execution?" (both translated from the user's Chinese)
+while fixes stacked between the questions; every abort was treated as an accidental
+interruption instead of an instruction.
+**Verification**: self-check before sending -- first paragraph of the reply to a
+why-question contains the literal answer; the turn after any user abort contains at
+most one read-only command plus prose, never a chained run.
+**Blocking condition**: answering a why-question with an action; resuming a killed
+command chain after an abort without being asked.

@@ -17,13 +17,15 @@
 | `rust-bindings/` | `cmake -S rust-bindings -B build` | the FLAGSHIP binding story, one crate two foreign surfaces: a `#[cxx::bridge]` C++ surface (both directions -- C++ calls Rust, Rust calls back into C++) consumed by the repo's first real C++ executable, and a `#[no_mangle] extern "C"` surface documented by cbindgen, installed via install(EXPORT) + PUBLIC_HEADER, and consumed by a separate `find_package` project. Also the only example exercising `polyorch_rust_clean` and `polyorch_rust_package_version` |
 | `rust-cross/` | `rustup target add x86_64-unknown-linux-musl` then `-DPolyOrch_RUST_CARGO_TARGET=<triple>` | cross-compiling in one graph: every handle routes through `--target` (artifacts nest under `.cargo-target/<triple>/`), while `polyorch_rust_set_hostbuild` opts one handle back OUT to the host layer -- device binary + build-machine binary, one configure |
 | `node-web/` | `cmake -S node-web -B build` | "CMake orchestrates an npm/pnpm workspace": `polyorch_node_import` reads the root manifest's workspaces globs and registers one -build mediator per member; the `workspace:*` dependency edge is a real `add_dependencies`. Zero-dependency node build scripts -- the orchestrated surface is the package manager's workspace machinery, not a compiler (corepack abstraction, dist/ convention, one-shot verbs; D29). Fused: `polyorch-node-web-...` |
+| `node-basic/` | `cmake -S node-basic -B build` | the source-level js-debug carrier: the package's `main` points at `src/index.js`, so the generated launch config's `program` IS the real source file -- F5 in VSCode's built-in js-debug hits breakpoints inside `src/index.js` with no source maps and no extension (D37 gives the row a preLaunchTask that rebuilds the stub `node-basic-build` mediator; node-web's hello-ts shows the built-entry shape instead). Single-package `polyorch_node_build` + `polyorch_node_debug`; the debug gate opts in in-file, park the output with `-DPolyOrch_VSCODE_DIR=build/.vscode`. Fused: `polyorch-node-basic-...` |
+| `node-ts-basic/` | `cmake -S node-ts-basic -B build` | the TS debug carrier (D37): the built-entry shape -- the package's `main` points at `dist/index.js`, `tsc` emits `dist/index.js.map` beside it, and the generated launch row carries `sourceMaps` + a `preLaunchTask` that runs `node-ts-basic-build` first -- F5 = incremental tsc build, then js-debug lands breakpoints back in `src/index.ts` through the map. Prereq: `tsc` on PATH (`pixi global install typescript`); absent, the example registers nothing with a STATUS note. Single-package `polyorch_node_build` + `polyorch_node_debug`; the debug gate opts in in-file, park the output with `-DPolyOrch_VSCODE_DIR=build/.vscode`. Fused: `polyorch-node-ts-basic-...` |
 | `rust-basic/` | `cmake -S rust-basic -B build` | the rust helpers on the system route: `polyorch_rust_setup()` (no `FROM` -- cargo/rustc from `PATH`) selects the toolchain, `polyorch_rust_build()` exports the binary as the imported target `greet`, `polyorch_rust_test()` registers a non-default `cargo test` target, `polyorch_rust_run()` wires `--target greet-run`; the whole example is offline -- nothing here installs or pins the toolchain (pinning is an environment concern, and the pixi `FROM pixi` route is a covered mechanism, not an example need) |
 
 **Route matrix note**: every rust example carries BOTH routes -- the default
 configure is the system route, and adding `-DPolyOrch_EXAMPLE_ROUTE=pixi`
 (+ `-DPolyOrch_PIXI_MIRROR=cn` on a domestic network) re-runs the SAME
 example with the toolchain delivered by a pixi env (the umbrella targets
-`rust-import-pixi` / `rust-link-c-pixi` encode this). A dedicated "pixi rust" example
+`polyorch-rust-import-pixi` / `polyorch-rust-link-c-pixi` encode this). A dedicated "pixi rust" example
 would duplicate the buttons; the route IS the option.
 
 The tool-only half of the cold start is its own entry point --
@@ -37,9 +39,9 @@ its own `standalone/` build dir, so they never collide with the embedded
 configure):
 
 ```bash
-cmake --build build --target pixi-bootstrap   # may reach the network
-cmake --build build --target pixi-configure   # read-only
-cmake --build build --target pixi-workspace   # writes its build dir
+cmake --build build --target polyorch-pixi-bootstrap   # may reach the network
+cmake --build build --target polyorch-pixi-configure   # read-only
+cmake --build build --target polyorch-pixi-workspace   # writes its build dir
 ```
 
 `rust-basic` has no remote button: it is FUSED -- with cargo reachable its
@@ -55,27 +57,31 @@ mechanism, not the numbers.
 
 ## Fused vs remote-control examples (WP12)
 
-System-route rust examples are **fused into the host graph**: opening the
-examples tree (or a host that `add_subdirectory`s them with
-`PolyOrch_BUILD_RUST_EXAMPLES=ON` and cargo reachable) yields real verb
-targets per example -- `polyorch-rust-import-say-hi-exe-build/-run`,
-`polyorch-rust-link-c-cli-user-tool-build`, `polyorch-rust-profile-features-demo-build/-rel-build`,
-`polyorch-rust-basic-greet-build/-run/-test` -- plus a per-example aggregate
-(`polyorch-rust-import-all` etc.). Each subtree
-degrades to a STATUS note (and registers nothing) when cargo is not
-reachable in the GUI's PATH, mirroring rust-basic.
-Fused targets follow the **literal directory-name grammar**
-(`<directory>-<handle>-<verb>` for handle families, `<directory>-all` for
-aggregates) so the host namespace never carries bare crate-ish names
-that could collide with the host's own targets. IDE grouping follows each
-subtree's calling directory (`examples/rust-import` etc. as FOLDERs).
+Each family of fused entries has its **own** option gate (the symmetry is
+the contract, pinned by `t-examples-gates`; no family rides another's):
 
-**Remote-control buttons stay remote**: the pixi-route buttons
-(`rust-import-pixi` / `rust-link-c-pixi`, `pixi-env-run`), `rust-install-export`
-and the pixi trio materialize environments or independent build trees on
-click -- that work (first-run network solve included) must never sit inside
-a host configure, so they remain standalone sub-configures driven by a
-single button.
+| flag | entries added to the fused graph | tool absence behavior |
+|---|---|---|
+| `PolyOrch_BUILD_RUST_EXAMPLES` | the eight `rust-*` examples (needs cargo; the gate itself also tests the probe) | STATUS degradation per subtree |
+| `PolyOrch_BUILD_NODE_EXAMPLES` | `node-web`, `node-basic`, `node-ts-basic` | self-degrades: no node+pm -> subtree registers nothing (setup STATUS names the missing half; discovery probes PATH, `~/.pixi/bin`, then pixi-env globs -- a pixi-global install needs no PATH surgery; `node-ts-basic` additionally probes `tsc` the same three tiers) |
+| `PolyOrch_BUILD_PYTHON_EXAMPLES` | `python-basic` | interpreter three-tier probe; degrades with STATUS |
+| `PolyOrch_BUILD_PIXI_EXAMPLES` | the pixi-route remote buttons | button absent with a STATUS note |
+
+System-route examples are **fused into the host graph**: a host that
+`add_subdirectory`s `examples/` with the family flags ON yields real verb
+targets per example -- `polyorch-rust-import-say-hi-exe-build/-run`,
+`polyorch-rust-link-c-cli-user-tool-build`,
+`polyorch-rust-profile-features-demo-build/-rel-build`,
+`polyorch-rust-basic-greet-build/-run/-test`,
+`polyorch-node-web-hello-ts-build/-test`,
+`polyorch-node-web-scope-hello-js-build/-run-hello`,
+`polyorch-node-basic-node-basic-build`,
+`polyorch-python-basic-greet-run` -- plus, for the rust entries, one
+aggregate `polyorch-<directory>-all` per entry (the node/python faces
+carry their verb targets; the `-all` aggregate is rust-only machinery). The debug plane (CodeLLDB /
+debugpy / js-debug rows in the shared `.vscode` managed region) is opt-in
+per example; see each example header for the exact knob and the
+`PolyOrch_VSCODE_DIR` parking note.
 
 ## Debugging rust targets in VSCode
 

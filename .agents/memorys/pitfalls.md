@@ -368,3 +368,160 @@
   suite fail=0 (all three were observed on the revert round).
 - **Forbidden**: dispatching review/analysis agents over a repo without a non-
   implementation MUST-NOT; accepting a subagent's tree changes without a git audit.
+
+## PIT-46: a family riding another family's gate -- and the borrow documented as design (2026-10-08, D33 round, user-found x2)
+- **Symptom**: `node-web`/`python-basic` appeared in the fused examples graph only when `PolyOrch_BUILD_RUST_EXAMPLES=ON` and cargo was reachable; user: "why is the node-web subdirectory mixed in with the rust examples?" (translated from the user's Chinese). My first fix then removed ALL gating (bare `list(APPEND _fused ...)`) -- user: "that arbitrary?" (translated).
+- **Root cause**: D29/D32 reused the existing loop (prefix/aggregate/FOLDER knobs were already there) and hung the new entries off the wrong axis; status/README then recorded the borrow as ordinal facts ("9th/10th fused entry"), laundering an accident into apparent design. The counter-fix kept the laziness: deleting a guard without naming the new control knob.
+- **Solution**: one `PolyOrch_BUILD_*_EXAMPLES` option per family, exactly the symmetry the file already carried for rust/pixi (family-idiom-copy-first AGAIN, this time on the GATE axis, not the include axis of PIT-41); tool absence degrades inside each subtree.
+- **Verification**: `cmake -P tests/cases/t-examples-gates.cmake` (leg1 rust-ON/node-OFF => zero node-web targets with the tool present; leg2 rust-OFF/node-ON => targets present). NEGATIVE PROOF observed: leg1 planted-violation run printed "node-web rode the RUST gate again" (C0 satisfied).
+- **Forbidden**: adding a loop entry whose presence is controlled by another family's gate; removing an existing gate in one edit without stating which knob now owns the control.
+
+## PIT-47: discovery that depends on the authoring shell's PATH -- silent zero-target configure (2026-10-08, user-found)
+- **Symptom**: user's interactive shell: flags correct, nodejs installed via `pixi global` -- configure rc=0 and NO node-web targets at all.
+- **Root cause**: node exe tier's `find_program` carried `HINTS ~/.pixi/bin`, the corepack/npm tiers did NOT (PATH-only); a PATH-less shell found node but not the PM -> `POLYORCH_NODE_FOUND=FALSE` -> node-web self-degrades to `return()`. The tool shell exported `~/.pixi/bin` everywhere, masking this for three test rounds -- every green suite number was PATH-surgery green.
+- **Solution**: `HINTS ${_roots}` on all PM tiers (symmetry within the one tool family's discovery contract).
+- **Verification**: `env PATH=/usr/bin:/bin <abs-cmake> -S <host> -B <b> -DPolyOrch_BUILD_NODE_EXAMPLES=ON && --target help | grep node-web` -> 4 targets + `PolyOrch: polyorch-node-web-hello-ts` row (observed this round).
+- **Forbidden**: shipping any tool-discovery path tested only under the authoring shell's PATH; a discovery family whose tiers search different root sets.
+
+## PIT-48: comment promised knob-priority, code order did the opposite (2026-10-08, latent since D29)
+- **Symptom**: `-DPolyOrchNodeExe=<stub>` + a real node on PATH -> the generated row carried the REAL node; two stub-assert legs failed the moment nodejs was installed (t-node-vscode :226).
+- **Root cause**: setup ran the PATH `find_program` FIRST and the tier-a knob as the `if(NOT ...)` fallback; the comment above it read "tier a: explicit override wins over everything". The python face had the identical NO_CACHE-class footgun FIXED in D32's contact round -- the fix never swept the sibling module, and the node module copied python's prose without its order.
+- **Solution**: knob checked before any probe (python's fixed shape); comment and order now agree.
+- **Verification**: t-node-vscode ON child asserts the STUB path in `runtimeExecutable` with real node present -- fails if the order regresses.
+- **Forbidden**: fixing a priority/discovery footgun in one face without grepping every face for the same idiom in the SAME change (escalated to edit-safety #26).
+
+## PIT-49: recorded contract-SKIP lines are untested code (2026-10-08, cost: two same-day bugs)
+- **Symptom**: the moment `pixi global install nodejs` succeeded, the node family executed for the first time ever and failed twice: an unnormalized `cases/../fixtures` path in t-node-debug's assertion, and PIT-48 in the product.
+- **Root cause**: every configure-mode product leg sat behind `# requires: node`; recording the exact SKIP line (bc85202 discipline) buys HONESTY, not COVERAGE -- the feature shipped five commits of "green" that never ran its main chain on this host.
+- **Solution**: (a) the offline stub-driven twin (B-4 doctrine; implemented as a3 + ordering legs BEFORE the live legs ever ran -- they are what caught PIT-48); (b) when a capability becomes installable on this host, install it and run the flipped legs immediately, re-stamping suite numbers.
+- **Verification**: skip counts move when tools appear -- compare (58/0/30 without node vs the pending re-run with node); `POLYORCH_TEST_E2E` is NOT the same switch as `# requires:` capability gates.
+- **Forbidden**: declaring a feature landed while its core-chain legs have zero offline-executed twins.
+
+## PIT-50: answering with action instead of an answer (2026-10-08, user-corrected x3 -> ESCALATED to edit-safety #27)
+- **Symptom**: user asked "why confused? / why no target?" (translated from Chinese) -- replies were fix-commands and verification logs; the literal questions stayed unanswered until "you did not answer my question?" (translated). Same shape earlier: a "hurry-up" nudge (translated) answered with polling instead of a decision ask.
+- **Root cause**: orchestrator bias -- verification-before-completion made me stack evidence before stating the conclusion; action felt safer than prose. For a why-question, evidence WITHOUT the answer first reads as evasion.
+- **Solution**: for every user question turn: direct prose answer FIRST (symptom -> root cause -> why it escaped -> repro/fix command), tool calls after.
+- **Verification**: self-check -- the first sentence of the reply answers the literal question; the adjudication-walkthrough / "speak plainly" rulings already demanded this and I drifted.
+- **Forbidden**: ending a why-question turn on tool output with no prose root cause.
+- **Recurrence** (same day, x2 more): while answering THIS lesson's review the pattern fired again -- chained
+  gate runs after the user's questions, four aborts -- which escalated it to the binding
+  rule edit-safety #27 (question-first, stop-honored).
+
+## PIT-51: chained one-shot commands -- interrupted mid-chain leaves mutated state and invisible progress (2026-10-08, user-aborted x4)
+- **Symptom**: `sed mutate && cmake -P && sed restore && gate.sh` as ONE command; the user aborted twice -- each abort could have left package.json MUTATED and the gate's numbers half-written; and "which step is stuck" was unobservable from outside.
+- **Root cause**: treating the shell line as a transaction. &&-chains bundle probe mutations, cleanups and long runs into one uninterruptible opaque unit.
+- **Solution**: one logical step per command; temp-mutation probes restore INSIDE the same unit unconditionally (trap, or assert+restore in one script), never chained with anything else; long runs stand alone and are offered, not auto-appended.
+- **Verification**: any command line containing a mutation (`sed -i` on tracked files) must contain its own restore within the same process (`trap ... EXIT` or script-local), never via `&&` to the next phase.
+- **Forbidden**: chaining mutate→test→restore→full-suite into one command; an interrupted chain is repo state, not just a lost run.
+
+## PIT-52: pkill/pgrep -f matching its own cmdline -- FOURTH confirmed (2026-10-08; lineage PIT-54/PIT-120/2026-09-01/this)
+- **Symptom**: cleanup command `pkill -f 'gate.sh'` killed the tool shell itself (its own command line contains the literal); the call hung to timeout, the user saw a dead agent mid-crisis.
+- **Root cause**: the rule exists (Process Management in edit-safety, twice-recorded) and I reached for the pattern anyway under interruption pressure.
+- **Solution**: this repo's tool shells: NO pattern-`-f` process kills in the default path. Inspect read-only first (`ps -eo pid,etime,cmd | grep '[g]ate.sh'` bracket trick), then kill explicit PIDs if truly needed.
+- **Verification**: `grep -c "pkill -f" <the command about to run>` -- if it matches its own arguments, rewrite.
+- **Forbidden**: any `-f` pattern whose literal appears in the current command line; recurrence count >=4 mandates the read-only-first order every time.
+
+## PIT-53: a case leg that builds the whole graph to test one artifact (2026-10-08, cost: the blocking the user complained about)
+- **Symptom**: the availability leg ran `cmake --build <fused-host> --target <button>` -- when node landed (flip day) the branch became reachable for the first time and pulled the FULL fused graph (cargo compile of every rust example) into the suite: t-rust-fusion 13s -> 10min+, gate.sh aborted twice.
+- **Root cause**: choosing the "faithful runner" (cmake --build) where the assertion only needs the button's generated argv: `npm run -w @scope/hello-js hello` in the example dir. Leg COST is a design property that changes with the environment -- capability gates hide legs until flip day, then they detonate.
+- **Solution**: execute the single generated command directly (the command-shape parity is proven by the t-node family's fixture legs); the pin asserts script existence + output text.
+- **Verification**: `time cmake -P tests/cases/t-rust-fusion.cmake` ~15s ceiling; on any flip-day (tool installed/removed), re-time every newly-reachable leg before quoting suite numbers.
+- **Forbidden**: `cmake --build` of a multi-family graph inside a case leg to check one target's script; trusting a leg's historical runtime after its gate flipped.
+
+## PIT-54: relocating a sliced gate script breaks its `cd "$(dirname "$0")/.."` anchor -- false greens mixed with false reds (2026-10-09)
+- **Symptom**: `sed '/---- suites/,$d' scripts/gate.sh > /tmp/gate-c1c6.sh && bash /tmp/gate-c1c6.sh` reported C2/C4/C5 FAIL and C1/C3/C6 PASS -- but the C4 hit-list named `migrate_viewer.py`, `cm/wasmer/...` (not repo files at all).
+- **Root cause**: gate.sh pins its working directory relative to its OWN location; relocated to /tmp the whole C-block scanned /tmp -- greps on missing paths exit non-zero, and the C1/C6 `if grep... then FAIL else PASS` shape turned "directory absent" into false PASS. The verdicts were an artifact of the probe, not of the repo.
+- **Solution**: run the canonical script from the repo root unmodified; if a section must be sliced for concurrency, keep the slice at the same directory depth (`scripts/.gate-c1c6.tmp.sh`) and delete it after. C4 re-run canonical after the real fix: none.
+- **Verification**: any gate verdict must be reproducible by the same command from the repo root (rule #19 generalized: relocation of a path-anchored script counts as a variant); `git status` clean of the temp slice after use.
+- **Forbidden**: executing a sliced gate from a different directory depth; trusting gate output whose FAIL list names files outside the repo.
+
+## PIT-55: wasm-pack's implicit binaryen download + restricted egress = silent infinite hang; an expanded execution surface detonates it (2026-10-09)
+- **Symptom**: `bash tests/run.sh` (OFFLINE phase, historical ~1 min) froze >10 min; killed cleanly, no orphan. Repro landed on `t-rust-wasm`: cargo Finished in 0.07s, then `wasm-pack build` hung with zero output.
+- **Root cause**: the host never had the FULL WP18 prereq set -- `wasm-opt` (binaryen) absent, `~/.cache/.wasm-pack` empty. wasm-pack's release flow downloads binaryen implicitly; egress to GitHub is blocked -> TCP wait forever; the example rule ships WITHOUT `--mode no-install` (comment claimed it, command did not), so the download path was live. This stayed invisible because the leg contract-SKIPed while node was absent -- the 2026-10-08 flip installed nodejs and OPENED the execution surface, exactly what "re-run before quoting numbers" warned about. (Two stale zero-byte `.wasm-pack/*.lock` files left by SIGTERMs are corpses, not the cause -- deleting them changed nothing, fuser proved no holder.)
+- **Solution**: `pixi global install binaryen` (wasm-opt 121 at `~/.pixi/bin`) completes the documented prereq set; `t-rust-wasm` then EXECUTES and passes in ~3 min.
+- **Verification**: `timeout -k 5 240 cmake -P tests/cases/t-rust-wasm.cmake` rc=0; suite offline/e2e un-frozen (65/0/26, 87/0/4).
+- **Forbidden**: treating an environment-gated leg that suddenly starts EXECUTing as a regression in YOUR change before checking the host delta; running `tests/run.sh` on a tool-shell whose PATH lacks `~/.pixi/bin` (wasm/node legs resolve tools only through PATH + the case fallbacks).
+- **Recurrence (2026-10-09, second hang)**: the binaryen install closed only the wasm-opt leg; the no-install omission kept the *wasm-bindgen* download live -- `t-rust-wasm` hung again (14 min, ESTAB to the GitHub Pages CDN) once the `# requires: node` gate legitimately opened. Root-cause fix landed: both wasm-pack rules pin `--mode no-install --dev` (D36), the example probes wasm-bindgen presence, the case mirrors that gate.
+- **Forbidden (added)**: closing a PIT's symptom (install the missing binary) while its stated root cause names an unfixed code omission -- the hang returns through the next un-exercised path.
+
+## PIT-56: user-quote Chinese inside memorys/rules is NOT C4-exempt -- the double-quote allowance is SKILL.md trigger phrases only (2026-10-09)
+- **Symptom**: canonical C4 went truly red on 6 lines: PIT-46/PIT-50 symptom lines quoting the user's Chinese verbatim and edit-safety rule #27's trigger list/precedent quotes.
+- **Root cause**: the 2026-10-08 lesson-review round wrote verbatim user-Chinese quotes (a `user: "<why...>"` string in the source) into `.agents/memorys/` + `.agents/rules/`; C4's exemption was deliberately narrowed to a quoted-CJK line in `.agents/skills/*/SKILL.md` (activation surface), everything else stays English. The gate itself had not been re-run on that round's files before stamping "C4 pass".
+- **Solution**: translate the quotes, keep provenance with "(translated from the user's Chinese)"; semantic verbatimness is preserved, the machine-consumed surface stays English.
+- **Verification**: C4 canonical block from conventions.md verbatim -> `CJK outside allowed zones: none`.
+- **Forbidden**: citing the SKILL.md quote exemption to justify CJK in memorys/rules; stamping "C4 pass" without running the block on the files of your own round.
+
+## PIT-57: rename sweeps strand STRING paths -- second occurrence; now gate-scanned (2026-10-09)
+- **Symptom**: 6 remote buttons in `examples/CMakeLists.txt` ran `cmake -S`/`cmake -P`
+  against nonexistent `polyorch-*` directories (broken at HEAD since D28), and
+  `examples/README.md` carried `--target` commands naming targets that do not exist.
+  No test caught it: no leg executes button COMMANDs; t-examples-gates asserts
+  registration + STATUS text only.
+- **Root cause**: same class as PIT-28 -- CMake names/paths are strings with no
+  symbol linkage; the sweep that re-prefixed target names also hit path-segment
+  strings and README commands. A path only evaluated at click time can never
+  false-fail a configure-time assertion.
+- **Solution**: paths fixed toward the D27 bare-directory grammar (directories are
+  the grammar, the prefixed paths were the collateral); README commands aligned;
+  `t-examples-gates` leg 3 auto-scans every SOURCE_DIR reference in
+  `examples/CMakeLists.txt` for path existence, with an empty-scan tripwire.
+- **Verification**: plant a bad path -> case red; restore -> green (observed live
+  2026-10-09). Offline suite 67/0/26.
+- **Prevention**: any rename sweep of CMake names or paths must end against a
+  FRESH empirical target/path list (rule 21 idiom) -- and for run-time-only string
+  references, at least one leg must execute them or assert their target exists
+  (leg 3 is that leg for examples/ buttons).
+- **Blocking condition**: committing a rename sweep with no run-path assertion in
+  place for the touched strings.
+
+## PIT-58: a `# requires:` probe missing discovery tiers desyncs gate from product -- false FATAL, not false skip (2026-10-09)
+- **Symptom**: `t-rust-fusion` FATALed "fused node target registered WITHOUT node+pm
+  (degradation broken)" on the post-flip host; the product's discovery found
+  node+npm while the case's node capability reported absent.
+- **Root cause**: `_requires.cmake` probed node through three tiers (PATH ->
+  `~/.pixi/bin` -> pixi-env glob) but its npm/corepack companions through PATH only.
+  A pixi-global npm lives in `~/.pixi/bin`; the gate (parent shell PATH) and the
+  product (driver-composed child PATH) then disagree on tool presence and the case
+  picks the WRONG assertion polarity -- the else-leg fires on a host where the
+  positive leg was the truth.
+- **Solution**: the PM probe mirrors the same tiers as node. Rule: a capability
+  probe is a COPY of the product face's discovery, tier-for-tier -- never a subset.
+- **Verification**: t-rust-fusion OK standalone; offline suite 67/0/26 with the node
+  family executing.
+- **Prevention**: when a face grows a discovery tier, grep `tests/cases/_requires.cmake`
+  for the matching capability in the same commit (PIT-48 class, applied to gates).
+- **Blocking condition**: adding/altering a face's discovery tiers while the
+  corresponding `# requires:` probe keeps a narrower search.
+
+## PIT-59: long suites behind a foreground pipe-filter -- grep buffers nothing shows, tail clips the names; two tool timeouts cost two full re-runs (2026-10-09)
+- **Symptom**: `bash tests/run.sh 2>&1 | grep -E '^FAIL'` (600s, then 900s retry) returned "(no output)" and was killed by the tool timeout -- no FAIL names, twice. The earlier `| tail -4` run HAD completed but showed only the summary (pass=58 fail=2 skip=33): the two failing case names had scrolled past the window.
+- **Root cause**: (a) grep block-buffers when stdout is not a tty -- a filtering pipe on a long run shows NOTHING until the process exits, so the whole tool window burns while the names sit unflushed; (b) the suite's wall time had grown legitimately (the node/wasm gates opened and those legs now EXECUTE, PIT-55 doctrine) -- a timeout sized for the old ~1 min wall reads as a hang but is just longer work; (c) `tail -N` on a possible-failure run structurally cannot keep the names.
+- **Solution**: the monitored run pattern, used twice with zero loss today: `nohup <suite> > /tmp/.../suite.log 2>&1 & echo bg=$!` then poll `while ps -p $pid; do sleep 15; done; grep -E '^FAIL|pass=' suite.log`. Names come from the log after the fact; every tool window is a cheap poll, never a stream. On the FIRST run of an uncertain suite, tee full output to a file instead of piping to head/tail.
+- **Verification**: `grep -E '^FAIL' /tmp/.../suite.log` returns the offending case stems (or nothing on green) with rc=0 regardless of wall time.
+- **Forbidden**: foreground pipe-filters on runs whose wall may exceed the tool timeout; reading only `tail -4` when `fail>0`; declaring a suite "hung" before checking whether an environment flip opened new EXECUTing legs (cross-ref PIT-55 Forbidden).
+- **Amendment (same session, observed twice)**: the `while ps -p $pid; do sleep; done` wait itself burns the tool timeout if the run exceeds it (600s and 840s windows were eaten before the gate finished). Prefer a NON-BLOCKING peek per round: `ps -p $pid >/dev/null && tail -3 suite.log || grep -E '^FAIL|pass=' suite.log` -- returns instantly, costs seconds, and the conversation keeps other work available between peeks.
+
+## PIT-60: cmake_language(DEFER CALL) without DIRECTORY fires at the END OF THE INCLUDING DIRECTORY -- a shared deferred surface orphaned by the first opt-in (2026-10-09, user-found, fixed by 8a02fe9)
+- **Symptom**: field report "hello-ts debug target not appearing" -- `polyorch_node_debug(TARGET "hello-ts")` registered, yet the generated launch.json carried no node row. Reproduced offline: python-earlier dirA + node-later dirB configured through one host -> "launch CREATED; ... python 1, node 0".
+- **Root cause**: the three-face shared debug generator armed itself with `cmake_language(DEFER CALL ...)`; CMake defers to the end of the CURRENT (including) directory scope, so the FIRST opt-in subdirectory fired the single writer before later siblings (later iterations of the examples fusion loop) had registered their specs -- their rows were orphaned forever. Pre-existing since D32 (python shared the shape, unnoticed because rust opts in first in the fused tree and its own rows were all the suite asserted).
+- **Solution**: all three faces defer with `DIRECTORY "${CMAKE_SOURCE_DIR}"` -- the single writer runs once at the TRUE end of configure, any opt-in order, any directory depth. Pinned by t-node-vscode's cross-sibling ordering leg (both polarities).
+- **Verification**: `grep -n 'cmake_language(DEFER CALL' cmake/*.cmake` -- every call must carry `DIRECTORY "${CMAKE_SOURCE_DIR}"` or an explicit comment why a directory-local defer is intended.
+- **Forbidden**: arming an end-of-configure single-writer deferred step from a reusable module WITHOUT the explicit DIRECTORY anchor -- the fire point is the first includer, not the last event.
+
+## PIT-61: CMake-as-data -- every `${VAR}` destined for the CHILD configure must be `\${VAR}`-escaped at WRITE time (2026-10-09, user round x3 + same session x2 close calls)
+- One-line: when a cmake (or test) writes another CMakeLists via string concatenation/file(WRITE), all `${...}` that must survive to child-configure time need `\${...}` escaping at write time -- t-node-vscode's ordering leg hit it three times (recorded in the 8a02fe9 commit text); this session twice came within one run of the same trap (leg-3's REPLACE pattern, MATCHALL's `\\$\\{`). Check: after generating, actually configure the generated file once (or grep the writer for unescaped `${` inside append blocks).
+
+## PIT-62: a test that injects the very PATH a feature consumes renders a green e2e blind to the real invoker -- verify at the user's shell, not a helper's (2026-10-10, user-found via VSCode F5)
+- **Symptom**: real VSCode debug broke with `tsc: not found` (task ran `cmake --build --target <ts-mediator>` -> `npm run build` -> `tsc -p .`), while `t-node-ts-debug.cmake` passed GREEN.
+- **Root cause**: the node `polyorch_node_build` mediator invoked `npm run build` with NO environment of its own, so the npm script resolved sibling tools (`tsc`) from the AMBIENT PATH. The e2e case wrapped its own build step in `ENVIRONMENT "PATH=$ENV{PATH}:<tscdir>:<nodedir>:~/.pixi/bin"` -- it injected exactly the dependency the product failed to carry, so its green said nothing about VSCode's task shell (which lacks ~/.pixi/bin). Same class as the verification-honesty rule: a component test that stubs the boundary it claims to prove.
+- **Solution**: make the mediator self-sufficient (library: `COMMAND ${CMAKE_COMMAND} -E env "PATH=<node-bin>:<pm-bin>:$ENV{PATH}" <pm> run build` -- the node-face twin of the rust PIT-14 host-env isolation), and let the example declare its tool dir via `PolyOrchNode_BUILD_ENV_PATH`. The e2e then RUNS THE BUILD WITH A STRIPPED `PATH=/usr/bin:/bin` (reproducing the task shell): RED before the fix, GREEN after -- a real regression lock.
+- **Verification**: `cmake -P tests/cases/t-node-ts-debug.cmake` builds the mediator under `PATH=/usr/bin:/bin` and still emits dist+map; offline 68/0/26, e2e 90/0/4, matrix 6/6. Reproduce-by-strip idiom: `env PATH=/usr/bin:/bin cmake --build <tree> --target <mediator>` must succeed.
+- **Forbidden**: a test that supplies, via its own ENVIRONMENT, any resource (PATH entry, credential, cwd) that the PRODUCT is responsible for acquiring -- it converts the acceptance gate into a tautology. The user-facing invocation (GUI task, bare shell) must be reproduced with the product's OWN environment only.
+- **Blocking condition**: claiming a debug/run surface "verified" when the harness, not the example/library, provided the toolchain location.
+
+## PIT-63: js-debug `outFiles` names GENERATED JavaScript, not the `.map` -- a `.map` glob kills breakpoint prediction and an import-time-computes program finishes before runtime binding (2026-10-10, user-found grey breakpoint)
+- **Symptom**: F5 on the `node-ts-basic` TS carrier attached, printed `total=15`, exited; the breakpoint in `src/index.ts` stayed GREY (unverified). Map + `sourceMaps:true` + program/cwd all correct -- only `outFiles` was `.../**/*.map`.
+- **Root cause**: js-debug's `outFiles` "glob patterns specify the **generated JavaScript files**" (vscode-js-debug `src/configuration.ts#L219-225`); the map path is derived FROM the matched `.js` (sibling `.map`/`sourceMappingURL`). `**/*.map` matches only the map file, js-debug reads it as compiled JS, finds no `sourceMappingURL` comment -> no metadata -> **breakpoint PREDICTION (pre-load binding) is dead**. Runtime binding (`resolveSourceMapLocations`, extension-widened so `*.map` happens to match the map URL) still loads -- but `node-ts-basic` computes `total(5)` at MODULE LOAD (~1ms), so the top-level code runs to completion before the runtime-only path binds. Grey + no-pause = prediction lost + import-race.
+- **Solution**: default `polyorch_node_debug` `OUTFILES` -> `${_dir}/**/*.js,!${_dir}/node_modules/**` (mirrors js-debug's own default `${workspaceFolder}/**/*.(m|c|)js`). Restores prediction -> binds before the program runs -> grey gone. The example may still pass an explicit `OUTFILES` override.
+- **Verification**: `tests/cases/t-node-ts-debug.cmake` now asserts the generated launch row's `outFiles` is `[.../**/*.js, !.../node_modules/**]` (byte-exact); `t-node-vscode` default/passthrough pins moved off `.map`. Offline 68/0/26, matrix 6/6. GUI breakpoint-verify was subsequently CONFIRMED by the user (2026-10-10): after reconfiguring the build tree, VSCode F5 binds the src/index.ts breakpoint and pauses normally -- the grey-breakpoint symptom is cleared at the user-facing layer, not just in the emitted glob.
+- **Forbidden**: setting `outFiles` to `*.map`. And the deeper class (extends PIT-62): when a launch attribute's job is to help the debugger find COMPILED output, point it at the compiled artifact the debugger loads, not at the sidecar metadata -- read the debugger's own attribute semantics (cited source), don't pattern-guess.

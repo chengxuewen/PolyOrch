@@ -538,3 +538,149 @@ of the three needing no extension install (rust: CodeLLDB, python: debugpy).
   node codemodel folder pin) contract-SKIP on this node-less host -- exact
   lines recorded in their commits; the offline stub-driven polarity pair
   executes the same hook->DEFER->generator chain here in both polarities.
+
+D33 rounds 2-3 (user-found, 2026-10-08 late day; lessons at PIT-46..PIT-50):
+- Gate symmetry: node-web/python-basic had ridden the RUST option + cargo
+  probe since their D29/D32 entry (borrow misdocumented as design); the
+  corrected shape is one PolyOrch_BUILD_{NODE,PYTHON}_EXAMPLES option per
+  family (rust/pixi symmetry), pinned both directions by the new
+  t-examples-gates (negative proof observed -- C0). examples/README.md now
+  carries the family-flag table that made the absence explicable.
+- Host became a node host mid-round (`pixi global install nodejs` -- network
+  reached conda-forge after all): node 26.10.0 / npm 11.19.1 in ~/.pixi/bin.
+  Flip-day caught two bugs at once (PIT-49): the tier-a knob ORDER inversion
+  in node setup (PIT-48, comment promised knob-wins, PATH actually won --
+  fixed to python's shape; t-node-vscode's stub-vs-real leg is the pin) and
+  the missing `HINTS ~/.pixi/bin` on the corepack/npm discovery tiers
+  (PIT-47 -- the user's PATH-less interactive shell saw a silent zero-target
+  configure; verified fixed with the bare-PATH user-shell simulation).
+- Suite numbers post-flip NOT yet re-stamped at the time of writing: the
+  offline/matrix re-run with node present is an open item (skip counts move;
+  t-rust-nodesetup-missing flips to its own contract-SKIP polarity).
+
+## D34: node source-level debug carrier is node-basic; node-web keeps the dist convention (2026-10-09, user-adjudicated A+C split)
+- **Context**: user report "examples/node-web/src is empty, cannot test VSCode breakpoints". Investigation: the empty `packages/*/src/` dirs are by design (git tracks no files there; the packages' build is the package-root `gen.js` emitting `dist/index.js` -- D29 "scripts ARE the build"). The debug surface pointed at the BUILT entry and that built entry itself crashed at runtime (`gen.js` inlined `JSON.stringify(module)` -- functions dropped -- so `greet()` threw TypeError). The debug acceptance fixture was `tests/fixtures/node-debug`, not the example.
+- **Decision**: (a) NEW `examples/node-basic` -- the source-level js-debug carrier, symmetric to rust-basic(CodeLLDB)/python-basic(debugpy): package `main` -> `src/index.js` (plain JS), so `polyorch_node_debug` resolves the launch `program` to the real source; no build, no source maps, no dependencies. NodeHelpers unchanged -- `_polyorch_node_read_entry` already resolves source entries. (b) node-web KEEPS `main=dist/index.js` (D29 acceptance, guarded by t-node-vscode entry-grammar); its gen.js bug fixed minimally to emit a runtime `require("../hello-js/dist/index.js")` (workspace edge preserved, artifact now runs). (c) the fixture-vs-gitignore CHECKED-IN contradiction fixed by a NARROW negation scoped to `tests/fixtures/node-debug/dist/` only (build trees stay ignored). (d) real-launch e2e leg (`t-node-basic-launch`): `node --inspect-brk=127.0.0.1:0` (ephemeral port announced on stderr -- DevToolsActivePort is NOT written by node 26.10.0, measured), condition-poll the log, assert `/json/list` (curl `--noproxy "*"`) names the source file, kill-by-PID and reap.
+- **Rejected**: pointing node-web's main at src (would dissolve the D29 dist-convention demonstration); custom source-map machinery (YAGNI for plain JS).
+- **Reference**: user rulings via question tool 2026-10-09; t-node-basic / t-node-basic-launch / t-examples-gates node-basic legs; fused grammar unchanged (D28).
+
+## D35: IDE source-mount parity -- node and python faces mount sources like rust (2026-10-09, user-adjudicated "both faces full parity")
+- **Context**: user-found gap -- the rust face mounts crate sources onto every verb node (mediator/-run/-test) as HEADER_FILE_ONLY SOURCES (cargo-metadata-authoritative list + manifest + lockfile; COSMETIC-ONLY argument exempts GLOB-caution); node/python faces had zero `target_sources`/`SOURCES` presence -- IDE target trees showed rust targets expanded and node/python targets bare. Breakpoint UX note: the F5 launch rows (D33/D34) were always functional; the missing half was "open the file from the IDE tree to set the breakpoint".
+- **Decision**: `_polyorch_node_mount_sources` / `_polyorch_python_mount_sources` copy the rust idiom (HEADER_FILE_ONLY ON + family `_SOURCES_PLAIN` escape + HARD-tripwire-at-creation/SOFT-at-reuse + NO_SOURCES on the standalone verb). No metadata authority exists for npm/pip package dirs at configure cost -- the list is a filtered CONFIGURE_DEPENDS glob (display-only makes the precision bar a vendor-tree guard, not a correctness one): node = js/mjs/cjs/ts/tsx/jsx minus node_modules|dist|build|dot-dirs + package.json + lockfiles (package-lock/pnpm-lock/yarn); python = recursive *.py minus venv|.venv|env|build|site-packages|__pycache__|dot-dirs + pyproject.toml/setup.py/requirements.txt (existence-gated). Mount points: node at the four creation sites (import per-member mediator, build, test, run -- same anchors as the D33 FOLDER sweep), python at the run-button site (its only target; root = WORKING_DIRECTORY when set, else caller dir -- WDIR is the crate-dir analogue). workspace-root build() honestly shows member files via the recursive glob (no member recursion problem at per-member sites).
+- **Reference**: cases t-node-sources (fixture tests/fixtures/node-ide-sources; mount+exclusions+NO_SOURCES+verb parity+PLAIN polarity+mediator still builds) and t-python-sources (glob+vendor-guard+both polarities+NO_SOURCES+WDIR root+SOFT-not-fatal); precedent copied = t-rust-ide-sources sources.txt channel + t-node-debug/t-python-vsdbg direct -S/-B shape. GATE ALL GREEN after: offline 67/0/26, e2e 89/0/4, matrix 6/6, ctest x2, C1-C6.
+- **Deviation from rust (documented)**: no per-manifest cache was ported -- rust's cache exists because it runs `cargo metadata` (an external process); a CMake glob is configure-native and caching it would be dead machinery. The glob IS the authority; display-only is what makes that legitimate.
+
+
+## D36: remote-button path repair, per-directory FOLDER mirror, examples watchdog (2026-10-09, user-adjudicated one by one: 1-A / 2-B / 3-B)
+- Ruling 1 (A): the D27/D28 rename sweep had left 6 remote buttons in
+  `examples/CMakeLists.txt` pointing their `-S`/`-P` paths at nonexistent
+  `polyorch-*` directories (the real dirs are the bare D27 grammar: pixi-bootstrap,
+  pixi-configure, pixi-workspace, pixi-env-run, rust-install-export, rust-cross).
+  The 7 path strings were corrected to the directory grammar; target names keep
+  the `polyorch-` namespace (D28). The dangling `--target pixi-*` commands and
+  umbrella names in `examples/README.md` were aligned to the registered targets.
+- Ruling 2 (B): `t-examples-gates` gained leg 3, a scanner that reads
+  `examples/CMakeLists.txt`, regex-catches every `${CMAKE_CURRENT_SOURCE_DIR}/<seg>`
+  reference and asserts each names a real path, with a fail-closed tripwire when the
+  scan matches nothing (no vacuous green). New buttons are covered automatically.
+  Negative proof observed: planted bad path -> red, restored -> green.
+- Ruling 3 (B): the 9 remote buttons' FOLDER mirrors the directory each drives
+  (`${PROJECT_NAME}/examples/<dir>`), unifying the rule with the fusion loop's
+  `PolyOrch_RUST_FOLDER_ROOT` grammar: one IDE group = one disk directory.
+  No test pinned the old flat value (t-rust-fusion asserts button registration,
+  not FOLDER); VS Code's cmake-tools ignores FOLDER -- the gain is VS/Xcode trees.
+- Found during verification and fixed in the same round: (a) `_requires.cmake`'s
+  node capability probed npm/corepack PATH-only while node got the product's
+  three-tier discovery -- a pixi-global npm in `~/.pixi/bin` desynced the gate and
+  false-failed `t-rust-fusion`'s else-leg ("degradation broken"); the PM probe now
+  mirrors the tiers (PIT-58). (b) the rust-wasm example rules omitted their own
+  documented restricted-egress flags: both wasm-pack rules now pin
+  `--mode no-install --dev`, plus a wasm-bindgen presence gate (the example
+  self-degrades; the case probe mirrors it). Its first post-flip execution had hung
+  on wasm-pack's implicit wasm-bindgen download (PIT-55 class recurrence).
+- Suite: offline 67/0/26 (matches the D35 baseline; node + wasm legs EXECUTE, no
+  desync skips).
+- Escalation landed (user-approved, same round): t-examples-gates gained leg 4 --
+  it greps examples/README.md for `cmake --build build --target <name>` commands
+  and asserts each name is a registered target in a pixi-equipped configure (a
+  new hostcfg("buttons") gate). This closes the README-fossil class leg 3 could
+  not see: leg 3 checks path strings inside CMakeLists, leg 4 checks the target
+  names the README tells users to type. Vacuity tripwire (no --target command =
+  FAIL, not silent pass) + pixi-absent graceful degrade (leg 4 skips its own
+  checks with a STATUS note, never faking a green). Negative proof observed:
+  a deliberately-fossil name made it go red, restoring made it go green.
+
+## D37: node TS debug surface -- built-entry + source maps (A-full); native type-stripping demoted to a documented affordance (2026-10-09, user-ruled "Plan A full + install tsc" -- translated from the user's Chinese; LANDED 2026-10-09, SDD)
+- User preference recorded with the ruling: questions framed as best/elegant/complete solutions
+  expect the production-complete answer. A persistent minimal-effort persona mode (ponytail)
+  prunes gold-plating INSIDE the chosen design -- it must never anchor the headline
+  recommendation on the shortcut (the first pass led with "recommend B" and needed an
+  explicit 'do not govern by laziness' correction -- translated from the user's Chinese --
+  to move to A-full; one wasted round).
+- Ruling: TS debugging ships in the industry-standard shape -- package main -> dist/index.js,
+  tsc emits dist/index.js.map, js-debug maps breakpoints back through the row's outFiles
+  (the emitter already defaults it to ${_dir}/**/*.map). tsc is three-tier discovered
+  (PATH -> ~/.pixi/bin -> pixi-env glob, the node face's own idiom); the host gains
+  `pixi global install typescript` (user-authorized; probe measured: no tsc anywhere before).
+- B (node >=23.6 native type stripping, main -> src/index.ts, zero build) is NOT deleted but
+  demoted to a documented dev-fast-path: the mechanism already permits it at zero cost
+  (`_polyorch_node_read_entry` is extension-agnostic -- a .ts main flows straight into the
+  launch program). It is disqualified as the face: erasable-syntax-only, a runtime version
+  floor, and an unverified js-debug .ts binding (TBD). C (tsx/ts-node loader) rejected:
+  ARGS maps to program args, not node flags -- no runtimeArgs slot, would need env plumbing
+  plus an external dep.
+- Approved scope, UNIMPLEMENTED as of this entry (4 tasks open, no code landed -- do not
+  quote suite numbers for this feature): (1) new example examples/node-ts-basic, the 12th
+  fused entry and TS sibling carrier of node-basic under the D34 carrier grammar; node-web
+  and hello-ts stay as-is (the zero-dependency PM-machinery identity is kept intact);
+  (2) node debug spec grammar 7 -> 8 fields (BUILD_TARGET stamped at registration, same
+  reasoning as RUNTIME) + explicit "sourceMaps": true + preLaunchTask in generated rows;
+  (3) tasks.json single-writer region merges node rows after rust (marker STRING unchanged);
+  (4) t-node-debug/t-node-vscode updated, new t-node-ts-debug e2e (real tsc build; dist+map
+  exist; .map sources=src; row content; CDP-level breakpoint binding remains a documented
+  manual line -- honest scope); (5) examples/README row, guarded by the leg-4 watchdog.
+- Context: the field symptom that surfaced the question (hello-ts debug row missing) was the
+  DEFER-orphanning defect, fixed separately by 8a02fe9 (PIT-60); the TS DEMO gap was a
+  fixture gap. Both were real and distinct -- neither was the other's explanation.
+
+LANDED (2026-10-09, subagent-driven): all six plan tasks executed and reviewed.
+New example `examples/node-ts-basic/` (TS carrier: main->dist, `tsc` emits
+`index.js.map`, `polyorch_node_debug` row carries sourceMaps + a preLaunchTask
+that rebuilds the `node-ts-basic-build` mediator; three-tier tsc prereq probe,
+STATUS-degrades when absent). Library: `_polyorch_node_vscode_rows` widened to a
+3-arg (LAUNCH_OUT TASKS_OUT) rust-parity shape; `polyorch_node_debug` stamps the
+8th spec field `${_dh}-build`; sourceMaps rides every node row unconditionally,
+preLaunchTask + a tasks.json row ride only when field 8 is present (length-guard
+keeps legacy 7-field rows rendering); the single-writer tasks region now merges
+rust-then-node (marker string byte-frozen). Tests: t-node-vscode/t-node-debug/
+t-node-basic polarity flipped + pins (sourceMaps, preLaunchTask, the load-bearing
+`--target`, OFF-leg tasks-absence); new t-node-ts-debug.cmake (live tsc build +
+dist/map/demo + byte asserts, negative proof on a /tmp copy). Verification:
+scripts/gate.sh one-shot ALL GREEN -- C1-C6, offline 68/0/26, e2e, matrix 6/6
+(incl Ninja Multi-Config), ctest standalone+e2e. tsc installed host-side via
+`pixi global install typescript` (6.0.2). Native type-stripping (route B) stayed
+documented-fallback only, as ruled. Deviation noted: the carrier opts in via a
+normal (not cache) `set(PolyOrch_NODE_VSCODE_DEBUG ON)`, which shadows -D=OFF, so
+t-node-ts-debug's OFF-polarity leg exercises a scratch copy with the opt-in line
+stripped -- same zero-footprint assertion at the library-default OFF.
+POST-REVIEW USER-FOUND FIX (2026-10-10, systematic-debugging + PIT-62): the real
+VSCode F5 broke -- `cmake --build --target <ts-mediator>` -> `npm run build` ->
+`tsc: not found`, because the node `build()` mediator ran the PM bare and the npm
+script resolved `tsc` from the invoker's AMBIENT PATH (a VSCode task shell lacks
+the tool dir). The e2e had MASKED it by injecting the tool dirs into its own build
+env -- a green e2e that said nothing about the user's shell. Root-cause class fix
+(PIT-48 sibling sweep): a `_polyorch_node_rule_path` helper wraps ALL FOUR PM
+mediators (import-member/build/test/run) in `cmake -E env "PATH=<node>:<pm>:$ENV{PATH}"`
+(node-face twin of rust PIT-14 host-env isolation), and the example declares
+`PolyOrchNode_BUILD_ENV_PATH=<tsc dir>` for tools not co-located with node. The e2e
+build leg now runs under `PATH=/usr/bin:/bin` (RED pre-fix, GREEN post) as the
+regression lock. Verified: offline 68/0/26, e2e 90/0/4, matrix 6/6, all node cases,
+C1/C4/C6; node-web's `node gen.js` sibling case also fixed. Windows caveat noted
+(`$ENV{PATH}` with ';' splits a cmake list under -E env) -- node family is
+Linux-first (O6), for the future cross round.
+
+PIT-63 follow-up (2026-10-10, user-found grey TS breakpoint): the D37 default `OUTFILES`
+was `${_dir}/**/*.map` -- wrong per js-debug (outFiles matches GENERATED .js). Fixed to
+`${_dir}/**/*.js` + node_modules exclusion, restoring breakpoint prediction so the
+import-time-computes carrier binds before running. Regression-pinned in t-node-ts-debug
+byte-exact. offline 68/0/26, matrix 6/6. User CONFIRMED VSCode F5 binds+pauses after reconfigure (2026-10-10): grey-breakpoint cleared at the GUI layer.
