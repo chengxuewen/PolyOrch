@@ -60,7 +60,7 @@ Covered by: `t-rust-findrust`, `t-rust-setup-*`, `t-rust-rustc-version`, `t-rust
 
 Covered by: the `t-rust-*` family (`build`/`import`/`setters`/`linkplan`/`crossplan`/`install*`/`cxxbridge`/`cbindgen`/`pyext`/`vscodedebug`/...).
 
-### `PolyOrchNodeHelpers.cmake` -- node/npm workspaces + js-debug (D29/D33)
+### `PolyOrchNodeHelpers.cmake` -- node/npm workspaces + js-debug (D29/D33/D34/D35/D37)
 
 | Function | Signature (source comment) |
 |---|---|
@@ -71,17 +71,17 @@ Covered by: the `t-rust-*` family (`build`/`import`/`setters`/`linkplan`/`crossp
 | `polyorch_node_run` | `polyorch_node_run(TARGET <handle> SCRIPT <name> [ARGS ...])` |
 | `polyorch_node_debug` | `polyorch_node_debug(TARGET <handle> [NAME <label>] [ARGS <a>...] [ENVS <K=V>...] [OUTFILES <glob,...>])` |
 
-Covered by: `t-rust-node`, `t-rust-noderun`, `t-rust-nodebadargs`, `t-rust-nodeknobs`, `t-rust-nodesetup-missing`, `t-rust-fusion`, `t-node-vscode`, `t-node-debug`.
+Covered by: `t-rust-node`, `t-rust-noderun`, `t-rust-nodebadargs`, `t-rust-nodeknobs`, `t-rust-nodesetup-missing`, `t-rust-fusion`, `t-node-vscode`, `t-node-debug`, `t-node-basic`, `t-node-basic-launch`, `t-node-sources`, `t-node-ts-debug`.
 
-### `PolyOrchPythonHelpers.cmake` -- python interpreter + run buttons + debugpy (D32)
+### `PolyOrchPythonHelpers.cmake` -- python interpreter + run buttons + debugpy (D32/D35/D38)
 
 | Function | Signature (source comment) |
 |---|---|
 | `polyorch_python_setup` | `polyorch_python_setup([REQUIRED])` |
-| `polyorch_python_run` | `polyorch_python_run(TARGET <t> SCRIPT <s> [NAME <label>] [ARGS <a>...] [ENVS <K=V>...] [WORKING_DIRECTORY <dir>])` |
+|| `polyorch_python_run` | `polyorch_python_run(TARGET <t> SCRIPT <s> [NAME <label>] [ARGS <a>...] [ENVS <K=V>...] [WORKING_DIRECTORY <dir>] [FOLDER <ide>] [JUST_MY_CODE ON|OFF] [NO_SOURCES])` |
 
 Covered by: `t-python-run`, `t-python-setup-missing`, `t-python-knobs`,
-`t-python-vscode`, `t-python-vsdbg` (+ the gated `t-python-dap`), `t-rust-fusion`.
+`t-python-vscode`, `t-python-vsdbg` (+ the gated `t-python-dap`), `t-python-sources`, `t-rust-fusion`.
 
 ### `PolyOrchPixiHelpers.cmake` -- pixi environments
 
@@ -122,7 +122,7 @@ Covered by: `t-bootstrap-*`, `t-find-real`, `t-env-arg`, `t-json-array*`, `t-scr
   and friends); internal plumbing, not part of the bridge contract.
 - `PolyOrchVSCodeDebugHelpers.cmake` -- the shared `.vscode` managed-region
   machinery (single writer; rust + python rows merge into ONE launch region,
-  tasks.json stays rust-only with its marker frozen). Private helpers
+  tasks.json carries rust-then-node rows with its marker frozen). Private helpers
   (`_polyorch_vscode_region_write`, `_polyorch_vscode_debug_generate`); the
   face-local row renderers stay in each face module.
 - `PolyOrchPlatformSupport.cmake` -- platform/triple/mkspec detection shared

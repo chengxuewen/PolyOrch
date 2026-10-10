@@ -238,6 +238,28 @@ eight user-adjudicated rulings):
   `polyorch-node-web-...` via `PolyOrch_NODE_TARGET_PREFIX` (the node
   face's own knob — the name says NODE and means NODE).
 
+**Debug carriers.** `examples/node-basic` is the source-level js-debug
+carrier -- the generated launch row's `program` IS `src/index.js`, so
+breakpoints bind straight into source (no build, no maps); its multi-file
+`src/` plus a `file:`-linked `vendor/` library exercise cross-file and
+library breakpoints. `examples/node-ts-basic` is the built-entry twin:
+`program` is `dist/index.js`, mapped back through the sibling `.map`
+(including the vendored TS library `vendor/tslib`, covered by the default
+`outFiles` glob). Walkthroughs: `examples/README.md` F5 tours.
+
+---
+
+## 3.6 The Python Face (interpreter + run buttons + debugpy)
+
+`polyorch_python_setup` discovers an interpreter in three tiers
+(`-DPolyOrchPythonExe=` > PATH > pixi env glob, else STATUS degrade).
+`polyorch_python_run(TARGET t SCRIPT s)` registers the `t-run` button and
+injects `ENVS` at build time. With `PolyOrch_PYTHON_VSCODE_DEBUG` ON each
+run target also emits a debugpy launch row; its `JUST_MY_CODE` knob is the
+switch for stepping into library or stdlib code (OFF binds them; ON/unset
+keeps debugpy's own default and the row bytes unchanged). The package-
+structured F5 story: `examples/python-basic`, tour in `examples/README.md`.
+
 ---
 
 ## 4. pixi Environments
@@ -317,6 +339,18 @@ incremental build of the real orchestrated artifact, then debug. Managed
 regions regenerate in place; your own configs are preserved byte-for-byte.
 Wrong workspace root: pass `PolyOrch_RUST_VSCODE_DIR=<root>/.vscode`. CLion /
 Qt Creator manual setup: see `examples/README.md` §"Other IDEs".
+
+Three faces share this surface through three gates:
+`PolyOrch_RUST_VSCODE_DEBUG` (CodeLLDB rows + build tasks),
+`PolyOrch_NODE_VSCODE_DEBUG` (js-debug rows), `PolyOrch_PYTHON_VSCODE_DEBUG`
+(debugpy rows) -- all land in the ONE managed `launch.json` region; the
+`tasks.json` region merges rust-then-node rows. Three semantics worth
+knowing before chasing a grey breakpoint: `outFiles` names the GENERATED
+`.js`, never the `.map` (the map is derived from the matched js); an
+explicit `OUTFILES` REPLACES the per-package default globs rather than
+adding to them; and a `file:`-linked npm dependency installs as a symlink
+whose realpath is the `vendor/` directory -- that is where library
+breakpoints bind.
 
 ---
 
