@@ -52,7 +52,8 @@ polyorch_rust_build(
 # (node addon naming: no lib prefix, .node suffix).
 set(PolyOrchRustNodeExe "" CACHE FILEPATH "node executable for the rust-nodejs demo")
 if(NOT PolyOrchRustNodeExe)
-    find_program(PolyOrchRustNodeExe node)
+    find_program(PolyOrchRustNodeExe node
+    HINTS "$ENV{HOME}/.pixi/bin")
 endif()
 if(PolyOrchRustNodeExe)
     # demo follows the directory grammar: prefixed when fused (standalone,

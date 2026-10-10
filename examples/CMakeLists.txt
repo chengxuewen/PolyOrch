@@ -37,6 +37,10 @@ polyorch_option(PolyOrch_BUILD_RUST_EXAMPLES
     "Include the rust examples (build with the system cargo on PATH)" OFF)
 polyorch_option(PolyOrch_BUILD_PIXI_EXAMPLES
     "Register the pixi-route example buttons (may solve; see PolyOrch_PIXI_MIRROR)" OFF)
+polyorch_option(PolyOrch_BUILD_NODE_EXAMPLES
+    "Include the node/npm examples (node-web; degrades on tool absence)" OFF)
+polyorch_option(PolyOrch_BUILD_PYTHON_EXAMPLES
+    "Include the python examples (python-basic; degrades on tool absence)" OFF)
 
 # ---- tool probes (nothing above needs them) ---------------------------------
 find_program(PolyOrchExample_cargo NAMES cargo
@@ -47,58 +51,73 @@ find_program(PolyOrchExample_pixi NAMES pixi
 # ============================================================================
 # FUSED -- system-route rust examples (in the host graph, no buttons)
 # ============================================================================
+# Family gates (user-found misfit, 2026-10-08, round 2): node-web and
+# python-basic once rode the RUST option + cargo probe (wrong: they are not
+# rust examples); the first fix made them ungated APPENDs (also wrong --
+# random presence with no knob to say no). The right shape is the family
+# symmetry the file already uses for rust/pixi: one explicit option per
+# family, tool probes degrading INSIDE each subtree (A3 contract). The loop
+# body is family-agnostic (prefix/aggregate/FOLDER knobs).
+set(_fused "")
 if(PolyOrch_BUILD_RUST_EXAMPLES AND PolyOrchExample_cargo)
-    foreach(_fused "rust-basic" "rust-import" "rust-link-c" "rust-profile-features"
-                   "rust-bindings" "rust-cpp-lib" "rust-pyext" "rust-nodejs"
-                   "node-web" "python-basic")
-        # D28: fused targets carry the polyorch- namespace (a bare
-        # <dir>-... name in a host tree invites collisions). The prefix
-        # is resolved HERE, at the loop entry, while PROJECT_NAME is
-        # still the host's name: <HOST>_POLYORCH_TARGET_PREFIX wins if
-        # defined (multi-checkout / nested-embedding override), else
-        # the polyorch-<directory> default. The unset() moves INSIDE
-        # the loop (Momus blocker 1): a one-shot trailing unset made
-        # `if(NOT DEFINED)` true only for iteration 1 -- iterations 2+
-        # would silently inherit iteration 1's prefix, and the
-        # aggregate would silently merge via the helper's NOT-TARGET
-        # guard. Empty string disables the prefix deliberately.
-        if(NOT DEFINED _host_prefix)
-            if(DEFINED ${PROJECT_NAME}_POLYORCH_TARGET_PREFIX)
-                set(_host_prefix "${${PROJECT_NAME}_POLYORCH_TARGET_PREFIX}")
-            else()
-                set(_host_prefix "")
-            endif()
-        endif()
-        if(_host_prefix STREQUAL "")
-            set(PolyOrch_RUST_TARGET_PREFIX "polyorch-${_fused}")
-            set(PolyOrch_RUST_AGGREGATE_NAME "polyorch-${_fused}-all")
-            # A2 (D29): the node face has its OWN knob -- the name says NODE.
-            # Same value, separate variable: neither surface's naming lies.
-            set(PolyOrch_NODE_TARGET_PREFIX "polyorch-${_fused}")
-            # D32: python face owns its knob too (A2 symmetry, node flavor).
-            set(PolyOrch_PYTHON_TARGET_PREFIX "polyorch-${_fused}")
-        else()
-            set(PolyOrch_RUST_TARGET_PREFIX "${_host_prefix}-${_fused}")
-            set(PolyOrch_RUST_AGGREGATE_NAME "${_host_prefix}-${_fused}-all")
-            set(PolyOrch_NODE_TARGET_PREFIX "${_host_prefix}-${_fused}")
-            set(PolyOrch_PYTHON_TARGET_PREFIX "${_host_prefix}-${_fused}")
-        endif()
-        # one IDE root for the whole fused family, under the buttons' group
-        set(PolyOrch_RUST_FOLDER_ROOT "${PROJECT_NAME}/examples/${_fused}")
-        add_subdirectory(${_fused})
-        unset(PolyOrch_RUST_TARGET_PREFIX)
-        unset(PolyOrch_NODE_TARGET_PREFIX)
-        unset(PolyOrch_PYTHON_TARGET_PREFIX)
-        unset(PolyOrch_RUST_AGGREGATE_NAME)
-        unset(PolyOrch_RUST_FOLDER_ROOT)
-    endforeach()
-    unset(_host_prefix)
+    list(APPEND _fused "rust-basic" "rust-import" "rust-link-c"
+              "rust-profile-features" "rust-bindings" "rust-cpp-lib"
+              "rust-pyext" "rust-nodejs")
 else()
     message(STATUS
         "PolyOrch examples: system-route rust examples not fused "
         "-- set PolyOrch_BUILD_RUST_EXAMPLES=ON AND have cargo reachable "
         "(PATH or ~/.cargo/bin)")
 endif()
+if(PolyOrch_BUILD_NODE_EXAMPLES)
+    list(APPEND _fused "node-web" "node-basic" "node-ts-basic")
+endif()
+if(PolyOrch_BUILD_PYTHON_EXAMPLES)
+    list(APPEND _fused "python-basic")
+endif()
+foreach(_fused ${_fused})
+    # D28: fused targets carry the polyorch- namespace (a bare
+    # <dir>-... name in a host tree invites collisions). The prefix
+    # is resolved HERE, at the loop entry, while PROJECT_NAME is
+    # still the host's name: <HOST>_POLYORCH_TARGET_PREFIX wins if
+    # defined (multi-checkout / nested-embedding override), else
+    # the polyorch-<directory> default. The unset() moves INSIDE
+    # the loop (Momus blocker 1): a one-shot trailing unset made
+    # `if(NOT DEFINED)` true only for iteration 1 -- iterations 2+
+    # would silently inherit iteration 1's prefix, and the
+    # aggregate would silently merge via the helper's NOT-TARGET
+    # guard. Empty string disables the prefix deliberately.
+    if(NOT DEFINED _host_prefix)
+        if(DEFINED ${PROJECT_NAME}_POLYORCH_TARGET_PREFIX)
+            set(_host_prefix "${${PROJECT_NAME}_POLYORCH_TARGET_PREFIX}")
+        else()
+            set(_host_prefix "")
+        endif()
+    endif()
+    if(_host_prefix STREQUAL "")
+        set(PolyOrch_RUST_TARGET_PREFIX "polyorch-${_fused}")
+        set(PolyOrch_RUST_AGGREGATE_NAME "polyorch-${_fused}-all")
+        # A2 (D29): the node face has its OWN knob -- the name says NODE.
+        # Same value, separate variable: neither surface's naming lies.
+        set(PolyOrch_NODE_TARGET_PREFIX "polyorch-${_fused}")
+        # D32: python face owns its knob too (A2 symmetry, node flavor).
+        set(PolyOrch_PYTHON_TARGET_PREFIX "polyorch-${_fused}")
+    else()
+        set(PolyOrch_RUST_TARGET_PREFIX "${_host_prefix}-${_fused}")
+        set(PolyOrch_RUST_AGGREGATE_NAME "${_host_prefix}-${_fused}-all")
+        set(PolyOrch_NODE_TARGET_PREFIX "${_host_prefix}-${_fused}")
+        set(PolyOrch_PYTHON_TARGET_PREFIX "${_host_prefix}-${_fused}")
+    endif()
+    # one IDE root for the whole fused family, under the buttons' group
+    set(PolyOrch_RUST_FOLDER_ROOT "${PROJECT_NAME}/examples/${_fused}")
+    add_subdirectory(${_fused})
+    unset(PolyOrch_RUST_TARGET_PREFIX)
+    unset(PolyOrch_NODE_TARGET_PREFIX)
+    unset(PolyOrch_PYTHON_TARGET_PREFIX)
+    unset(PolyOrch_RUST_AGGREGATE_NAME)
+    unset(PolyOrch_RUST_FOLDER_ROOT)
+endforeach()
+unset(_host_prefix)
 
 # ============================================================================
 # EMBEDDED MOUNTS -- pixi examples without a route-option gate
@@ -117,9 +136,9 @@ add_subdirectory(pixi-workspace)
 # and reach the network, so it never runs during configure.
 if(PolyOrchExample_pixi)
     add_custom_target(polyorch-pixi-bootstrap
-        COMMAND ${CMAKE_COMMAND} -P "${CMAKE_CURRENT_SOURCE_DIR}/polyorch-pixi-bootstrap/bootstrap.cmake"
+        COMMAND ${CMAKE_COMMAND} -P "${CMAKE_CURRENT_SOURCE_DIR}/pixi-bootstrap/bootstrap.cmake"
         COMMENT "Running the polyorch-pixi-bootstrap example (may reach the network)")
-    set_target_properties(polyorch-pixi-bootstrap PROPERTIES FOLDER ${PROJECT_NAME}/examples)
+    set_target_properties(polyorch-pixi-bootstrap PROPERTIES FOLDER ${PROJECT_NAME}/examples/pixi-bootstrap)
 else()
     message(STATUS
         "PolyOrch examples: polyorch-pixi-bootstrap not registered "
@@ -130,10 +149,10 @@ endif()
 if(PolyOrchExample_pixi)
     add_custom_target(polyorch-pixi-configure
         COMMAND ${CMAKE_COMMAND}
-            -S "${CMAKE_CURRENT_SOURCE_DIR}/polyorch-pixi-configure"
+            -S "${CMAKE_CURRENT_SOURCE_DIR}/pixi-configure"
             -B "${CMAKE_CURRENT_BINARY_DIR}/standalone/polyorch-pixi-configure"
         COMMENT "Configuring the polyorch-pixi-configure example standalone (read-only)")
-    set_target_properties(polyorch-pixi-configure PROPERTIES FOLDER ${PROJECT_NAME}/examples)
+    set_target_properties(polyorch-pixi-configure PROPERTIES FOLDER ${PROJECT_NAME}/examples/pixi-configure)
 else()
     message(STATUS
         "PolyOrch examples: polyorch-pixi-configure not registered "
@@ -144,10 +163,10 @@ endif()
 if(PolyOrchExample_pixi)
     add_custom_target(polyorch-pixi-workspace
         COMMAND ${CMAKE_COMMAND}
-            -S "${CMAKE_CURRENT_SOURCE_DIR}/polyorch-pixi-workspace"
+            -S "${CMAKE_CURRENT_SOURCE_DIR}/pixi-workspace"
             -B "${CMAKE_CURRENT_BINARY_DIR}/standalone/polyorch-pixi-workspace"
         COMMENT "Configuring the polyorch-pixi-workspace example standalone (writes its build dir; needs pixi)")
-    set_target_properties(polyorch-pixi-workspace PROPERTIES FOLDER ${PROJECT_NAME}/examples)
+    set_target_properties(polyorch-pixi-workspace PROPERTIES FOLDER ${PROJECT_NAME}/examples/pixi-workspace)
 else()
     message(STATUS
         "PolyOrch examples: polyorch-pixi-workspace not registered "
@@ -159,13 +178,13 @@ endif()
 if(PolyOrchExample_pixi AND PolyOrch_BUILD_PIXI_EXAMPLES)
     add_custom_target(polyorch-pixi-env-run
         COMMAND ${CMAKE_COMMAND}
-            -S "${CMAKE_CURRENT_SOURCE_DIR}/polyorch-pixi-env-run"
+            -S "${CMAKE_CURRENT_SOURCE_DIR}/pixi-env-run"
             -B "${CMAKE_CURRENT_BINARY_DIR}/standalone/polyorch-pixi-env-run"
             -DPolyOrch_EXAMPLE_ROUTE=pixi
         COMMAND ${CMAKE_COMMAND} --build
             "${CMAKE_CURRENT_BINARY_DIR}/standalone/polyorch-pixi-env-run" --target pixi-cmake-smoke
         COMMENT "polyorch-pixi-env-run: materialize env -> run env tools (first run solves)")
-    set_target_properties(polyorch-pixi-env-run PROPERTIES FOLDER ${PROJECT_NAME}/examples)
+    set_target_properties(polyorch-pixi-env-run PROPERTIES FOLDER ${PROJECT_NAME}/examples/pixi-env-run)
 else()
     message(STATUS
         "PolyOrch examples: polyorch-pixi-env-run not registered "
@@ -185,7 +204,7 @@ if(PolyOrchExample_pixi AND PolyOrch_BUILD_PIXI_EXAMPLES)
             "${CMAKE_CURRENT_BINARY_DIR}/standalone/polyorch-rust-import-pixi" --target say-hi-exe-run
         COMMENT "rust-import (pixi route): materialize env -> build -> run (first run solves)")
     set_target_properties(polyorch-rust-import-pixi PROPERTIES
-        FOLDER ${PROJECT_NAME}/examples)
+        FOLDER ${PROJECT_NAME}/examples/rust-import)
 else()
     message(STATUS
         "PolyOrch examples: polyorch-rust-import-pixi not registered "
@@ -205,7 +224,7 @@ if(PolyOrchExample_pixi AND PolyOrch_BUILD_PIXI_EXAMPLES)
             "${CMAKE_CURRENT_BINARY_DIR}/standalone/polyorch-rust-link-c-pixi" --target cli-user-tool-run
         COMMENT "rust-link-c (pixi route): materialize env -> build -> run (first run solves)")
     set_target_properties(polyorch-rust-link-c-pixi PROPERTIES
-        FOLDER ${PROJECT_NAME}/examples)
+        FOLDER ${PROJECT_NAME}/examples/rust-link-c)
 else()
     message(STATUS
         "PolyOrch examples: polyorch-rust-link-c-pixi not registered "
@@ -216,7 +235,7 @@ endif()
 if(PolyOrch_BUILD_RUST_EXAMPLES AND PolyOrchExample_cargo)
     add_custom_target(polyorch-rust-install-export
         COMMAND ${CMAKE_COMMAND}
-            -S "${CMAKE_CURRENT_SOURCE_DIR}/polyorch-rust-install-export/producer"
+            -S "${CMAKE_CURRENT_SOURCE_DIR}/rust-install-export/producer"
             -B "${CMAKE_CURRENT_BINARY_DIR}/standalone/polyorch-rust-install-export"
         COMMAND ${CMAKE_COMMAND} --build
             "${CMAKE_CURRENT_BINARY_DIR}/standalone/polyorch-rust-install-export" --target mathkit-build
@@ -224,13 +243,13 @@ if(PolyOrch_BUILD_RUST_EXAMPLES AND PolyOrchExample_cargo)
             "${CMAKE_CURRENT_BINARY_DIR}/standalone/polyorch-rust-install-export"
             --prefix "${CMAKE_CURRENT_BINARY_DIR}/standalone/polyorch-rust-install-export-stage"
         COMMAND ${CMAKE_COMMAND}
-            -S "${CMAKE_CURRENT_SOURCE_DIR}/polyorch-rust-install-export/consumer"
+            -S "${CMAKE_CURRENT_SOURCE_DIR}/rust-install-export/consumer"
             -B "${CMAKE_CURRENT_BINARY_DIR}/standalone/polyorch-rust-install-export-consumer"
             -DCMAKE_PREFIX_PATH=${CMAKE_CURRENT_BINARY_DIR}/standalone/polyorch-rust-install-export-stage
         COMMAND ${CMAKE_COMMAND} --build
             "${CMAKE_CURRENT_BINARY_DIR}/standalone/polyorch-rust-install-export-consumer"
         COMMENT "polyorch-rust-install-export: build -> install(EXPORT) -> find_package consumer (offline)")
-    set_target_properties(polyorch-rust-install-export PROPERTIES FOLDER ${PROJECT_NAME}/examples)
+    set_target_properties(polyorch-rust-install-export PROPERTIES FOLDER ${PROJECT_NAME}/examples/rust-install-export)
 else()
     message(STATUS
         "PolyOrch examples: polyorch-rust-install-export not registered "
@@ -245,7 +264,7 @@ endif()
 if(PolyOrch_BUILD_RUST_EXAMPLES AND PolyOrchExample_cargo)
     add_custom_target(polyorch-rust-cross
         COMMAND ${CMAKE_COMMAND}
-            -S "${CMAKE_CURRENT_SOURCE_DIR}/polyorch-rust-cross"
+            -S "${CMAKE_CURRENT_SOURCE_DIR}/rust-cross"
             -B "${CMAKE_CURRENT_BINARY_DIR}/standalone/polyorch-rust-cross"
             -DPolyOrch_RUST_CARGO_TARGET=x86_64-unknown-linux-musl
         COMMAND ${CMAKE_COMMAND} --build
@@ -253,7 +272,7 @@ if(PolyOrch_BUILD_RUST_EXAMPLES AND PolyOrchExample_cargo)
         COMMAND ${CMAKE_COMMAND} --build
             "${CMAKE_CURRENT_BINARY_DIR}/standalone/polyorch-rust-cross" --target host-tool-bin-run
         COMMENT "polyorch-rust-cross: --target musl route + hostbuild escape (needs the musl target installed)")
-    set_target_properties(polyorch-rust-cross PROPERTIES FOLDER ${PROJECT_NAME}/examples)
+    set_target_properties(polyorch-rust-cross PROPERTIES FOLDER ${PROJECT_NAME}/examples/rust-cross)
 else()
     message(STATUS
         "PolyOrch examples: polyorch-rust-cross not registered "
@@ -274,7 +293,7 @@ if(PolyOrch_BUILD_RUST_EXAMPLES AND PolyOrchExample_cargo)
         COMMAND ${CMAKE_COMMAND} --build
             "${CMAKE_CURRENT_BINARY_DIR}/standalone/rust-bindings" --target rust-bindings-consumer
         COMMENT "rust-bindings: cxx bridge + cbindgen + install(EXPORT) -> find_package consumer")
-    set_target_properties(polyorch-rust-bindings-standalone PROPERTIES FOLDER ${PROJECT_NAME}/examples)
+    set_target_properties(polyorch-rust-bindings-standalone PROPERTIES FOLDER ${PROJECT_NAME}/examples/rust-bindings)
 else()
     message(STATUS
         "PolyOrch examples: polyorch-rust-bindings-standalone not registered "

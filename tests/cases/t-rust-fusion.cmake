@@ -23,6 +23,7 @@ file(WRITE "${_h}/CMakeLists.txt"
 execute_process(
     COMMAND "${CMAKE_COMMAND}" -S "${_h}" -B "${_h}/b"
         -DPolyOrch_BUILD_EXAMPLES=ON -DPolyOrch_BUILD_RUST_EXAMPLES=ON
+        -DPolyOrch_BUILD_NODE_EXAMPLES=ON -DPolyOrch_BUILD_PYTHON_EXAMPLES=ON
     ENVIRONMENT "PATH=$ENV{PATH}:$ENV{HOME}/.cargo/bin:$ENV{HOME}/.pixi/bin"
     RESULT_VARIABLE _rc OUTPUT_VARIABLE _out ERROR_VARIABLE _err)
 ck(_rc EQUAL 0)
@@ -68,8 +69,10 @@ if(_node_req)
     execute_process(
         COMMAND "${CMAKE_COMMAND}" -S "${_h}" -B "${_h}/b"
         ENVIRONMENT "PATH=$ENV{PATH}:$ENV{HOME}/.cargo/bin:$ENV{HOME}/.pixi/bin"
-        RESULT_VARIABLE _rcn OUTPUT_QUIET ERROR_QUIET)
-    ck(_rcn EQUAL 0)
+        RESULT_VARIABLE _rcn OUTPUT_QUIET ERROR_VARIABLE _rnerr)
+    if(NOT _rcn EQUAL 0)
+        message(FATAL_ERROR "node codemodel re-drive failed (rc=${_rcn}): ${_rnerr}")
+    endif()
     set(_foldnd "")
     file(GLOB _tjs "${_h}/b/.cmake/api/v1/reply/target-*.json")
     foreach(_tj ${_tjs})
@@ -88,6 +91,31 @@ if(_node_req)
         message(FATAL_ERROR "codemodel reply never produced the node target json")
     endif()
     ck_str("${_foldnd}" "fused-host/examples/node-web")
+    # Availability pin (PIT-49 sister): the A3 list proves the button is
+    # REGISTERED; nothing proved its npm script EXISTS -- the shipped example
+    # shipped a run button pointing at a missing script (user-hit 2026-10-08:
+    # "Missing script: hello"). Execute the button's generated command line
+    # DIRECTLY (cd <example> && npm run -w <pkg> hello): the --build shape
+    # re-ran the whole fused graph through cargo for a one-script check
+    # (measured: the gate stalled past 10 min -- blocked-run abort by the
+    # user). Command shape == what configure_file generates (their log).
+    find_program(_npm NAMES npm HINTS "$ENV{HOME}/.pixi/bin")
+    if(NOT _npm)
+        message(FATAL_ERROR "node cap passed but npm not findable (probe drift)")
+    endif()
+    execute_process(
+        COMMAND "${_npm}" run -w @scope/hello-js hello
+        WORKING_DIRECTORY "${CMAKE_CURRENT_LIST_DIR}/../../examples/node-web"
+        RESULT_VARIABLE _rcb OUTPUT_VARIABLE _ob ERROR_VARIABLE _eb)
+    if(NOT _rcb EQUAL 0)
+        message(FATAL_ERROR "node-web run script failed: ${_ob}${_eb}")
+    endif()
+    # _hb, NOT _h -- _h is the scratch host dir (clobbering it with FIND's
+    # index sent the next re-drive to "PolyOrch/125": measured 2026-10-08)
+    string(FIND "${_ob}${_eb}" "hello from the library member" _hb)
+    if(_hb LESS 0)
+        message(FATAL_ERROR "run button executed the wrong script")
+    endif()
 else()
     foreach(_t ${_node_names})
         string(FIND "${_tdirs}" "${_t}.dir" _hit)
@@ -119,8 +147,10 @@ if(_py_req)
     execute_process(
         COMMAND "${CMAKE_COMMAND}" -S "${_h}" -B "${_h}/b"
         ENVIRONMENT "PATH=$ENV{PATH}:$ENV{HOME}/.cargo/bin:$ENV{HOME}/.pixi/bin"
-        RESULT_VARIABLE _rcf OUTPUT_QUIET ERROR_QUIET)
-    ck(_rcf EQUAL 0)
+        RESULT_VARIABLE _rcf OUTPUT_QUIET ERROR_VARIABLE _rferr)
+    if(NOT _rcf EQUAL 0)
+        message(FATAL_ERROR "codemodel re-drive failed (rc=${_rcf}): ${_rferr}")
+    endif()
     set(_foldpy "")
     file(GLOB _tjs "${_h}/b/.cmake/api/v1/reply/target-*.json")
     foreach(_tj ${_tjs})
@@ -163,6 +193,7 @@ endforeach()
 execute_process(
     COMMAND "${CMAKE_COMMAND}" -S "${_h}" -B "${_h}/b"
         -DPolyOrch_BUILD_EXAMPLES=ON -DPolyOrch_BUILD_RUST_EXAMPLES=ON
+        -DPolyOrch_BUILD_NODE_EXAMPLES=ON -DPolyOrch_BUILD_PYTHON_EXAMPLES=ON
         -DPolyOrch_RUST_VSCODE_DIR=${_h}/vsout
     ENVIRONMENT "PATH=$ENV{PATH}:$ENV{HOME}/.cargo/bin:$ENV{HOME}/.pixi/bin"
     RESULT_VARIABLE _rc OUTPUT_QUIET ERROR_QUIET)
@@ -177,6 +208,7 @@ file(WRITE "${_b2}/.cmake/api/v1/query/client-vscode/query.json"
 execute_process(
     COMMAND "${CMAKE_COMMAND}" -S "${_h}" -B "${_b2}"
         -DPolyOrch_BUILD_EXAMPLES=ON -DPolyOrch_BUILD_RUST_EXAMPLES=ON
+        -DPolyOrch_BUILD_NODE_EXAMPLES=ON -DPolyOrch_BUILD_PYTHON_EXAMPLES=ON
     ENVIRONMENT "PATH=$ENV{PATH}:$ENV{HOME}/.cargo/bin:$ENV{HOME}/.pixi/bin"
     RESULT_VARIABLE _rc OUTPUT_QUIET ERROR_QUIET)
 ck(_rc EQUAL 0)

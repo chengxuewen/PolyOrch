@@ -90,12 +90,29 @@ function(polyorch_requires cap out)
                 list(GET _pr_pixinode 0 _pr_node)
             endif()
         endif()
-        # PM: corepack first (adjudication 1), bare npm as the fallback
+        # PM: corepack first (adjudication 1), bare npm as the fallback --
+        # npm gets node's three-tier probe (PATH -> ~/.pixi/bin -> pixi env
+        # glob): a pixi-global npm living in ~/.pixi/bin must not desync the
+        # gate from the product's own discovery (found 2026-10-09:
+        # t-rust-fusion's else-leg false-failed 'degradation broken' on a
+        # host whose PATH lacks npm).
         find_program(_pr_corepack NAMES corepack)
         if(_pr_corepack)
             set(_pr_pm TRUE)
         else()
             find_program(_pr_npm NAMES npm)
+            if(NOT _pr_npm)
+                find_program(_pr_npm NAMES npm PATHS "$ENV{HOME}/.pixi/bin")
+            endif()
+            if(NOT _pr_npm)
+                file(GLOB _pr_pmenv
+                    "$ENV{HOME}/.pixi/envs/*/bin/npm"
+                    "/tmp/opencode/*/.pixi/envs/default/bin/npm")
+                list(LENGTH _pr_pmenv _pr_pmn)
+                if(_pr_pmn GREATER 0)
+                    set(_pr_pm TRUE)
+                endif()
+            endif()
             if(_pr_npm)
                 set(_pr_pm TRUE)
             endif()

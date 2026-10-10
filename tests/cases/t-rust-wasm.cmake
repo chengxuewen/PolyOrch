@@ -20,6 +20,7 @@ endif()
 
 # prereq probes (mirror the example's own gates)
 find_program(_wp wasm-pack)
+find_program(_wbg wasm-bindgen)
 find_program(_node node)
 if(NOT _node)
     file(GLOB _pixinode
@@ -43,8 +44,8 @@ if(NOT _wopt)
 endif()
 execute_process(COMMAND rustup target list --installed OUTPUT_VARIABLE _rtgt ERROR_QUIET)
 string(FIND "${_rtgt}" "wasm32-unknown-unknown" _haswasm)
-if(NOT _wp OR NOT _node OR _haswasm LESS 0)
-    message(STATUS "t-rust-wasm : SKIP (wasm stack incomplete: pack=${_wp} node=${_node} target=${_haswasm})")
+if(NOT _wp OR NOT _node OR NOT _wbg OR _haswasm LESS 0)
+    message(STATUS "t-rust-wasm : SKIP (wasm stack incomplete: pack=${_wp} bindgen=${_wbg} node=${_node} target=${_haswasm})")
     return()
 endif()
 

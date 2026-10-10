@@ -47,18 +47,25 @@ file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/polyorch-fixture-artifacts.txt" "${_af}\
 
 # prerequisites (all three are PATH-discovered, STATUS-degraded when absent):
 #   1. wasm32-unknown-unknown target (rustup target add)
-#   2. wasm-pack (cargo install wasm-pack) with --mode no-install
-#   3. wasm-bindgen CLI 0.2.100 on PATH (pairs with the crate pin)
-# plus wasm-opt on PATH for the packaging step (a pixi binaryen env; the
-# demo asserts values, so --dev + wasm-opt presence is the documented set).
-# wasm-pack installs its own CLI when missing (network); the crate pins
-# the matching crate version so the pair is stable.
+#   2. wasm-pack (cargo install wasm-pack) -- both rules pin
+#      --mode no-install --dev: the PATH wasm-bindgen is used as-is,
+#      --dev skips the wasm-opt pass, so nothing is ever fetched
+#      (restricted egress; the pkg ships unoptimized; the demo asserts
+#      values, not size).
+#   3. wasm-bindgen CLI 0.2.100 on PATH (pairs with the crate pin).
 set(_wbg_ver 0.2.100)
 find_program(PolyOrchRustWasmPack wasm-pack)
 if(NOT PolyOrchRustWasmPack)
     message(STATUS
         "rust-wasm: demo not registered -- no wasm-pack on PATH "
         "(cargo install wasm-pack)")
+    return()
+endif()
+find_program(PolyOrchRustWasmBindgen wasm-bindgen)
+if(NOT PolyOrchRustWasmBindgen)
+    message(STATUS
+        "rust-wasm: demo not registered -- no wasm-bindgen on PATH "
+        "(cargo install wasm-bindgen-cli --locked --version ${_wbg_ver})")
     return()
 endif()
 execute_process(COMMAND rustup target list --installed
@@ -83,6 +90,7 @@ endif()
 set(_pkg_web "${CMAKE_CURRENT_BINARY_DIR}/pkg-web")
 add_custom_target(rust-wasm-pkg-bundler
     COMMAND "${PolyOrchRustWasmPack}" build --target bundler
+        --mode no-install --dev
         --out-dir "${_pkg_web}" --out-name spine_wasm
     WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/crates/spine-wasm"
     BYPRODUCTS "${_pkg_web}/spine_wasm_bg.wasm"
@@ -93,6 +101,7 @@ set_target_properties(rust-wasm-pkg-bundler PROPERTIES FOLDER "${_rwafold}")
 set(_pkg_node "${CMAKE_CURRENT_BINARY_DIR}/pkg-node")
 add_custom_target(rust-wasm-pkg-nodejs
     COMMAND "${PolyOrchRustWasmPack}" build --target nodejs
+        --mode no-install --dev
         --out-dir "${_pkg_node}" --out-name spine_wasm
     WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/crates/spine-wasm"
     BYPRODUCTS "${_pkg_node}/spine_wasm_bg.wasm"
