@@ -7,6 +7,8 @@
 # the run targets for VSCode debugpy generation through the shared
 # PolyOrchVSCodeDebugHelpers machinery. build/import/test/wheel verbs are
 # NOT here until a real consumer needs them.
+# The run buttons also mount their source directory into IDE target
+# trees (rust-face parity, display-only: _polyorch_python_mount_sources).
 #
 # Family idioms, copied before diverging:
 #   - discovery tiers + CACHE/report shape      -> polyorch_node_setup (D29)
@@ -19,6 +21,8 @@
 
 option(PolyOrch_PYTHON_VSCODE_DEBUG
     "Generate .vscode debugpy launch configs for polyorch_python_run targets" OFF)
+option(PolyOrch_PYTHON_SOURCES_PLAIN
+    "Serve mounted python sources as plain entries (IDE header-fold escape)" OFF)
 
 # _polyorch_python_apply_prefix(OUT <name>)
 # Same caller-key grammar as node (A2): PolyOrch_PYTHON_TARGET_PREFIX is the
@@ -110,8 +114,62 @@ function(polyorch_python_setup)
     endif()
 endfunction()
 
+# _polyorch_python_mount_sources(TGT SRC_DIR [SOFT])
+# Attach SRC_DIR's python sources (+ the manifest-equivalent files) to
+# TGT's SOURCES so IDE target trees show and open them on the button.
+# COSMETIC ONLY -- the rust face's argument copied: python owns the real
+# inputs, a glob miss or stray hit never affects correctness (that is why
+# the GLOB caution in the CMake docs does not apply here). CONFIGURE_DEPENDS
+# re-globs on configure so newly added files appear. SOFT = display-only
+# caller: a missing SRC_DIR skips the mount -- a display feature NEVER
+# fails a configure (HARD is kept for a future build-side caller, rust's
+# build/verb split).
+function(_polyorch_python_mount_sources TGT SRC_DIR)
+    cmake_parse_arguments(PARSE_ARGV 2 MM "SOFT" "" "")
+    get_filename_component(_root "${SRC_DIR}" ABSOLUTE)
+    if(NOT IS_DIRECTORY "${_root}")
+        if(MM_SOFT)
+            return()
+        endif()
+        message(FATAL_ERROR
+            "_polyorch_python_mount_sources: source dir '${_root}' does not exist")
+    endif()
+    # Package subdirs join the display tree; vendor/derived dirs never do:
+    # any path component named venv/env/build/site-packages/__pycache__ or
+    # starting with '.' drops the file (vendor-tree explosion guard).
+    file(GLOB_RECURSE _rel CONFIGURE_DEPENDS RELATIVE "${_root}" "${_root}/*.py")
+    set(_files "")
+    foreach(_f IN LISTS _rel)
+        if(NOT _f MATCHES "(^|/)(\\.[^/]*|venv|env|build|site-packages|__pycache__)/")
+            list(APPEND _files "${_root}/${_f}")
+        endif()
+    endforeach()
+    # Manifest equivalents (the Cargo.toml/lock slot of the rust idiom):
+    # project metadata + dependency pins, existence-gated.
+    foreach(_m IN ITEMS pyproject.toml setup.py requirements.txt)
+        if(EXISTS "${_root}/${_m}")
+            list(APPEND _files "${_root}/${_m}")
+        endif()
+    endforeach()
+    if(NOT _files)
+        return()
+    endif()
+    list(REMOVE_DUPLICATES _files)
+    # HEADER_FILE_ONLY marks them "not compiled here" for CMake; some IDE
+    # versions fold header-class entries away in target trees, so
+    # PolyOrch_PYTHON_SOURCES_PLAIN=ON serves them as plain sources -- the
+    # same escape the rust face carries. Either way they are display-only.
+    if(PolyOrch_PYTHON_SOURCES_PLAIN)
+        set_source_files_properties(${_files} PROPERTIES HEADER_FILE_ONLY OFF)
+    else()
+        set_source_files_properties(${_files} PROPERTIES HEADER_FILE_ONLY ON)
+    endif()
+    set_property(TARGET "${TGT}" APPEND PROPERTY SOURCES ${_files})
+endfunction()
+
 # polyorch_python_run(TARGET <t> SCRIPT <s> [NAME <label>] [ARGS <a>...]
-#                     [ENVS <K=V>...] [WORKING_DIRECTORY <dir>] [FOLDER <ide>])
+#                     [ENVS <K=V>...] [WORKING_DIRECTORY <dir>] [FOLDER <ide>]
+#                     [NO_SOURCES])
 # Registers the button <t>-run (the rust face's grammar; prefixed
 # through the D28 grammar): cmake -E env <K=V>... <interp> <script> <args>
 # WORKING_DIRECTORY defaults to the script's directory. ENVS flows through
@@ -120,9 +178,10 @@ endfunction()
 # a normal environment (PATH/HOME/encodings) and the interpreter itself is
 # pinned, which is the half that mattered (PIT-14's shape does not port).
 function(polyorch_python_run)
+    set(_opts NO_SOURCES)
     set(_one TARGET SCRIPT NAME WORKING_DIRECTORY FOLDER)
     set(_multi ARGS ENVS)
-    cmake_parse_arguments(PARSE_ARGV 0 R "" "${_one}" "${_multi}")
+    cmake_parse_arguments(PARSE_ARGV 0 R "${_opts}" "${_one}" "${_multi}")
     if(NOT R_TARGET OR NOT R_SCRIPT)
         message(FATAL_ERROR "polyorch_python_run: TARGET and SCRIPT are required")
     endif()
@@ -186,6 +245,19 @@ function(polyorch_python_run)
     if(R_FOLDER)
         set_target_properties("${_rh}" PROPERTIES FOLDER "${R_FOLDER}")
     endif()
+    # IDE source mount (rust-face parity): the button's directory tree rides
+    # the target as HEADER_FILE_ONLY display entries. Root = the caller's
+    # WORKING_DIRECTORY when set, else this caller dir -- python has no
+    # metadata authority, WDIR is the closest analogue of the crate dir.
+    # Display-only caller: SOFT, a missing root must never fail a configure.
+    if(NOT R_NO_SOURCES)
+        if(R_WORKING_DIRECTORY)
+            _polyorch_python_mount_sources("${_rh}" "${R_WORKING_DIRECTORY}" SOFT)
+        else()
+            _polyorch_python_mount_sources("${_rh}" "${CMAKE_CURRENT_SOURCE_DIR}" SOFT)
+        endif()
+    endif()
+
     # T3: debug-spec registration (gate OFF -> zero footprint).
     if(PolyOrch_PYTHON_VSCODE_DEBUG)
         string(REPLACE ";" "," _argsj "${R_ARGS}")
