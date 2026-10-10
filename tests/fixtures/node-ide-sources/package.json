@@ -1,0 +1,12 @@
+{
+  "name": "node-ide-root",
+  "version": "0.1.0",
+  "private": true,
+  "main": "src/index.js",
+  "workspaces": ["packages/*"],
+  "scripts": {
+    "build": "echo node-ide-stub",
+    "test": "echo node-ide-test",
+    "start": "echo node-ide-start"
+  }
+}

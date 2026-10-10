@@ -1,0 +1,9 @@
+{
+  "name": "node-basic",
+  "version": "0.0.0",
+  "private": true,
+  "main": "src/index.js",
+  "scripts": {
+    "build": "echo node-basic-stub"
+  }
+}

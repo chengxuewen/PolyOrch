@@ -1,0 +1,9 @@
+{
+  "name": "ws-one",
+  "version": "0.1.0",
+  "private": true,
+  "main": "src/index.js",
+  "scripts": {
+    "build": "echo ws-one-stub"
+  }
+}
