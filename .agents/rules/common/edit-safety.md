@@ -330,3 +330,10 @@ why-question contains the literal answer; the turn after any user abort contains
 most one read-only command plus prose, never a chained run.
 **Blocking condition**: answering a why-question with an action; resuming a killed
 command chain after an abort without being asked.
+
+### 28. Destructive-batch reports come from post-state, not from per-item conditional echoes (2026-10-10)
+
+**Rule**: `a && echo KEEP || rm f && echo removed` parses as `((a && echo KEEP) || (rm f)) && echo removed` — the trailing `&& echo removed` fires on the KEEP branch too, logging a deletion that never happened. Any shell one-liner that mutates files must NOT print its per-item verdict from a chained conditional echo; it must print only what it actually executed (explicit `if ... then ... fi`, never the `&&/||` tail chain), and the command must end with the authoritative post-state (`ls <dir>`) — the report is the surviving listing, not the echoes.
+**Precedent**: 2026-10-10 stale-plan cleanup — the KEEP branch of the retention loop printed a bogus "removed: <sole C6-record file>" line; same-command `ls` proved the file survived; had the report been sent without the `ls` cross-check, it would have claimed a false deletion of load-bearing content.
+**Verification**: destructive loops contain `then/else` (not `&&/||` tails) and end in `ls`/`wc`; the final report's counts match the post-state output verbatim.
+**Blocking condition**: reporting per-item delete/keep verdicts derived from chained conditional echoes without the post-state listing.

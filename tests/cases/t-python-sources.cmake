@@ -57,8 +57,12 @@ foreach(_want main.py pyproject.toml setup.py requirements.txt __init__.py mod.p
         cfail("greet-run SOURCES lack ${_want}: ${_g}")
     endif()
 endforeach()
-foreach(_bad .venv __pycache__ /venv/ /env/ /build/ site-packages
-        evil.py cached.py gone.py)
+# Name pins only: every poison file has a unique name (evil.py covers
+# .venv+site-packages, cached.py __pycache__, gone.py venv/env/build).
+# Directory-name substrings must NOT be asserted against absolute paths:
+# a scratch under a build/venv-named ancestor false-matches (measured on
+# the 2026-10-10 host-build-copy run).
+foreach(_bad evil.py cached.py gone.py)
     string(FIND "${_g}" "${_bad}" _hit)
     if(NOT _hit LESS 0)
         cfail("greet-run SOURCES mounted a vendor entry (${_bad}): ${_g}")

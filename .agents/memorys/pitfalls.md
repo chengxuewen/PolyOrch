@@ -525,3 +525,26 @@
 - **Solution**: default `polyorch_node_debug` `OUTFILES` -> `${_dir}/**/*.js,!${_dir}/node_modules/**` (mirrors js-debug's own default `${workspaceFolder}/**/*.(m|c|)js`). Restores prediction -> binds before the program runs -> grey gone. The example may still pass an explicit `OUTFILES` override.
 - **Verification**: `tests/cases/t-node-ts-debug.cmake` now asserts the generated launch row's `outFiles` is `[.../**/*.js, !.../node_modules/**]` (byte-exact); `t-node-vscode` default/passthrough pins moved off `.map`. Offline 68/0/26, matrix 6/6. GUI breakpoint-verify was subsequently CONFIRMED by the user (2026-10-10): after reconfiguring the build tree, VSCode F5 binds the src/index.ts breakpoint and pauses normally -- the grey-breakpoint symptom is cleared at the user-facing layer, not just in the emitted glob.
 - **Forbidden**: setting `outFiles` to `*.map`. And the deeper class (extends PIT-62): when a launch attribute's job is to help the debugger find COMPILED output, point it at the compiled artifact the debugger loads, not at the sidecar metadata -- read the debugger's own attribute semantics (cited source), don't pattern-guess.
+
+## PIT-64: Path-fragment assertions false-match a same-named ancestor (2026-10-10)
+- **Symptom**: `t-python-sources` failed only when the suite was run from a checkout
+  copied under a directory literally named `build` (`.../build/PolyOrch/...`): the child
+  asserted "SOURCES mounted a vendor entry (/build/)" while the mount itself was clean
+  (only legitimate files listed).
+- **Root cause**: the negative assertion did `string(FIND "${_g}" "/build/")` over the
+  SOURCES property, which holds ABSOLUTE paths. The scratch root of the run sat under a
+  `/build/` ancestor, so every legitimate entry contained the forbidden substring. The
+  product-side exclusion (`_polyorch_python_mount_sources`) was correct: it globs
+  `RELATIVE "${_root}"` and matches components below the source root only.
+- **Solution**: assert the mount-exclusion contract on the unique POISON FILENAMES
+  (`evil.py cached.py gone.py` -- each covers its whole poison dir), never on directory
+  names as unanchored substrings of absolute paths. Two lines, coverage unchanged.
+- **Verification**: reproduce the ancestor shape offline:
+  `mkdir -p /tmp/x/build/anc && cp -a tests cmake /tmp/x/build/anc/ && cmake -P /tmp/x/build/anc/tests/cases/t-python-sources.cmake`
+  must print OK (it was the pre-fix failure mode); in-repo run OK; full offline suite
+  68/0/26 unchanged.
+- **Forbidden**: `string(FIND ...)` / `MATCHES` directory-fragment patterns
+  (`/build/`, `/venv/`, `node_modules` bare) applied to absolute paths in test asserts.
+  Anchor against the source root or use unique filenames. Same-shape latent spot noted
+  for the node face (`ck(NOT _demo MATCHES "node_modules")` -- harmless unless an ancestor
+  is itself named node_modules; leave until it bites).
