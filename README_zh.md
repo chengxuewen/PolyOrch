@@ -36,12 +36,15 @@ docs/          规格说明 —— 从 docs/README.md 开始
   architecture.md    设计基线：不变式、分层、数据流、未决项
   modules/           内部实现参考
   reference/         外部来源的 12 个相关项目画像
+cmake/         交付物本体 —— 9 个 CMake helper 模块（pixi / rust / node / python 面 + 共享 .vscode 调试 + 选项/平台支持）
+tests/         94 个 `cmake -P` 用例：run.sh 驱动、CTest 注册、生成器矩阵
+examples/      pixi / rust / node / python 示例 —— 融合进宿主图或独立构建
 .agents/
   rules/         恒常约束
   memorys/       易变事实（status / conventions / decisions / pitfalls）
   skills/        agent 技能（58 个 vendored Xmake 技能已移入 docs/reference/xmake-skills/）
 .opencode/     opencode 配置
-scripts/       激活三件套（pixi.sh/.bat/.ps1）+ 门禁运行器（gate.sh/ctest.sh）
+scripts/       激活三件套（pixi.sh/.bat/.ps1）+ 门禁运行器（gate.sh / gate-gen.py / ctest.sh）
 AGENTS.md      agent 知识库，每轮加载
 SKILL.md       技能登记表
 ```

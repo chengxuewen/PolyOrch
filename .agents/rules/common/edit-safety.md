@@ -2,6 +2,11 @@
 
 > **Target audience**: AI agents editing PolyOrch source code.
 > **Violation of these rules causes token waste from repeated fix cycles.**
+>
+> Provenance (doc-audit 2026-10-10): `PIT-nn` citations dated 2026-08 and numbers above PIT-64
+> come from an external pre-D1 delivery memory whose numbering was removed here (D1); they are
+> historical markers, NOT references to this repository's `.agents/memorys/pitfalls.md`
+> (PIT-1..64, which reuses some numbers for different events).
 
 ## Tool Selection
 
@@ -64,7 +69,7 @@ The subagent gets a clean context, reads the files fresh, and applies all change
 Before implementing ANY architectural change (protocol, data flow, transport mode, API contract):
 - **ALWAYS ask the user first** using the `question` tool with explicit options
 - **NEVER fall back to an alternative architecture** without user approval
-- **NEVER silently switch** from the agreed architecture (e.g., SFU → P2P) even if it seems "easier"
+- **NEVER silently switch** from the agreed architecture (e.g., relay-routed → P2P) even if it seems "easier"
 - **NEVER implement a workaround** that changes the system's design without explicit user consent
 
 If the agreed approach fails, report the failure and ask: "Approach X failed because of Y. Suggest switching to Z. Proceed?"

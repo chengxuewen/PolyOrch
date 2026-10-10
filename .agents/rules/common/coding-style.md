@@ -154,7 +154,7 @@ impl CircuitBreaker {
 ```
 
 - **Library errors**: define typed errors with `thiserror` — `#[error("connection to {addr} failed after {retries} retries")]`
-- **Application errors**: use `anyhow::Context` — `.with_context(|| format!("SFU transport connect failed for peer {peer_id}"))`
+- **Application errors**: use `anyhow::Context` — `.with_context(|| format!("transport connect failed for peer {peer_id}"))`
 - **Do NOT retry on**: authentication failures (4xx), validation errors, resource-not-found (404)
 - **DO retry on**: connection refused, timeout, 503 Service Unavailable, DNS resolution failures
 - **PIT-11 lesson**: build tool failures (`cargo check`, meson) are not transient — do not wrap in retry logic; fix the root cause

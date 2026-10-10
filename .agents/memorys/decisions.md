@@ -58,6 +58,7 @@
 - **Development mode**: `xmake addon --install .` from the working copy is the documented standard shape, and the official docs note it is the same thing a user does, so `tests/test.lua` runs unchanged in CI. A locally installed working copy can silently shadow the pinned version, so `doctor` must answer whether the effective addon is the locked one or a local development build. **The detection mechanism is not yet decided**; candidates are the published archive sha256 recorded in the xmake-repo recipe, or `xmake-addons.lock` showing as modified in git.
 - **Gotchas from the official docs**: the version comes from the xmake-repo package recipe, **not** from `addon.lua` (bump the tag, not the manifest); command names and template ids are **global**, and `polyorch` was chosen to be collision-safe.
 - **References**: `docs/modules/00-overview.md`; `docs/architecture.md` section ④; `xmake-docs` `guide/extensions/addons/installation.md` and `development.md`
+- **Revision note (2026-10-10 doc-audit)**: D16 retired the addon form -- the shipped surface is CMake modules consumed from the checkout, installed by nothing; the declaration, the lock, the version-detection mechanism, and the `doctor` question below are dormant v1.0-record design retained with the record. Related: `docs/modules/03-error-model.md` addon row marked dormant in the same round; `status.md` open item closed.
 
 ## D7: IDE strategy -- VS Code first-class, three IDE-agnostic contract facts
 

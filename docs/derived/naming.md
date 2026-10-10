@@ -76,7 +76,7 @@ This description synthesizes the expression patterns used by mainstream projects
 | Aster | "A build orchestrator for polyglot monorepos." |
 | moon | "A Bazel-inspired polyglot build orchestrator." |
 | Pants | "A scalable build system for monorepos." |
-| Guild | "Rust-native polyglot monorepo orchestrator." |
+| Guild | "Rust-native polyglot monorepo orchestrator." -- source TBD (unverified, O8/PIT-2) |
 
 **PolyOrch** ultimately adopted **"A scalable build orchestrator for polyglot monorepos"** as its formal description, aligning with industry conventions while preserving the project's differentiated positioning in adapter-driven, heterogeneous toolchain integration.
 

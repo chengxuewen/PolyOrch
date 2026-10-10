@@ -2,6 +2,10 @@
 
 > **Authoritative for the competitive positioning.** The v1.0 record for this topic is whitepaper §7. Preserves the competitor overview, the differentiation positioning, and the comparison summary.
 
+> **D16 lens (decisions.md, 2026-09-22).** The engine and package claims below describe the whitepaper's v1.0 model. Under D16 the shipped form is the CMake helper surface; Xmake is the reference corpus + package-management source, not PolyOrch's build engine -- see the D16 lens in `docs/architecture.md`.
+>
+> **External-facts note (C2).** Guild's positioning and every claim about Guild in this document carry no primary source (PIT-2; tracked under O8) -- treat them as TBD.
+
 ## Competitor Overview (§7.1)
 
 | Project | Positioning | Core Language | Configuration | Core Mechanism | Difference from PolyOrch |
@@ -11,7 +15,7 @@
 | **Pants** | Monorepo build system | Python | BUILD files | Dependency inference + fine-grained caching | PolyOrch supports more languages with a more flexible adapter architecture |
 | **moon** | Polyglot build orchestrator | Rust | YAML/TOML | Project graph + content-addressed caching | PolyOrch natively integrates vcpkg/Conan/Pixi |
 | **Aster** | Polyglot monorepo orchestrator | Rust | `aster.toml` | Project discovery + dependency graph | PolyOrch uses Xmake as its build engine, not a pure dispatcher |
-| **Guild** | Rust-native monorepo orchestrator | Rust | `guild.toml` | Task dependency graph + parallel execution | PolyOrch supports CMake/Colcon adapters |
+| **Guild** | Rust-native monorepo orchestrator (source: TBD -- unverified, O8/PIT-2) | Rust | `guild.toml` | Task dependency graph + parallel execution | PolyOrch supports CMake/Colcon adapters |
 | **colcon** | ROS 2 meta-build tool | Python | `package.xml` | Workspace dispatch + extension points | PolyOrch is not bound to the ROS ecosystem; it targets general polyglot monorepos |
 
 ## Differentiation (§7.2)

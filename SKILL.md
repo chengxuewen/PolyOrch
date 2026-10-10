@@ -19,7 +19,7 @@ methodology, applicable to every project, so this file does not enumerate them.
 
 ## Layer 2 — Project skills (`.agents/skills/`, versioned with this repository)
 
-Two groups: the nine authored for this repository, and a vendored third-party set.
+Two groups: the ten authored for this repository, and a vendored third-party set.
 
 ### 2a. Authored here (10)
 

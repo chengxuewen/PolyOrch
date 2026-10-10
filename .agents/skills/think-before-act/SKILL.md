@@ -120,7 +120,7 @@ CRITICAL items found in review must be fixed. LOW items can be recorded as tech 
 | Unit | Logic errors | `cargo test` |
 | Integration | Interface mismatches | `cargo test --test '*'` |
 | E2E | Broken user paths | Playwright / Python WS scripts |
-| Acceptance | Unmet requirements | Manual verification / pixi run test-sfu |
+| Acceptance | Unmet requirements | Manual verification / pixi run `<test-suite>` |
 
 ---
 

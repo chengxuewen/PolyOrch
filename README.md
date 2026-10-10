@@ -38,12 +38,15 @@ docs/          the specification — start at docs/README.md
   architecture.md    design baseline: invariants, layers, data flow, open decisions
   modules/           internals reference
   reference/         externally sourced profiles of 12 related projects
+cmake/         the deliverable -- 9 CMake helper modules (pixi / rust / node / python faces + shared .vscode debug + option/platform support)
+tests/         94 `cmake -P` cases: run.sh driver, CTest registration, generator matrix
+examples/      pixi / rust / node / python examples -- fused into the host graph or standalone
 .agents/
   rules/         permanent constraints
   memorys/       mutable facts (status / conventions / decisions / pitfalls)
   skills/        agent skills (the 58 vendored Xmake skills live in docs/reference/xmake-skills/)
 .opencode/     opencode configuration
-scripts/       activation trio (pixi.sh/.bat/.ps1); gate runner planned
+scripts/       activation trio (pixi.sh/.bat/.ps1) + gates: gate.sh (C1-C6 one-shot), gate-gen.py (refresh), ctest.sh (D20 entry)
 AGENTS.md      the agent knowledge base, loaded on every turn
 SKILL.md       the skills registry
 ```

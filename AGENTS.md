@@ -103,7 +103,7 @@ python3 -c "import re,pathlib,sys;bad=[f'{m}:{l}' for m in pathlib.Path('docs').
 # no domain leakage into the toolchain
 # (.omo excluded: git-excluded Chinese plan zone; a verdict doc there may name the
 # historical domain. Committed-surface scans below are the binding ones.)
-grep -rliE -e mediaservo -e mediasoup -e webrtc -e 'sfu-' -e msrtc .agents/rules .agents/skills .opencode .gitignore
+grep -rliE -e mediaservo -e mediasoup -e webrtc -e '\bsfu\b' -e msrtc .agents/rules .agents/skills .opencode .gitignore
 
 # English-only artifacts (the canonical Chinese brand string is the sole exception)
 python3 -c "import re,pathlib,sys;C=re.compile(r'[\u4e00-\u9fff]');A='面向多语言 monorepo 的可扩展构建编排器。';bad=[f'{p}:{i}' for p in list(pathlib.Path('docs').rglob('*'))+list(pathlib.Path('.agents').rglob('*'))+[pathlib.Path('AGENTS.md')] if p.is_file() and p.suffix in {'.md','.json','.jsonc'} for i,l in enumerate(p.read_text(errors='ignore').splitlines(),1) if C.search(l) and A not in l];print(bad or 'none');sys.exit(1 if bad else 0)"
@@ -128,9 +128,10 @@ python3 -m json.tool .opencode/opencode.json > /dev/null && echo "config valid"
   (2) Xmake is the **engine**, not an adapter — its dual role is settled in `docs/architecture.md`
   under `Superseded From The Whitepaper`.
 - **`.agents/rules/` and `.agents/skills/` are ported toolchain, not project opinions.** Only
-  `rules/common`, `rules/*` language sets, and 8 generic skills survived the port; 14 domain
-  skills and 2 disguised-domain rules (`platform.md`, `docker.md`) were removed. A 9th generic
-  skill, `doc-audit`, was ported from a sibling repository later — see `decisions.md` D9.
+  `rules/common`, `rules/*` language sets, and the ported generic skills survived the port; 14 domain
+  skills and 2 disguised-domain rules (`platform.md`, `docker.md`) were removed. The set later grew
+  `doc-audit` (ported, see `decisions.md` D9) plus project-authored skills; `SKILL.md` 2a is the
+  authoritative registry.
   Separately, 58 `xmake-*` / `xrepo-*` skills are a vendored third-party set pinned to an upstream
   commit — see `docs/reference/xmake-skills/XMAKE-ATTRIBUTION.md`. They are not part of the port,
   and since 2026-10-08 (D31) they are not loader-active either: reference corpus only.
