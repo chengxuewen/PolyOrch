@@ -19,8 +19,10 @@
 #
 # Marker texts: launch.json uses the COMBINED marker (faces merged); the
 # one-shot legacy migration below converts pre-D32 rust-only markers in
-# place. tasks.json is rust-only and its marker string is FROZEN byte-
-# identical to the pre-D32 text -- changing it would orphan every existing
+# place. The tasks region carries rust-then-node rows and its marker string
+# is FROZEN byte-identical to the pre-D32 text (rust-worded even when only
+# node rows land -- intentional, so a node-only tree still lands in the
+# region a rust user already has) -- changing it would orphan every existing
 # user tasks.json (region_write finds no new marker -> PLACED_NEW).
 # ===========================================================================
 
@@ -65,7 +67,7 @@ endfunction()
 # End-of-configure deferred generator (hooked at include time by EACH face;
 # collapse to once per tree via POLYORCH_VSCODE_HOOKED). Reads every face's
 # spec property, asks that face's rows function, writes the combined
-# launch.json region and the rust-only tasks.json region.
+# launch.json region and the merged rust-then-node tasks.json region.
 function(_polyorch_vscode_debug_generate)
     get_property(_rspecs GLOBAL PROPERTY POLYORCH_RUST_DEBUG_SPECS)
     get_property(_pspecs GLOBAL PROPERTY POLYORCH_PYTHON_DEBUG_SPECS)
@@ -85,8 +87,9 @@ function(_polyorch_vscode_debug_generate)
         return()
     endif()
     set(_launch "")
+    set(_tasks "")
     if(_rspecs)
-        _polyorch_rust_vscode_rows("${_rspecs}" _rl "")
+        _polyorch_rust_vscode_rows("${_rspecs}" _rl _tasks)
         string(APPEND _launch "${_rl}")
     endif()
     if(_pspecs AND COMMAND _polyorch_python_vscode_rows)
@@ -94,8 +97,9 @@ function(_polyorch_vscode_debug_generate)
         string(APPEND _launch "${_pl}")
     endif()
     if(_nspecs AND COMMAND _polyorch_node_vscode_rows)
-        _polyorch_node_vscode_rows("${_nspecs}" _nl)
+        _polyorch_node_vscode_rows("${_nspecs}" _nl _nt)
         string(APPEND _launch "${_nl}")
+        string(APPEND _tasks "${_nt}")
     endif()
     set(_begin "// __POLYORCH_GENERATED_BEGIN__ (PolyOrch debug configs; keep this block last, regenerate via reconfigure)")
     set(_end "// __POLYORCH_GENERATED_END__")
@@ -118,10 +122,9 @@ function(_polyorch_vscode_debug_generate)
     _polyorch_vscode_region_write("${_f}" "${_begin}" "${_end}" "${_launch}"
         "{\n    \"version\": \"0.2.0\",\n    \"configurations\": [\n%ROWS%\n    ]\n}"
         _st)
-    # tasks.json: rust face only (python needs no preLaunchTask).
+    # tasks.json: rust+node rows merged (python needs no preLaunchTask).
     # MARKER FROZEN -- byte-identical to the pre-D32 string (see header).
-    if(_rspecs)
-        _polyorch_rust_vscode_rows("${_rspecs}" _dummy _tasks)
+    if(_tasks)
         set(_st2 "")
         _polyorch_vscode_region_write("${_dir}/tasks.json"
             "// __POLYORCH_GENERATED_BEGIN__ (PolyOrch rust build tasks; keep this block last, regenerate via reconfigure)"

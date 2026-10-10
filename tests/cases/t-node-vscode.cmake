@@ -111,14 +111,14 @@ set(PolyOrch_NODE_VSCODE_DEBUG ON)
 polyorch_node_debug(TARGET "p1")
 polyorch_node_debug(TARGET "p2")
 polyorch_node_debug(TARGET "p3" ARGS "one" "two" ENVS "NODE_ENV=dev"
-    OUTFILES "dist/**/*.map,src/**/*.map")
+    OUTFILES "dist/**/*.js,src/**/*.js")
 polyorch_node_debug(TARGET "p4" NAME "custom lbl")
 polyorch_node_debug(TARGET "p6")
 
 get_property(_specs GLOBAL PROPERTY POLYORCH_NODE_DEBUG_SPECS)
 list(LENGTH _specs _n)
 ck(_n EQUAL 5)
-_polyorch_node_vscode_rows("${_specs}" _L)
+_polyorch_node_vscode_rows("${_specs}" _L _dummy)
 
 ck(_L MATCHES "\"type\": \"node\"")
 ck(_L MATCHES "\"runtimeExecutable\": \"/stub/node\"")
@@ -145,9 +145,9 @@ string(FIND "${_L}" "\"args\": [\"one\", \"two\", ]" _h)
 ck(NOT _h LESS 0)
 string(FIND "${_L}" "\"env\": {\"NODE_ENV\": \"dev\", }" _h)
 ck(NOT _h LESS 0)
-string(FIND "${_L}" "\"outFiles\": [\"dist/**/*.map\", \"src/**/*.map\", ]" _h)
+string(FIND "${_L}" "\"outFiles\": [\"dist/**/*.js\", \"src/**/*.js\", ]" _h)
 ck(NOT _h LESS 0)
-string(FIND "${_L}" "\"outFiles\": [\"${_pkg}/**/*.map\", ]" _h)
+string(FIND "${_L}" "\"outFiles\": [\"${_pkg}/**/*.js\", \"!${_pkg}/node_modules/**\", ]" _h)
 ck(NOT _h LESS 0)                                   # per-row default glob
 # skipFiles rides every row (5 launch objects, region contract comma)
 string(REGEX MATCHALL "\"request\": \"launch\"" _r "${_L}")
@@ -156,21 +156,36 @@ ck(_nr EQUAL 5)
 string(REGEX MATCHALL "<node_internals>" _sf "${_L}")
 list(LENGTH _sf _nsf)
 ck(_nsf EQUAL 5)
+# D37 contract: sourceMaps rides every node row; preLaunchTask rides rows
+# whose registration-time 8th field (BUILD_TARGET) is present
+ck(_L MATCHES "\"sourceMaps\": true")
+ck(_L MATCHES "\"preLaunchTask\"")
 # bare row (p1): args/env keys omitted ENTIRELY (outFiles default rides --
 # the python precedent keeps outFiles unconditional? no: it is emitted per
 # row from the spec, the default filled at REGISTRATION. The bare-row check
 # therefore pins args/env only.)
 list(GET _specs 0 _spec1)                    # p1 was registered first
-_polyorch_node_vscode_rows("${_spec1}" _bare)  # single-row isolation
+_polyorch_node_vscode_rows("${_spec1}" _bare _dummy)  # single-row isolation
 string(FIND "${_bare}" "args" _ha)
 string(FIND "${_bare}" "env" _he)
 if(NOT _ha LESS 0 OR NOT _he LESS 0)
     message(FATAL_ERROR "bare row leaked args/env keys: ${_bare}")
 endif()
 # empty table -> empty text
-_polyorch_node_vscode_rows("" _EL)
+_polyorch_node_vscode_rows("" _EL _dummy)
 string(COMPARE EQUAL "${_EL}" "" _e0)
 ck(_e0)
+
+# legacy 7-field spec (direct set_property, no 8th field): the row is still
+# generated, but preLaunchTask is absent and no tasks row can derive from it
+# (length guard -- green both before and after D37)
+set_property(GLOBAL PROPERTY POLYORCH_NODE_DEBUG_SPECS
+    "legacy|/stub/node|/p/e.js|/p|||*.map")
+get_property(_lgp GLOBAL PROPERTY POLYORCH_NODE_DEBUG_SPECS)
+_polyorch_node_vscode_rows("${_lgp}" _lg _dummy)
+ck(_lg MATCHES "\"type\": \"node\"")
+ck(NOT _lg MATCHES "preLaunchTask")
+ck(_lg MATCHES "\"sourceMaps\": true")   # sourceMaps unconditional even for 7-field
 
 # ---- three-source merge (direct generator call, t-python-vscode leg-2
 # shape: OVERWRITING set_property seeds -- APPEND would mix the parent's
@@ -182,7 +197,7 @@ set_property(GLOBAL PROPERTY POLYORCH_RUST_DEBUG_SPECS
 set_property(GLOBAL PROPERTY POLYORCH_PYTHON_DEBUG_SPECS
     "greet|/usr/bin/python3|/src/main.py|/src||")
 set_property(GLOBAL PROPERTY POLYORCH_NODE_DEBUG_SPECS
-    "runme|/stub/node|${_pkg}/dist/index.js|${_pkg}|||${_pkg}/**/*.map")
+    "runme|/stub/node|${_pkg}/dist/index.js|${_pkg}|||${_pkg}/**/*.map|runme-build")
 _polyorch_vscode_debug_generate()
 file(READ "${_vd}/launch.json" _c)
 ck(_c MATCHES "PolyOrch debug configs")              # combined marker
@@ -190,6 +205,8 @@ ck(_c MATCHES "\"type\": \"lldb\"")                # rust row
 ck(_c MATCHES "\"type\": \"debugpy\"")             # python row
 ck(_c MATCHES "\"type\": \"node\"")                # node row
 ck(_c MATCHES "\"runtimeExecutable\": \"/stub/node\"")
+ck(_c MATCHES "\"sourceMaps\": true")
+ck(_c MATCHES "\"preLaunchTask\": \"PolyOrch: runme\"")
 ck(NOT _c MATCHES "rust debug configs")              # legacy marker gone
 file(SHA256 "${_vd}/launch.json" _h1)
 _polyorch_vscode_debug_generate()                    # idempotent
@@ -197,6 +214,9 @@ file(SHA256 "${_vd}/launch.json" _h2)
 ck(_h1 STREQUAL _h2)
 file(READ "${_vd}/tasks.json" _tj)                   # rust specs -> tasks
 ck(_tj MATCHES "PolyOrch rust build tasks")          # frozen marker
+ck(_tj MATCHES "\"label\": \"PolyOrch: alpha \\\(debug\\\)\"")   # rust task row survives the merged region
+ck(_tj MATCHES "\"PolyOrch: runme\"")        # node task row merged after rust
+ck(_tj MATCHES "\"--target\", \"runme-build\"")   # preLaunchTask builds the mediator (D37 load-bearing)
 
 # ---- configure-mode polarity legs (B-4: the HOOK is product code and must
 # run HERE, not only where the GUI is). Stub-driven tier-a knobs: node-ws
@@ -227,6 +247,11 @@ ck(NOT _h LESS 0)                                    # tier-a knob -> RUNTIME
 ck(NOT _on MATCHES "hello-js-run")                   # no verb tail (parity)
 string(FIND "${_on}" "\"type\": \"node\"" _h)
 ck(NOT _h LESS 0)
+# node rows now write tasks.json too: the frozen rust marker stays byte-frozen
+# and node task rows merge after it
+ck(EXISTS "${_s}/vson/tasks.json")
+file(READ "${_s}/vson/tasks.json" _tj2)
+ck(_tj2 MATCHES "PolyOrch rust build tasks")  # frozen marker rides unchanged
 
 drv_run(_dl2 _rc2 SKIP_VAR _skip2
     FIXTURE "${CMAKE_CURRENT_LIST_DIR}/../fixtures/node-ws"

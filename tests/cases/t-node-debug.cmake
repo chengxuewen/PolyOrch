@@ -18,7 +18,11 @@ if(NOT _req)
 endif()
 
 _polyorch_pixi_scratch(_s)
-set(_fx "${CMAKE_CURRENT_LIST_DIR}/../fixtures/node-debug")
+get_filename_component(_fx
+    "${CMAKE_CURRENT_LIST_DIR}/../fixtures/node-debug" ABSOLUTE)
+# normalized to match the child's CMAKE_CURRENT_SOURCE_DIR exactly -- the
+# raw "cases/../fixtures" spelling never appears in the generated row
+# (found on the leg's first real execution, node now installed)
 set(_entry "${_fx}/dist/index.js")
 
 # ---- ON polarity: gate passed, output parked ------------------------------
@@ -36,8 +40,16 @@ ck(NOT _h LESS 0)                                    # package-root join, no dis
 ck(EXISTS "${_entry}")                                # the row points at a real file
 ck(_c MATCHES "\"runtimeExecutable\": \"")            # non-empty runtime pin
 ck(_c MATCHES "\"type\": \"node\"")
-# tasks.json stays rust-only: a node-only tree writes NO tasks file
-ck(NOT EXISTS "${_s}/vson/tasks.json")
+ck(_c MATCHES "\"sourceMaps\": true")
+string(FIND "${_c}" "\"preLaunchTask\": \"PolyOrch: debug-demo\"" _h)
+ck(NOT _h LESS 0)
+# node rows now merge into the frozen-marker tasks region (rust-then-node)
+ck(EXISTS "${_s}/vson/tasks.json")
+file(READ "${_s}/vson/tasks.json" _tj)
+string(FIND "${_tj}" "PolyOrch rust build tasks" _h)
+ck(NOT _h LESS 0)                              # marker byte-frozen
+string(FIND "${_tj}" "\"label\": \"PolyOrch: debug-demo\"" _h)
+ck(NOT _h LESS 0)                              # node task row present
 # the managed marker rides, and the STATUS count names node
 ck(_c MATCHES "PolyOrch debug configs")
 
@@ -50,5 +62,6 @@ ck(_rc2 EQUAL 0)
 # the hook never registers the DEFER -> the generator never runs -> the file
 # is absent ENTIRELY (zero footprint, not an empty region)
 ck(NOT EXISTS "${_s}/vsoff/launch.json")
+ck(NOT EXISTS "${_s}/vsoff/tasks.json")          # OFF gate: no tasks file either
 
-message(STATUS "t-node-debug: OK (live rows + runtime pin + node-only tasks-absence + OFF zero footprint)")
+message(STATUS "t-node-debug: OK (live rows + runtime pin + node tasks merged + OFF zero footprint)")

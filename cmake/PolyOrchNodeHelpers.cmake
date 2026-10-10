@@ -18,6 +18,12 @@
 #      pixi env glob, then STATUS degradation (the rust-nodejs idiom; nvm
 #      users: `nvm use` before configuring -- documented, not special-cased).
 #
+# IDE source mount (2026-10-09, rust-face parity -- the python face carries
+# the same FOLDER idiom; this is the SOURCES half): every verb node lists
+# the package's display files (js/mjs/cjs/ts/tsx/jsx glob minus
+# node_modules/dist/build/dot-dirs, + package.json + root lockfiles) as
+# HEADER_FILE_ONLY SOURCES -- cosmetic, never compile inputs. NO_SOURCES
+# opts out in build(); PolyOrch_NODE_SOURCES_PLAIN is the escape hatch.
 # Naming: real targets are kebab-case; fused trees namespace them through
 # PolyOrch_NODE_TARGET_PREFIX (this module's own knob -- A2: the name says
 # NODE and means NODE; the rust knob stays the rust knob's). Fusion loop
@@ -41,6 +47,14 @@ cmake_minimum_required(VERSION 3.25)
 # node-less hosts (measured, D33).
 option(PolyOrch_NODE_VSCODE_DEBUG
     "Generate VSCode js-debug launch configs for polyorch_node_debug handles" OFF)
+
+# PolyOrch_NODE_SOURCES_PLAIN -- serve the IDE source mount as plain
+# sources instead of HEADER_FILE_ONLY (escape hatch for IDE versions that
+# fold header-class entries away; mirrors PolyOrch_RUST_SOURCES_PLAIN).
+# Same post-cmr placement as the gate above -- the CMP0077 OLD-wipe
+# deviation is a class, not a line (PIT-48 sweep doctrine).
+option(PolyOrch_NODE_SOURCES_PLAIN
+    "Serve node IDE display sources as plain sources instead of HEADER_FILE_ONLY" OFF)
 
 # IDE grouping: every node creation site below consumes the fusion loop's
 # PolyOrch_RUST_FOLDER_ROOT (the family root knob despite the historical
@@ -72,14 +86,20 @@ function(polyorch_node_setup)
     cmake_parse_arguments(PARSE_ARGV 0 S "" "" "${_opts}")
 
     set(_roots "$ENV{HOME}/.pixi/bin")
-    # tier b: PATH (+ ~/.pixi/bin so a bare pixi install counts, same as the
-    # rust face's cargo probe)
-    find_program(PolyOrchNode_EXECUTABLE NAMES node
-        HINTS ${_roots} NO_CACHE)
-    # tier a: explicit override wins over everything (rust-nodejs idiom:
-    # -D<X>Exe=; ours differs in name by design, adjudication A2)
-    if(NOT PolyOrchNode_EXECUTABLE)
+    # tier a FIRST: the explicit knob wins over everything (rust-nodejs
+    # idiom; -DPolyOrchNodeExe=, name per adjudication A2). The PM tier
+    # below was already knob-first; the node exe tier was not -- measured
+    # 2026-10-08 the pre-knob find_program wrote the result variable and a
+    # real PATH node beat the stub (the exact NO_CACHE-class footgun the
+    # python face fixed in D32's contact round; the comment promised the
+    # right thing while the order did the wrong one -- order IS the fix).
+    if(PolyOrchNodeExe)
         set(PolyOrchNode_EXECUTABLE "${PolyOrchNodeExe}")
+    else()
+        # tier b: PATH (+ ~/.pixi/bin so a bare pixi install counts, same
+        # as the rust face's cargo probe)
+        find_program(PolyOrchNode_EXECUTABLE NAMES node
+            HINTS ${_roots} NO_CACHE)
     endif()
 
     set(_found TRUE)
@@ -109,7 +129,8 @@ function(polyorch_node_setup)
         set(_pm_argv "${PolyOrchNodeCorepack}" "${_pm}")
     endif()
     if(NOT _pm_argv)
-        find_program(PolyOrchNode_COREPACK NAMES corepack NO_CACHE)
+        find_program(PolyOrchNode_COREPACK NAMES corepack
+            HINTS ${_roots} NO_CACHE)
     endif()
     if(NOT _pm_argv AND PolyOrchNode_COREPACK)
         set(_pm_argv "${PolyOrchNode_COREPACK}" "${_pm}")
@@ -120,7 +141,12 @@ function(polyorch_node_setup)
         if(PolyOrchNodeNpm)
             set(_pm_argv "${PolyOrchNodeNpm}")
         else()
-            find_program(PolyOrchNode_NPM NAMES npm NO_CACHE)
+            # HINTS ~/.pixi/bin: a pixi-global nodejs exposes npm beside
+            # node (measured 2026-10-08: PATH-less interactive shells found
+            # the node tier through its HINTS but failed the PM tier ->
+            # half-missing degradation with the toolchain installed).
+            find_program(PolyOrchNode_NPM NAMES npm
+                HINTS ${_roots} NO_CACHE)
             if(PolyOrchNode_NPM)
                 set(_pm_argv "${PolyOrchNode_NPM}")
             endif()
@@ -247,6 +273,84 @@ function(_polyorch_node_read_entry out manifest)
     set(${out} "${_entry}" PARENT_SCOPE)
 endfunction()
 
+# _polyorch_node_mount_sources(TGT PKG_DIR) -- the rust face's
+# _polyorch_rust_mount_sources ported (corr: the mount pair at
+# PolyOrchRustHelpers 1366-1428). Attach the package's display files
+# (source glob + package.json + root lockfiles) to TGT's SOURCES so IDE
+# target trees show and open them at every verb node. COSMETIC ONLY: the
+# PM owns the real build inputs (a script is dispatched, never compiled
+# here), so a glob miss or stray hit never affects correctness -- that
+# distinction is why the GLOB caution in the CMake docs does not apply.
+# Excluded by design: node_modules/, dist/, build/ and every dot-dir --
+# vendor trees would flood the IDE listing with thousands of files.
+# SOFT = display-only caller (verb nodes): a missing dir skips the mount
+# instead of failing the configure -- a display feature never fails a
+# configure. build()/import call HARD: the dir's manifest was just read
+# from it, so a miss here means it vanished mid-configure -- a real
+# configuration error (the rust HARD stamp tripwire, same semantics).
+function(_polyorch_node_mount_sources TGT PKG_DIR)
+    cmake_parse_arguments(PARSE_ARGV 2 MM "SOFT" "" "")
+    get_filename_component(_dir "${PKG_DIR}" ABSOLUTE)
+    if(NOT IS_DIRECTORY "${_dir}")
+        if(MM_SOFT)
+            return()
+        endif()
+        message(FATAL_ERROR
+            "_polyorch_node_mount_sources: package dir missing: ${_dir}")
+    endif()
+    # CONFIGURE_DEPENDS mirrors the rust mount comment: newly added files
+    # appear on rebuild without a hand-run re-glob; LIST_DIRECTORIES false
+    # keeps a directory named *.js out of the file list.
+    file(GLOB_RECURSE _srcs CONFIGURE_DEPENDS LIST_DIRECTORIES false
+        "${_dir}/*.js" "${_dir}/*.mjs" "${_dir}/*.cjs"
+        "${_dir}/*.ts" "${_dir}/*.tsx" "${_dir}/*.jsx")
+    set(_keep "")
+    foreach(_f IN LISTS _srcs)
+        file(RELATIVE_PATH _rel "${_dir}" "${_f}")
+        if(_rel MATCHES "(^|/)(node_modules|dist|build|\\.[^/]+)(/|$)")
+            continue()
+        endif()
+        list(APPEND _keep "${_f}")
+    endforeach()
+    # the manifest (and the lockfiles, once generated) are where dependency
+    # edits live -- they join the display list explicitly (rust does the
+    # same with Cargo.toml/Cargo.lock). A workspace member has no lockfile
+    # of its own; the root's rides on the root's mount -- honest display.
+    list(APPEND _keep "${_dir}/package.json")
+    foreach(_lock package-lock.json pnpm-lock.yaml yarn.lock)
+        if(EXISTS "${_dir}/${_lock}")
+            list(APPEND _keep "${_dir}/${_lock}")
+        endif()
+    endforeach()
+    list(REMOVE_DUPLICATES _keep)
+    # HEADER_FILE_ONLY marks them "not compiled here" for CMake; some
+    # IDE versions fold header-class entries away in target trees, so
+    # PolyOrch_NODE_SOURCES_PLAIN=ON serves them as plain sources.
+    if(PolyOrch_NODE_SOURCES_PLAIN)
+        set_source_files_properties(${_keep} PROPERTIES
+            HEADER_FILE_ONLY OFF)
+    else()
+        set_source_files_properties(${_keep} PROPERTIES
+            HEADER_FILE_ONLY ON)   # IDE display, never compile inputs
+    endif()
+    set_property(TARGET "${TGT}" APPEND PROPERTY SOURCES ${_keep})
+endfunction()
+
+# _polyorch_node_mount_verb_targets(HANDLE TGT)
+# run/test verb nodes reuse the POLYORCH_NODE_DIR_ stamp build()/import
+# left on the handle. Silent skip when the stamp is absent -- display
+# features never fail a configure. One layer simpler than the rust twin:
+# node stamps the package dir globally per handle, so there is no
+# manifest/CRATE deref chain to read (and no metadata authority exists
+# for node -- the glob IS the list, cosmetically).
+function(_polyorch_node_mount_verb_targets HANDLE TGT)
+    get_property(_dir GLOBAL PROPERTY "POLYORCH_NODE_DIR_${HANDLE}")
+    if(NOT _dir)
+        return()
+    endif()
+    _polyorch_node_mount_sources("${TGT}" "${_dir}" SOFT)
+endfunction()
+
 # ---------------------------------------------------------------------------
 # verbs
 # ---------------------------------------------------------------------------
@@ -325,8 +429,10 @@ function(polyorch_node_import)
             # the build mediator: the two-row template table (Momus fix 2).
             # WORKING_DIRECTORY is the root -- workspace commands are rooted.
             _polyorch_node_ws_args(_wsargs "${_name}")
+            _polyorch_node_rule_path(_impenv)
             add_custom_target("${_handle}-build"
-                COMMAND ${PolyOrchNode_PM_EXECUTABLE} run build ${_wsargs}
+                COMMAND ${CMAKE_COMMAND} -E env "${_impenv}"
+                    ${PolyOrchNode_PM_EXECUTABLE} run build ${_wsargs}
                 WORKING_DIRECTORY "${_root_dir}"
                 USES_TERMINAL
                 COMMENT "node: build ${_name} (${_handle})")
@@ -334,6 +440,11 @@ function(polyorch_node_import)
                 set_target_properties("${_handle}-build" PROPERTIES
                     FOLDER "${PolyOrch_RUST_FOLDER_ROOT}")
             endif()
+
+            # IDE source mount on the member mediator (rust parity). No
+            # per-member NO_SOURCES knob -- YAGNI; the opt-out lives where
+            # rust has it: build().
+            _polyorch_node_mount_sources("${_handle}-build" "${_mdir}")
 
             # entry + LOCATION (adjudication 2: dist/ convention)
             _polyorch_node_read_entry(_entry "${_mf}")
@@ -412,6 +523,26 @@ endfunction()
 # "--filter <name> run build"... which forces run-before/after knowledge at
 # the caller. Cleaner: this module's mediators are built by
 # _polyorch_node_build_command(OUT <list> NAME <pkg> SCRIPT <s>) below.
+# _polyorch_node_rule_path <out>
+# The PATH a package-manager rule carries so an npm script can resolve its
+# own toolchain siblings (tsc, node) regardless of the AMBIENT PATH of
+# whatever runs `cmake --build` (PIT-62: a VSCode task shell lacks the
+# tool dir, so `npm run build` -> `tsc: not found`; the node-face twin of
+# the rust PIT-14 host-env isolation). Prepends the node bin dir, the PM
+# bin dir, and any example-declared tool dirs (PolyOrchNode_BUILD_ENV_PATH)
+# to the configure-time PATH. The example sets the knob for tools that may
+# live elsewhere than node (tsc is not guaranteed co-located).
+function(_polyorch_node_rule_path out)
+    get_filename_component(_nb "${PolyOrchNode_EXECUTABLE}" DIRECTORY)
+    get_filename_component(_pb "${PolyOrchNode_PM_EXECUTABLE}" DIRECTORY)
+    set(_pp "${_nb}:${_pb}")
+    if(PolyOrchNode_BUILD_ENV_PATH)
+        string(REPLACE ";" ":" _xp "${PolyOrchNode_BUILD_ENV_PATH}")
+        string(APPEND _pp ":${_xp}")
+    endif()
+    set(${out} "PATH=${_pp}:$ENV{PATH}" PARENT_SCOPE)
+endfunction()
+
 function(_polyorch_node_ws_args out package)
     if(PolyOrchNode_PM_NAME STREQUAL "pnpm")
         set(${out} "--filter" "${package}" PARENT_SCOPE)
@@ -420,7 +551,7 @@ function(_polyorch_node_ws_args out package)
     endif()
 endfunction()
 
-# polyorch_node_build(TARGET <handle> MANIFEST <package.json> [OUTPUT_DIR <dir>])
+# polyorch_node_build(TARGET <handle> MANIFEST <package.json> [OUTPUT_DIR <dir>] [NO_SOURCES])
 #
 # Registers a single-package handle + -build mediator WITHOUT a workspace
 # root (the standalone shape; import covers the workspace shape). Same
@@ -428,7 +559,8 @@ endfunction()
 # OUTPUT_DIR overrides <manifest-dir>/dist (adjudication 2).
 function(polyorch_node_build)
     set(_one TARGET MANIFEST OUTPUT_DIR)
-    cmake_parse_arguments(PARSE_ARGV 0 B "" "${_one}" "")
+    set(_opts NO_SOURCES)
+    cmake_parse_arguments(PARSE_ARGV 0 B "${_opts}" "${_one}" "")
     if(NOT B_TARGET OR NOT B_MANIFEST)
         message(FATAL_ERROR
             "polyorch_node_build: TARGET and MANIFEST are required")
@@ -448,14 +580,25 @@ function(polyorch_node_build)
         message(FATAL_ERROR
             "polyorch_node_build: handle '${_handle}' already registered")
     endif()
+    # PATH self-sufficiency (PIT-62, D37 user-found via the real VSCode F5
+    # chain): wrap the PM invocation so the script resolves its own
+    # toolchain siblings, never the invoker's ambient PATH.
+    _polyorch_node_rule_path(_penv)
     add_custom_target("${_handle}-build"
-        COMMAND ${PolyOrchNode_PM_EXECUTABLE} run build
+        COMMAND ${CMAKE_COMMAND} -E env "${_penv}"
+            ${PolyOrchNode_PM_EXECUTABLE} run build
         WORKING_DIRECTORY "${_mdir}"
         USES_TERMINAL
         COMMENT "node: build ${_name} (${_handle})")
     if(PolyOrch_RUST_FOLDER_ROOT)
         set_target_properties("${_handle}-build" PROPERTIES
             FOLDER "${PolyOrch_RUST_FOLDER_ROOT}")
+    endif()
+
+    # IDE source mount on the mediator (rust parity). HARD is a tripwire
+    # only: _mdir is the directory of the manifest read a few lines above.
+    if(NOT B_NO_SOURCES)
+        _polyorch_node_mount_sources("${_handle}-build" "${_mdir}")
     endif()
 
     set_property(GLOBAL PROPERTY "POLYORCH_NODE_MANIFEST_${_handle}"
@@ -493,8 +636,10 @@ function(polyorch_node_test)
     get_property(_root GLOBAL PROPERTY "POLYORCH_NODE_ROOT_${_th}")
     get_property(_pkg GLOBAL PROPERTY "POLYORCH_NODE_PKG_${_th}")
     _polyorch_node_ws_args(_wsargs "${_pkg}")
+    _polyorch_node_rule_path(_tstenv)
     add_custom_target("${_th}-test"
-        COMMAND ${PolyOrchNode_PM_EXECUTABLE} run test ${_wsargs}
+        COMMAND ${CMAKE_COMMAND} -E env "${_tstenv}"
+            ${PolyOrchNode_PM_EXECUTABLE} run test ${_wsargs}
         WORKING_DIRECTORY "${_root}"
         USES_TERMINAL
         COMMENT "node: test ${_pkg} (${_th})")
@@ -502,6 +647,9 @@ function(polyorch_node_test)
         set_target_properties("${_th}-test" PROPERTIES
             FOLDER "${PolyOrch_RUST_FOLDER_ROOT}")
     endif()
+    # IDE parity: the test node mounts the same display files as the
+    # build mediator (SOFT -- verb-node reuse of the stamped dir).
+    _polyorch_node_mount_verb_targets("${_th}" "${_th}-test")
 endfunction()
 
 # polyorch_node_run(TARGET <handle> SCRIPT <name> [ARGS ...])
@@ -527,8 +675,10 @@ function(polyorch_node_run)
         list(APPEND _tail "--")
         list(APPEND _tail ${R_ARGS})
     endif()
+    _polyorch_node_rule_path(_rnenv)
     add_custom_target("${_rh}-run-${R_SCRIPT}"
-        COMMAND ${PolyOrchNode_PM_EXECUTABLE} run ${_wsargs} ${R_SCRIPT} ${_tail}
+        COMMAND ${CMAKE_COMMAND} -E env "${_rnenv}"
+            ${PolyOrchNode_PM_EXECUTABLE} run ${_wsargs} ${R_SCRIPT} ${_tail}
         WORKING_DIRECTORY "${_root}"
         USES_TERMINAL
         COMMENT "node: ${R_SCRIPT} (${_rh})")
@@ -536,6 +686,9 @@ function(polyorch_node_run)
         set_target_properties("${_rh}-run-${R_SCRIPT}" PROPERTIES
             FOLDER "${PolyOrch_RUST_FOLDER_ROOT}")
     endif()
+    # IDE parity: the run node carries the same display files (the debug
+    # workflow opens sources right where it launches).
+    _polyorch_node_mount_verb_targets("${_rh}" "${_rh}-run-${R_SCRIPT}")
 endfunction()
 
 # polyorch_node_debug(TARGET <handle> [NAME <label>] [ARGS <a>...]
@@ -616,25 +769,41 @@ function(polyorch_node_debug)
     string(REPLACE ";" "," _envsj "${D_ENVS}")
     set(_outj "${D_OUTFILES}")
     if(_outj STREQUAL "")
-        set(_outj "${_dir}/**/*.map")
+        # js-debug's outFiles names GENERATED JavaScript (not the .map);
+        # the map path is derived from the matched .js via the sibling
+        # .map / sourceMappingURL comment. `.map` here would match only
+        # the map file, kill breakpoint PREDICTION (pre-load binding), and
+        # a program that computes at import time would finish before the
+        # runtime-only map path engages. Default = generated js + excl.
+        set(_outj "${_dir}/**/*.js,!${_dir}/node_modules/**")
     endif()
     # RUNTIME joins the spec NOW (not at generate time): the row carries
     # the discovered tool of THIS configure -- three-tier doctrine, the
     # whole point of the discovery is that node may live only in a pixi
     # env and the VSCode GUI PATH will not know it.
+    # FIELD 8 = the build mediator the preLaunchTask rebuilds (build()/import()
+    # both create `${_handle}-build`). Its presence unlocks preLaunchTask + the
+    # tasks.json row; sourceMaps rides every node row unconditionally. A legacy
+    # 7-field row still renders (sourceMaps, no preLaunchTask, no task row).
     set_property(GLOBAL APPEND PROPERTY POLYORCH_NODE_DEBUG_SPECS
-        "${_lbl}|${PolyOrchNode_EXECUTABLE}|${_prog}|${_dir}|${_argsj}|${_envsj}|${_outj}")
+        "${_lbl}|${PolyOrchNode_EXECUTABLE}|${_prog}|${_dir}|${_argsj}|${_envsj}|${_outj}|${_dh}-build")
 endfunction()
 
-# _polyorch_node_vscode_rows(SPECS LAUNCH_OUT)
-# Pure spec-table -> JSONC region text (the python/rust rows siblings).
-# Spec row shape: NAME|RUNTIME|PROGRAM|CWD|ARGS|ENVS|OUTFILES (exactly
-# SIX '|', seven fields; ARGS/ENVS/OUTFILES comma-joined; empty fields
-# still serialize the pipes). js-debug is VSCode built-in -- no extension
-# install (unlike CodeLLDB/debugpy). Embedded double-quotes unescaped:
-# the family's known-deviation 2 (python rows header, same class).
-function(_polyorch_node_vscode_rows SPECS LAUNCH_OUT)
+# _polyorch_node_vscode_rows(SPECS LAUNCH_OUT TASKS_OUT)
+# Pure spec-table -> JSONC region text (the python/rust rows siblings; the
+# third out-var carries the matching tasks rows so the shared generator can
+# merge rust-then-node rows under ONE frozen-marker tasks region).
+# Spec row shape: NAME|RUNTIME|PROGRAM|CWD|ARGS|ENVS|OUTFILES[|BUILD_TARGET]
+# -- the seven base fields are mandatory (empty fields still serialize the
+# pipes); ARGS/ENVS/OUTFILES are comma-joined. BUILD_TARGET is optional:
+# present and non-empty it unlocks preLaunchTask + a task row (sourceMaps
+# rides EVERY node row unconditionally, outside this guard; the length guard
+# keeps legacy 7-field rows rendering). js-debug is VSCode built-in -- no
+# extension install (unlike CodeLLDB/debugpy). Embedded double-quotes
+# unescaped: the family's known-deviation 2 (python rows header, same class).
+function(_polyorch_node_vscode_rows SPECS LAUNCH_OUT TASKS_OUT)
     set(_L "")
+    set(_K "")
     foreach(_row ${SPECS})
         string(REPLACE "|" ";" _f "${_row}")
         list(GET _f 0 _nm)
@@ -644,6 +813,11 @@ function(_polyorch_node_vscode_rows SPECS LAUNCH_OUT)
         list(GET _f 4 _args)
         list(GET _f 5 _envs)
         list(GET _f 6 _out)
+        list(LENGTH _f _nfl)
+        set(_bt "")
+        if(_nfl GREATER 7)
+            list(GET _f 7 _bt)
+        endif()
         string(APPEND _L
 "        {\n"
 "            \"name\": \"PolyOrch: ${_nm}\",\n"
@@ -654,6 +828,18 @@ function(_polyorch_node_vscode_rows SPECS LAUNCH_OUT)
 "            \"cwd\": \"${_cwd}\",\n"
 "            \"console\": \"integratedTerminal\",\n"
 "            \"skipFiles\": [\"<node_internals>/**\"]")
+        string(APPEND _L ",\n            \"sourceMaps\": true")
+        if(NOT _bt STREQUAL "")
+            string(APPEND _L ",\n            \"preLaunchTask\": \"PolyOrch: ${_nm}\"")
+            string(APPEND _K
+"        {\n"
+"            \"label\": \"PolyOrch: ${_nm}\",\n"
+"            \"type\": \"shell\",\n"
+"            \"command\": \"cmake\",\n"
+"            \"args\": [\"--build\", \"${CMAKE_BINARY_DIR}\", \"--target\", \"${_bt}\"],\n"
+"            \"problemMatcher\": []\n"
+"        },\n")
+        endif()
         if(NOT _out STREQUAL "")
             string(REPLACE "," ";" _ol "${_out}")
             set(_oj "")
@@ -685,6 +871,7 @@ function(_polyorch_node_vscode_rows SPECS LAUNCH_OUT)
         string(APPEND _L "\n        },\n")
     endforeach()
     set(${LAUNCH_OUT} "${_L}" PARENT_SCOPE)
+    set(${TASKS_OUT} "${_K}" PARENT_SCOPE)
 endfunction()
 
 # ===========================================================================
