@@ -16,9 +16,9 @@
 | `rust-cpp-lib/` | `cmake -S rust-cpp-lib -B build` | "Rust wraps an EXISTING C++ library": a CMake-built C++ static lib (`Demo` class with state), a hand-written shim the cxx bridge binds to, and the library linked into the cargo build through `polyorch_rust_link_libraries`. Sibling orientation: rust-bindings shows the CONSUMER-IMPLEMENTED C++ callback shape; rust-link-c shows the same link_libraries mechanism with a C library |
 | `rust-bindings/` | `cmake -S rust-bindings -B build` | the FLAGSHIP binding story, one crate two foreign surfaces: a `#[cxx::bridge]` C++ surface (both directions -- C++ calls Rust, Rust calls back into C++) consumed by the repo's first real C++ executable, and a `#[no_mangle] extern "C"` surface documented by cbindgen, installed via install(EXPORT) + PUBLIC_HEADER, and consumed by a separate `find_package` project. Also the only example exercising `polyorch_rust_clean` and `polyorch_rust_package_version` |
 | `rust-cross/` | `rustup target add x86_64-unknown-linux-musl` then `-DPolyOrch_RUST_CARGO_TARGET=<triple>` | cross-compiling in one graph: every handle routes through `--target` (artifacts nest under `.cargo-target/<triple>/`), while `polyorch_rust_set_hostbuild` opts one handle back OUT to the host layer -- device binary + build-machine binary, one configure |
-| `node-web/` | `cmake -S node-web -B build` | "CMake orchestrates an npm/pnpm workspace": `polyorch_node_import` reads the root manifest's workspaces globs and registers one -build mediator per member; the `workspace:*` dependency edge is a real `add_dependencies`. Zero-dependency node build scripts -- the orchestrated surface is the package manager's workspace machinery, not a compiler (corepack abstraction, dist/ convention, one-shot verbs; D29). Fused: `polyorch-node-web-...` |
-| `node-basic/` | `cmake -S node-basic -B build` | the source-level js-debug carrier: the package's `main` points at `src/index.js`, so the generated launch config's `program` IS the real source file -- F5 in VSCode's built-in js-debug hits breakpoints inside `src/index.js` with no source maps and no extension (D37 gives the row a preLaunchTask that rebuilds the stub `node-basic-build` mediator; node-web's hello-ts shows the built-entry shape instead). Single-package `polyorch_node_build` + `polyorch_node_debug`; the debug gate opts in in-file, park the output with `-DPolyOrch_VSCODE_DIR=build/.vscode`. Fused: `polyorch-node-basic-...` |
-| `node-ts-basic/` | `cmake -S node-ts-basic -B build` | the TS debug carrier (D37): the built-entry shape -- the package's `main` points at `dist/index.js`, `tsc` emits `dist/index.js.map` beside it, and the generated launch row carries `sourceMaps` + a `preLaunchTask` that runs `node-ts-basic-build` first -- F5 = incremental tsc build, then js-debug lands breakpoints back in `src/index.ts` through the map. Prereq: `tsc` on PATH (`pixi global install typescript`); absent, the example registers nothing with a STATUS note. Single-package `polyorch_node_build` + `polyorch_node_debug`; the debug gate opts in in-file, park the output with `-DPolyOrch_VSCODE_DIR=build/.vscode`. Fused: `polyorch-node-ts-basic-...` |
+| `node-web/` | `cmake -S node-web -B build` | "CMake orchestrates an npm/pnpm workspace": `polyorch_node_import` reads the root manifest's workspaces globs and registers one -build mediator per member; the `workspace:*` dependency edge is a real `add_dependencies`. Zero-dependency node build scripts -- the orchestrated surface is the package manager's workspace machinery, not a compiler (corepack abstraction, dist/ convention, one-shot verbs; D29). The hello-ts debug row carries `outFiles` over BOTH packages' dist globs so cross-package breakpoint prediction survives the hello-ts -> hello-js hop (see the F5 tours below). Fused: `polyorch-node-web-...` |
+| `node-basic/` | `cmake -S node-basic -B build` | the source-level js-debug carrier: the package's `main` points at `src/index.js`, so the generated launch config's `program` IS the real source file -- F5 in VSCode's built-in js-debug hits breakpoints across `src/core.js` (collatz `while`), `src/format.js` (`formatTotal`) and the vendored `vendor/vendorlib/index.js` (`banner`) with no source maps and no extension: npm installs the `file:` dependency as a `node_modules` symlink and node resolves the realpath, so the breakpoint file IS the vendor source. The row's `preLaunchTask` rebuilds the `node-basic-build` mediator (`npm install --no-audit --no-fund` + echo); node-web's hello-ts shows the built-entry shape instead. Single-package `polyorch_node_build` + `polyorch_node_debug`; the debug gate opts in in-file, park the output with `-DPolyOrch_VSCODE_DIR=build/.vscode`. Fused: `polyorch-node-basic-...` |
+| `node-ts-basic/` | `cmake -S node-ts-basic -B build` | the TS debug carrier (D37): the built-entry shape -- the package's `main` points at `dist/index.js`, `tsc` emits `dist/index.js.map` beside it, and the generated launch row carries `sourceMaps` + a `preLaunchTask` that runs `node-ts-basic-build` first -- F5 = incremental tsc build, then js-debug lands breakpoints back in `src/*.ts` through the emitted sibling maps, including the vendored TS lib's `vendor/tslib/src/tslib.ts` through its committed `dist/tslib.js.map` (see the F5 tours below). Prereq: `tsc` on PATH (`pixi global install typescript`); absent, the example registers nothing with a STATUS note. Single-package `polyorch_node_build` + `polyorch_node_debug`; the debug gate opts in in-file, park the output with `-DPolyOrch_VSCODE_DIR=build/.vscode`. Fused: `polyorch-node-ts-basic-...` |
 | `rust-basic/` | `cmake -S rust-basic -B build` | the rust helpers on the system route: `polyorch_rust_setup()` (no `FROM` -- cargo/rustc from `PATH`) selects the toolchain, `polyorch_rust_build()` exports the binary as the imported target `greet`, `polyorch_rust_test()` registers a non-default `cargo test` target, `polyorch_rust_run()` wires `--target greet-run`; the whole example is offline -- nothing here installs or pins the toolchain (pinning is an environment concern, and the pixi `FROM pixi` route is a covered mechanism, not an example need) |
 
 **Route matrix note**: every rust example carries BOTH routes -- the default
@@ -82,6 +82,53 @@ carry their verb targets; the `-all` aggregate is rust-only machinery). The debu
 debugpy / js-debug rows in the shared `.vscode` managed region) is opt-in
 per example; see each example header for the exact knob and the
 `PolyOrch_VSCODE_DIR` parking note.
+
+## F5 breakpoint tours (node & python faces)
+
+All four examples opt their debug gate in in-file; park the generated rows
+with `-DPolyOrch_VSCODE_DIR=<the folder you open>/.vscode`, pick the named
+row, F5. Each tour names the exact files whose breakpoints bind.
+
+- **node-basic** -- row `PolyOrch: node-basic`, program `src/index.js`;
+  plain JS, no source maps anywhere. The `preLaunchTask` runs the
+  `node-basic-build` mediator, whose npm script is `npm install
+  --no-audit --no-fund` plus an echo -- the two flags keep the `file:`
+  dependency install offline and egress-safe (audit POSTs to the registry
+  otherwise). Breakpoints: `src/core.js` (the collatz `while`),
+  `src/format.js` (`formatTotal`), and `vendor/vendorlib/index.js`
+  (`banner`). The vendor hop is a realpath story: npm installs the `file:`
+  dependency as the symlink `node_modules/vendorlib`, node resolves
+  symlinks to the realpath, so js-debug reports the module at its vendor
+  path -- the breakpoint file IS the vendor source, nothing is copied
+  under `node_modules` (and the row's `node_modules` glob exclusion
+  therefore costs nothing for it).
+- **node-ts-basic** -- row `PolyOrch: node-ts-basic`, program
+  `dist/index.js`; the `preLaunchTask` rebuilds through the
+  `node-ts-basic-build` mediator (tsc). Breakpoints in `src/*.ts` bind
+  via the emitted sibling `.map` files. Second hop: the vendored TS
+  library's breakpoint target is `vendor/tslib/src/tslib.ts`, reached
+  from the runtime `vendor/tslib/dist/tslib.js` through its committed
+  `dist/tslib.js.map`, whose `sources` entry is `../src/tslib.ts`. The
+  row's DEFAULT `outFiles` glob already covers this file: the `file:`
+  symlink resolves to a realpath inside the package directory
+  (`vendor/tslib/`), which the glob's `node_modules` exclusion never
+  touches -- no OUTFILES knob needed here.
+- **python-basic** -- row `PolyOrch: greet` (debugpy), run button
+  `greet-run`. The row ships `justMyCode: false` (the example passes
+  `JUST_MY_CODE OFF`; an unset spec keeps debugpy's default true). Two
+  stories: cross-file stops in `greet/core.py` -- my code under either
+  setting -- at the `greet()` return and the `for` loop in `main()`; and
+  the stdlib demo -- a breakpoint inside `json/__init__.py`'s `dumps`
+  body, reached from `core.py`'s final `print(json.dumps(...))` -- which
+  only BINDS with `justMyCode: false` and greys out under the default.
+- **node-web** -- row `PolyOrch: hello-ts`, program
+  `packages/hello-ts/dist/index.js`. Both packages' dists are generated
+  by `gen.js` and ship no source maps: breakpoints live in the generated
+  files themselves. The row carries an explicit `outFiles` covering
+  `packages/hello-ts/dist/**/*.js` AND `packages/hello-js/dist/**/*.js`,
+  so breakpoint prediction survives the hop -- hello-ts's generated code
+  requires the sibling package's dist by relative path, and the default
+  per-package glob would only know hello-ts's own dist.
 
 ## Debugging rust targets in VSCode
 
