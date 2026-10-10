@@ -107,12 +107,16 @@ ck(EXISTS "${_ex}/dist/index.js")                        # rows' program is real
 ck(EXISTS "${_ex}/dist/index.js.map")
 file(READ "${_ex}/dist/index.js.map" _map)
 ck(_map MATCHES "src/index.ts")                          # the source edge
+ck(EXISTS "${_ex}/vendor/tslib/dist/tslib.js")            # prebuilt vendor dist (Task 2)
+ck(EXISTS "${_ex}/vendor/tslib/dist/tslib.js.map")
+ck(EXISTS "${_ex}/vendor/tslib/dist/tslib.d.ts")
 execute_process(
     COMMAND "${_node}" "${_ex}/dist/index.js"
     ENVIRONMENT "${_env}"
     RESULT_VARIABLE _rc3 OUTPUT_VARIABLE _dout ERROR_VARIABLE _derr)
 ck(_rc3 EQUAL 0)
 ck(_dout MATCHES "total=15")                             # the demo run leg
+ck(_dout MATCHES "node-ts-basic/vendor-tslib: OK")         # vendor runtime leg (file: symlink)
 
 # ---- OFF polarity: opt-in removed on a scratch copy, gate at default ------
 file(COPY "${_ex}/CMakeLists.txt" "${_ex}/package.json"

@@ -1,1 +1,6 @@
 dist/
+# The vendored TS lib ships PREBUILT: vendor/tslib/dist + sibling map + .d.ts
+# are the deliverable (third-party breakpoint-through-map story); re-include
+# them under this rule.
+!vendor/tslib/dist/
+!vendor/tslib/dist/*

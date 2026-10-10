@@ -1,0 +1,7 @@
+{
+  "name": "vendor-tslib",
+  "version": "0.1.0",
+  "private": true,
+  "main": "dist/tslib.js",
+  "types": "dist/tslib.d.ts"
+}

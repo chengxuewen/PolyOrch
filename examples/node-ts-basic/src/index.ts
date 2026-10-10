@@ -1,22 +1,15 @@
 // The TS carrier (D37): source-level debugging via built entry + source maps.
 // This file compiles to dist/index.js with dist/index.js.map; the generated
 // launch row's `program` is that built entry and js-debug maps breakpoints
-// back into THIS file through the row's outFiles glob.
-export function collatz(n: number): number {
-  let steps = 0;
-  while (n !== 1) {
-    n = n % 2 === 0 ? n / 2 : 3 * n + 1;
-    steps += 1;
-  }
-  return steps;
-}
+// back into the src/ files through the row's outFiles glob.
+// F5 story (Task 2 depth): breakpoint in core.ts `while`, in format.ts
+// `formatTotal`, and in vendor/tslib/src/tslib.ts `tag` -- the vendor lib is
+// installed by npm as a file: symlink and ships PREBUILT (dist + sibling map
+// committed), so the third-party frame folds back into its TS source under
+// the same default outFiles glob, no OUTFILES override needed.
+import { total } from "./core";
+import { formatTotal } from "./format";
+import { tag } from "vendor-tslib";
 
-export function total(limit: number): number {
-  let sum = 0;
-  for (let i = 1; i <= limit; i++) {
-    sum += collatz(i);
-  }
-  return sum;
-}
-
-console.log(`node-ts-basic total=${total(5)}`);
+console.log(formatTotal(total(5)));
+console.log(`node-ts-basic/${tag()}`);
