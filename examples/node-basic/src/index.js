@@ -1,21 +1,13 @@
 // The source-level debug carrier: this file IS the launch `program` of the
 // js-debug row PolyOrch generates (package main -> src/index.js). Plain JS,
 // so breakpoints set here bind directly -- no build step, no source maps.
-function collatz(n) {
-  let steps = 0;
-  while (n !== 1) {
-    n = n % 2 === 0 ? n / 2 : 3 * n + 1;
-    steps += 1;
-  }
-  return steps;
-}
+// F5 story (Task 1 depth): breakpoint in core.js `while`, in format.js
+// `formatTotal`, and in vendor/vendorlib/index.js `banner` (installed by
+// npm as a node_modules symlink; the runtime path is the vendor realpath).
+"use strict";
+const { total } = require("./core.js");
+const { formatTotal } = require("./format.js");
+const { banner } = require("vendorlib");
 
-function total(limit) {
-  let sum = 0;
-  for (let i = 1; i <= limit; i++) {
-    sum += collatz(i);
-  }
-  return sum;
-}
-
-console.log(`node-basic total=${total(5)}`);
+console.log(formatTotal(total(5)));
+console.log(banner("node-basic"));

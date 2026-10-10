@@ -4,6 +4,9 @@
   "private": true,
   "main": "src/index.js",
   "scripts": {
-    "build": "echo node-basic-stub"
+    "build": "npm install --no-audit --no-fund && echo node-basic-stub"
+  },
+  "dependencies": {
+    "vendorlib": "file:./vendor/vendorlib"
   }
 }
