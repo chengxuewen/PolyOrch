@@ -1,20 +1,10 @@
-"""python-basic example body: breakpoint-friendly call structure.
+"""python-basic example entry: thin launcher for the greet package.
 
-The greet() return line and the loop body are the two F5 stop candidates;
 POLYORCH_WHO arrives through the run() ENVS injection point (-E env).
+The F5 stop candidates live in greet/core.py; its json.dumps call is the
+stdlib-stepping demo (JUST_MY_CODE OFF).
 """
-import os
-
-
-def greet(name):
-    message = "hello, " + name + "!"
-    return message            # breakpoint candidate #1
-
-
-def main():
-    who = os.environ.get("POLYORCH_WHO", "python")
-    for _ in range(3):        # breakpoint candidate #2
-        print(greet(who))
+from greet.core import main
 
 
 if __name__ == "__main__":

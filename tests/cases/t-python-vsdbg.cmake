@@ -2,6 +2,8 @@
 cmake_policy(SET CMP0219 NEW)
 include("${CMAKE_CURRENT_LIST_DIR}/_inc.cmake")
 include("${CMAKE_CURRENT_LIST_DIR}/_requires.cmake")
+list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_LIST_DIR}/../../cmake")
+include(PolyOrchPythonHelpers)
 
 # t-python-vsdbg -- the example-level live chain (D32, G2: the t-rust-vsdbg
 # mirror for the python face). Standalone-configures examples/python-basic
@@ -37,11 +39,33 @@ file(READ "${_b}/vs/launch.json" _lj)
 ck(_lj MATCHES "\"name\": \"PolyOrch: greet\"")
 ck(_lj MATCHES "\"type\": \"debugpy\"")
 ck(_lj MATCHES "\"request\": \"launch\"")
-ck(_lj MATCHES "\"justMyCode\": true")
+# The example opts into JUST_MY_CODE OFF (stdlib stepping demo) -- the row
+# here is false; the default-true bytes are pinned by the canned rows legs
+# below and by t-python-vscode.
+ck(_lj MATCHES "\"justMyCode\": false")
 ck(_lj MATCHES "main.py")
 ck(_lj MATCHES "POLYORCH_WHO")            # the example's ENVS injection serialized
 ck(NOT EXISTS "${_b}/vs/tasks.json")      # python: zero task footprint
 ck(_lj MATCHES "__POLYORCH_GENERATED_BEGIN__")
+
+# ---- JUST_MY_CODE spec-field polarity (pure rows rendering) ---------------
+# Default-byte-invariance proof: a legacy 6-field spec (pre-field shape) and
+# a 7-field spec carrying ON render byte-identical rows with
+# "justMyCode": true; only the literal OFF flips it. Unset/empty/invalid
+# values take the default silently (the house unknown-value idiom).
+set(_cx6 "legacy|/usr/bin/python3|/src/main.py|/src||")
+_polyorch_python_vscode_rows("${_cx6}" _cr6)
+ck(_cr6 MATCHES "\"justMyCode\": true")
+set(_cx7 "legacy|/usr/bin/python3|/src/main.py|/src|||ON")
+_polyorch_python_vscode_rows("${_cx7}" _cr7)
+ck(_cr7 STREQUAL _cr6)                     # default rendering byte-identical
+set(_cx7e "legacy|/usr/bin/python3|/src/main.py|/src|||")
+_polyorch_python_vscode_rows("${_cx7e}" _cre)
+ck(_cre STREQUAL _cr6)                     # empty 7th field -> default
+set(_cx7o "libstep|/usr/bin/python3|/src/main.py|/src|||OFF")
+_polyorch_python_vscode_rows("${_cx7o}" _cro)
+ck(_cro MATCHES "\"justMyCode\": false")
+ck(NOT _cro MATCHES "\"justMyCode\": true")
 
 # ---- idempotency: reconfigure must not touch the bytes ---------------------
 file(SHA256 "${_b}/vs/launch.json" _h1)

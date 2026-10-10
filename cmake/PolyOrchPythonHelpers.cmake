@@ -45,7 +45,7 @@ endfunction()
 
 # _polyorch_python_sanitize_name(OUT <name>)
 # Run/label names are user identifiers, not npm specs: reject the debug-spec
-# separator outright (a '|' in a name would corrupt the 6-field spec table,
+# separator outright (a '|' in a name would corrupt the 7-field spec table,
 # T3), reject '@' heads (add_custom_target refuses them, measured on the
 # node face), pass everything else through.
 function(_polyorch_python_sanitize_name out name)
@@ -169,7 +169,7 @@ endfunction()
 
 # polyorch_python_run(TARGET <t> SCRIPT <s> [NAME <label>] [ARGS <a>...]
 #                     [ENVS <K=V>...] [WORKING_DIRECTORY <dir>] [FOLDER <ide>]
-#                     [NO_SOURCES])
+#                     [JUST_MY_CODE ON|OFF] [NO_SOURCES])
 # Registers the button <t>-run (the rust face's grammar; prefixed
 # through the D28 grammar): cmake -E env <K=V>... <interp> <script> <args>
 # WORKING_DIRECTORY defaults to the script's directory. ENVS flows through
@@ -179,7 +179,7 @@ endfunction()
 # pinned, which is the half that mattered (PIT-14's shape does not port).
 function(polyorch_python_run)
     set(_opts NO_SOURCES)
-    set(_one TARGET SCRIPT NAME WORKING_DIRECTORY FOLDER)
+    set(_one TARGET SCRIPT NAME WORKING_DIRECTORY FOLDER JUST_MY_CODE)
     set(_multi ARGS ENVS)
     cmake_parse_arguments(PARSE_ARGV 0 R "${_opts}" "${_one}" "${_multi}")
     if(NOT R_TARGET OR NOT R_SCRIPT)
@@ -267,16 +267,25 @@ function(polyorch_python_run)
         else()
             set(_lbl "${_lh}")
         endif()
+        # JUST_MY_CODE knob: unset/empty/invalid -> ON (the debugpy default;
+        # unknown values take the default silently, the house idiom). Only the
+        # literal OFF reaches the rows renderer as a flip signal -- it lets
+        # debugpy stop in library/stdlib code, not just the launched tree.
+        set(_jmc "ON")
+        if(DEFINED R_JUST_MY_CODE AND NOT R_JUST_MY_CODE STREQUAL "")
+            set(_jmc "${R_JUST_MY_CODE}")
+        endif()
         set_property(GLOBAL APPEND PROPERTY POLYORCH_PYTHON_DEBUG_SPECS
-            "${_lbl}|${PolyOrchPython_EXECUTABLE}|${R_SCRIPT}|${_cwd}|${_argsj}|${_envsj}")
+            "${_lbl}|${PolyOrchPython_EXECUTABLE}|${R_SCRIPT}|${_cwd}|${_argsj}|${_envsj}|${_jmc}")
     endif()
 endfunction()
 
 # _polyorch_python_vscode_rows(SPECS LAUNCH_OUT)
 # Pure spec-table -> JSONC region text (the rust rows function's sibling;
 # no tasks rows -- debugpy launches need no preLaunchTask). Spec row shape:
-# NAME|INTERP|SCRIPT|CWD|ARGS|ENVS  (exactly five '|'; ARGS/ENVS comma-
-# joined; empty trailing fields still serialize the pipes). Values with
+# NAME|INTERP|SCRIPT|CWD|ARGS|ENVS|JUST_MY_CODE  (exactly six '|'; ARGS/ENVS
+# comma-joined; empty trailing fields still serialize the pipes; a legacy
+# five-pipe row renders the justMyCode default true). Values with
 # embedded double-quotes are unescaped -- same known-deviation 2 class as
 # the rust rows (paths with \\ inside JSON; revisit only if a consumer
 # ever needs it).
@@ -290,6 +299,17 @@ function(_polyorch_python_vscode_rows SPECS LAUNCH_OUT)
         list(GET _f 3 _cwd)
         list(GET _f 4 _args)
         list(GET _f 5 _envs)
+        # 7th field, optional (legacy rows carry six). list(GET) out of range
+        # is FATAL, so the length guard is mandatory, not stylistic.
+        list(LENGTH _f _fn)
+        set(_jmc ON)
+        if(_fn GREATER 6)
+            list(GET _f 6 _jmc)
+        endif()
+        set(_jmcv true)
+        if(_jmc STREQUAL "OFF")
+            set(_jmcv false)
+        endif()
         string(APPEND _L
 "        {\n"
 "            \"name\": \"PolyOrch: ${_nm}\",\n"
@@ -299,7 +319,7 @@ function(_polyorch_python_vscode_rows SPECS LAUNCH_OUT)
 "            \"python\": \"${_py}\",\n"
 "            \"cwd\": \"${_cwd}\",\n"
 "            \"console\": \"integratedTerminal\",\n"
-"            \"justMyCode\": true")
+"            \"justMyCode\": ${_jmcv}")
         if(NOT _args STREQUAL "")
             string(REPLACE "," ";" _al "${_args}")
             set(_aj "")

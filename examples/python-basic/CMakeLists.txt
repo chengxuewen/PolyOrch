@@ -45,7 +45,11 @@ else()
 endif()
 
 # [1/1] The one verb: a run button + the debugpy registration. ENVS flows
-#         through the -E env injection point; main.py reads POLYORCH_WHO.
+#         through the -E env injection point; greet/core.py reads POLYORCH_WHO.
 polyorch_python_run(TARGET greet
     SCRIPT "${CMAKE_CURRENT_SOURCE_DIR}/main.py"
-    ENVS "POLYORCH_WHO=fused")
+    ENVS "POLYORCH_WHO=fused"
+    # Library stepping: with OFF, debugpy also stops in non-user code -- a
+    # breakpoint inside stdlib json.dumps (reached from greet/core.py) hits.
+    # This is the example's second debug story next to the cross-file F5.
+    JUST_MY_CODE OFF)
