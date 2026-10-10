@@ -12,7 +12,7 @@
 #   standalone:  cmake -S examples/node-web -B build
 #   fused:       part of the examples umbrella (PolyOrch_BUILD_RUST_EXAMPLES=ON
 #                runs this loop; targets carry the polyorch-node-web- prefix)
-#   run:         cmake --build build --target <prefix>hello-ts-run-hello
+#   run:         cmake --build build --target <prefix>scope-hello-js-run-hello
 #   debug:       js-debug rows (VSCode built-in, no extension) land in the
 #                shared managed region; standalone usage parks the output:
 #                cmake -S examples/node-web -B build -DPolyOrch_VSCODE_DIR=build/.vscode

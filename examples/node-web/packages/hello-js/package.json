@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "build": "node gen.js"
+    "build": "node gen.js",
+    "hello": "node -e \"console.log('scope-hello-js: hello from the library member')\""
   }
 }
