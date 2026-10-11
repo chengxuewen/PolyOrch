@@ -19,6 +19,8 @@
 # order inverted -- python follows the contract, not the bug.
 # ===========================================================================
 
+include_guard(GLOBAL)  # 2026-10-10 embed ruling: idempotent same-path re-include
+
 option(PolyOrch_PYTHON_VSCODE_DEBUG
     "Generate .vscode debugpy launch configs for polyorch_python_run targets" OFF)
 option(PolyOrch_PYTHON_SOURCES_PLAIN

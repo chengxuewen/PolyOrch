@@ -8,6 +8,7 @@
 # Apple readline does not support readline hooks
 # So we look for another one by default
 #-----------------------------------------------------------------------------------------------------------------------
+include_guard(GLOBAL)  # 2026-10-10 embed ruling: idempotent same-path re-include
 macro(polyorch_ensure_define_variable NAME VALUE)
     if(NOT DEFINED ${NAME})
         set(${NAME} ${VALUE})

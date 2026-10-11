@@ -248,7 +248,15 @@ toolchain downloads, binaryen) are the known egress hazard -- --dev +
 no-install + pixi binaryen is the documented restricted-host set.
 
 
-## D27: example target naming unified into the directory grammar (2026-09-30, user ruling: plan B)
+## D27: example target naming unified into the directory grammar (2026-09-30, user ruling: plan B) -- AMENDED 2026-10-10 (sentinel carries INTERFACE properties; adjudication 1-A, see D39)
+
+> **2026-10-10 amendment (user-adjudicated one by one, adjudication 1-A)**: the sentinel
+> `add_library(PolyOrch::PolyOrch INTERFACE IMPORTED GLOBAL)` gains two INTERFACE properties --
+> `INTERFACE_POLYORCH_CMAKE_DIR` and `INTERFACE_POLYORCH_VERSION`. The original ruling froze the
+> NAME and the existence-detection form; both unchanged. What changed: the sentinel is no longer a bare
+> presence flag -- it now also answers WHERE (module dir) and HOW OLD (version) for the copy that won
+> the guard, the only cross-scope-reliable channel (measured: CMAKE_MODULE_PATH has zero sideways
+> visibility; PolyOrch_SOURCE_DIR is a stale-prone cache entry under multiple checkouts). Full protocol: D39.
 
 The nine hand-literal CamelCase `PolyOrchExample*` convenience buttons were
 the only naming style with no mechanism behind them while ~43 real targets
@@ -689,3 +697,28 @@ byte-exact. offline 68/0/26, matrix 6/6. User CONFIRMED VSCode F5 binds+pauses a
 - **Decision**: deepen the node/python examples so the debug surface is exercised for real scenarios: npm `file:`-linked vendored libraries (JS source-breakpoint story; TS prebuilt dist+map story), multi-file src everywhere, node-web cross-package OUTFILES, and one product change: `polyorch_python_run` gains single-value keyword `JUST_MY_CODE` -- spec grows a 7th field, renderer flips `"justMyCode"` to false ONLY on literal OFF, legacy 6-field rows and default-ON rendering byte-unchanged (guarded by list-LENGTH; equality-pinned by canned legs in t-python-vsdbg).
 - **Rationale**: the examples' deliberate zero-dependency shape made library/dependency breakpointing untestable and left debugpy library-stepping with no mechanism at all (hardcoded true). `file:` installs are registry-free (offline invariant intact, `.npmrc` + `--no-audit --no-fund` belt); node's symlink+realpath behavior makes the vendor dir the natural breakpoint home and the default outFiles glob already covers it.
 - **Reference**: plan `.omo/plans/2026-10-10-example-debug-depth.md` (Momus-approved); execution 13c2812..10ffdef; stdlib `json` chosen as the python library-stepping demo (no interpreter deps, debugpy treats stdlib as not-my-code).
+## D39: embedding protocol -- complete sentinel contract, first-wins, CXX/3.25 prerequisites (2026-10-10, user adjudications 1-5)
+
+- **Decision**: (1) the root include list carries all nine modules (node/python/vscode joined;
+  `add_subdirectory(PolyOrch)` alone delivers every `polyorch_*` command); (2) the root self-guards:
+  `if(TARGET PolyOrch::PolyOrch)` before the sentinel creation makes a second add (second checkout, or a
+  foreign same-named target) a STATUS skip instead of the measured hard error `cannot create imported
+  target "PolyOrch::PolyOrch"` -- first-wins; (3) the sentinel carries the two INTERFACE properties
+  (D27 amendment); (4) the six unguarded modules gained `include_guard(GLOBAL)` (same-path re-entry
+  idempotence; guards are path-keyed and do NOT protect across checkouts -- the cross-checkout fix is
+  the absolute-path include of PolyOrchFindRust in PolyOrchRustHelpers, killing the only bare-name
+  include vector); (5) root `cmake_minimum_required` 3.22 -> 3.25 (adjudication 5-B: the node face's
+  module-body cmr had required 3.25 since D33; the root declaration now matches, so a too-old host
+  fails at configure start with CMake's standard error instead of mid-include in a module body);
+  (6) embedding prerequisites documented: an ancestor project() must provide a CXX compiler identity
+  (PlatformSupport mkspec probe FATALs otherwise -- a `LANGUAGES NONE` superbuild must inject it);
+  (7) reuse-mode API floor = command existence (`if(NOT COMMAND ...)`) -- works against pre-D39 bare
+  sentinels; the version property is UX, not the gate.
+- **Rationale**: sentinel reuse was the user-requested integration form for the sibling monorepo, but
+  under the pre-D39 shape the reuse path could not locate the winning copy's modules at all (location
+  discovery had zero cross-scope-reliable channels) and root delivered only 5 of 9 faces. All behavior
+  claims measured on cmake 4.4.4 (three-analyst team + two-reviewer verification, /tmp scratch + real
+  checkout), then re-proven in-tree: t-embed-sentinel / t-embed-foreign.
+- **Reference**: plan `.omo/plans/2026-10-10-visia-embed.md` (five user adjudications A/A/A/A/B);
+  tutorials.md section 5 (rewritten); modules/05 surface row; V-side adoption plan = phase-2 (deferred:
+  cargo-bridge migration vs coexistence, git reference form, gate touch-map, .vscode ownership).

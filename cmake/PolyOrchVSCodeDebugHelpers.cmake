@@ -26,6 +26,8 @@
 # user tasks.json (region_write finds no new marker -> PLACED_NEW).
 # ===========================================================================
 
+include_guard(GLOBAL)  # 2026-10-10 embed ruling: idempotent same-path re-include
+
 set(PolyOrch_VSCODE_DIR "" CACHE PATH
     "Directory for generated .vscode debug files (empty = <CMAKE_SOURCE_DIR>/.vscode)")
 

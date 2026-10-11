@@ -1,4 +1,4 @@
-﻿########################################################################################################################
+########################################################################################################################
 #
 # Library: CxxKit
 #
@@ -24,6 +24,7 @@
 #-----------------------------------------------------------------------------------------------------------------------
 # polyorch_set01 finction
 #-----------------------------------------------------------------------------------------------------------------------
+include_guard(GLOBAL)  # 2026-10-10 embed ruling: idempotent same-path re-include
 function(polyorch_set01 result)
     if(${ARGN})
         set("${result}" 1 PARENT_SCOPE)
@@ -328,7 +329,15 @@ elseif(PolyOrch_SYSTEM_HURD)
 endif()
 
 if(NOT PolyOrch_DEFAULT_MKSPEC)
-    message(FATAL_ERROR "mkspec not Detected!")
+    # 2026-10-10 (D39): say the cause AND the cure -- the old text ("mkspec not Detected!")
+# gave a host with no CXX identity nothing to act on. The condition is unchanged (FATAL).
+    message(FATAL_ERROR
+        "PolyOrch PlatformSupport: no C++ compiler identity in this scope "
+        "(CMAKE_CXX_COMPILER_ID is empty), so the mkspec cannot be detected. "
+        "Embedding hosts: make sure an ancestor project() enabled CXX "
+        "(project(... LANGUAGES CXX)) BEFORE add_subdirectory(PolyOrch), "
+        "or inject the identity (e.g. CMAKE_PROJECT_TOP_LEVEL_INCLUDES, the "
+        "tests/ctest.sh route).")
 else()
     message(STATUS "Build in mkspec: ${PolyOrch_DEFAULT_MKSPEC}")
 endif()

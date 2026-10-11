@@ -33,6 +33,8 @@
 
 cmake_minimum_required(VERSION 3.25)
 
+include_guard(GLOBAL)  # 2026-10-10 embed ruling: idempotent same-path re-include; sits between the cmr (needed by nothing above) and the options block (which MUST stay after the cmr, D33)
+
 # ---------------------------------------------------------------------------
 # options
 # ---------------------------------------------------------------------------

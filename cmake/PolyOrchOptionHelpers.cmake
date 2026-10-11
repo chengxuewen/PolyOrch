@@ -1,4 +1,6 @@
 
+include_guard(GLOBAL)  # 2026-10-10 embed ruling: idempotent same-path re-include
+
 function(polyorch_parse_all_arguments prefix type options one_value_args multi_value_args)
     # Mirrors polyorch macro: (result type options oneValueArgs multiValueArgs)
     cmake_parse_arguments(${prefix} "${options}" "${one_value_args}" "${multi_value_args}" ${ARGN})

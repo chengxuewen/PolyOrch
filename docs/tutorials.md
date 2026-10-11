@@ -300,13 +300,30 @@ itself) and runs env tools from configure and build targets via
 
 ### 5.1 add_subdirectory
 
+Since the 2026-10-10 embed ruling (adjudications 1-5; D39) PolyOrch self-guards:
+`add_subdirectory(PolyOrch)` is idempotent -- a second copy sees the existing
+`PolyOrch::PolyOrch` sentinel, prints a STATUS line, and returns. A host-side
+`if(NOT TARGET ...)` wrapper is therefore optional (keep it only if your tree
+must support pre-2026-10 PolyOrch checkouts):
+
 ```cmake
 # host CMakeLists.txt
 set(PolyOrch_BUILD_RUST_EXAMPLES ON)              # pull the examples into the host graph
-if(NOT TARGET PolyOrch::PolyOrch)                 # embed sentinel (D27)
-    add_subdirectory(PolyOrch)
-endif()
+add_subdirectory(PolyOrch)                        # self-guarded: second add = STATUS skip
+
+# locate the modules through the sentinel (the only reliable channel after
+# add_subdirectory returns -- module path does not propagate sideways):
+get_target_property(PolyOrch_CMAKE_DIR PolyOrch::PolyOrch INTERFACE_POLYORCH_CMAKE_DIR)
+get_target_property(PolyOrch_VERSION_USED PolyOrch::PolyOrch INTERFACE_POLYORCH_VERSION)
 ```
+
+Embedding prerequisites (2026-10-10, root now declares them): **CMake >= 3.25**
+(root `cmake_minimum_required` fails fast) and a **CXX compiler identity from an
+ancestor `project()`** -- the PlatformSupport module's mkspec probe is a
+FATAL_ERROR without one (a `LANGUAGES NONE` superbuild must inject the identity
+instead). Version gate for reuse mode: probe the commands you need
+(`if(NOT COMMAND polyorch_node_debug) ...`) -- it works against old bare
+sentinels too.
 
 Fused targets register under `polyorch-<directory>-...` so the host namespace
 never carries bare crate-ish names.
@@ -322,9 +339,11 @@ set(B_POLYORCH_TARGET_PREFIX "po-b")              # B's fused targets: po-b-...
 add_subdirectory(vendor/PolyOrch)
 ```
 
-A nested PolyOrch copy flips `project(PolyOrch)` inside its own scope and
-reads its own keys, so the outer host's value cannot hijack it (verified by
-the nested-anti-hijack smoke, 2026-09-30). Empty string disables the prefix.
+Since 2026-10-10 a nested copy SKIPS ITSELF when any earlier copy registered
+the sentinel (first-wins, D39): the guard fires before any module or option of
+the later copy executes, so the outer host's value cannot hijack it (behavior
+re-measured 2026-10-10; the original nested-anti-hijack smoke of 2026-09-30
+covered the pre-guard flip semantics). Empty string disables the prefix.
 
 ### 5.3 Debugging in VSCode
 
@@ -385,3 +404,17 @@ wasm toolchain); the offline suite is green on a bare toolchain host.
 | Per-example details | `examples/README.md` (the authoritative example table) |
 | Testing strategy | [docs/modules/04-testing-strategy.md](./modules/04-testing-strategy.md) |
 | Internals reference | [docs/modules/00-overview.md](./modules/00-overview.md) |
+
+### 5.4 The embed contract (2026-10-10, D39)
+
+`add_subdirectory(PolyOrch)` delivers the COMPLETE face set: all nine modules
+(option/platform/pixi/rust/find-rust/node/python/vscode/cmake helpers), so every
+`polyorch_*` command exists in the host scope after the add. The sentinel
+`PolyOrch::PolyOrch` carries two INTERFACE properties describing the copy that
+won: `INTERFACE_POLYORCH_CMAKE_DIR` (module directory) and
+`INTERFACE_POLYORCH_VERSION` (the `project(VERSION ...)` string). First-wins:
+a later `add_subdirectory` of any second copy -- or a foreign target merely
+named `PolyOrch::PolyOrch` -- triggers the STATUS skip, never a double-load
+error. Reuse-mode supply check is command existence, not version comparison:
+`if(NOT COMMAND polyorch_node_debug)` keeps working even against a
+pre-2026-10 checkout whose sentinel carries no properties.

@@ -21,7 +21,9 @@ include(PolyOrchPixiHelpers)     # environment face
 ```
 
 or, in the embedded shape, `add_subdirectory(PolyOrch)` from the host (embed sentinel:
-`if(NOT TARGET PolyOrch::PolyOrch)`, D27) with the `PolyOrch_BUILD_*` options. Target
+`if(NOT TARGET PolyOrch::PolyOrch)`, D27; since D39 self-guarded first-wins, and the
+sentinel carries `INTERFACE_POLYORCH_CMAKE_DIR` + `INTERFACE_POLYORCH_VERSION` describing
+the winning copy) with the `PolyOrch_BUILD_*` options. Target
 naming on the fused surface follows the D27/D28 grammar: kebab real targets under the
 `polyorch-<dir>-` namespace, `::` for exported/imported names only.
 

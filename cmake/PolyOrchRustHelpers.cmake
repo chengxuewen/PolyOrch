@@ -75,8 +75,12 @@ include_guard(GLOBAL)
 # families, artifact naming, native-libs probing and the cargo command
 # wrapper live in PolyOrchFindRust.cmake (included below); this file holds
 # the build-graph API (build/import/setters/test/run/clean/install).
+# Absolute include (2026-10-10 embed ruling): a bare-name include resolves by the
+# HOST's module-path order, so two checkouts in one tree could franken-load a foreign
+# copy of this module's own dependency. Measured vector; the idiom below matches the
+# three other cross-module includes (RustHelpers vscode / Node / Python faces).
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_LIST_DIR}")
-include(PolyOrchFindRust)
+include("${CMAKE_CURRENT_LIST_DIR}/PolyOrchFindRust.cmake")
 
 # ------------------------------------------------------------------- build ---
 
