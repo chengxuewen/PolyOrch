@@ -722,3 +722,21 @@ byte-exact. offline 68/0/26, matrix 6/6. User CONFIRMED VSCode F5 binds+pauses a
 - **Reference**: plan `.omo/plans/2026-10-10-visia-embed.md` (five user adjudications A/A/A/A/B);
   tutorials.md section 5 (rewritten); modules/05 surface row; V-side adoption plan = phase-2 (deferred:
   cargo-bridge migration vs coexistence, git reference form, gate touch-map, .vscode ownership).
+## D40: EXAMPLE kind in the rust face (2026-10-12, host-driven adjudication 7 = A)
+
+- **Decision**: `polyorch_rust_build`/`polyorch_rust_run` gained a fourth artifact kind,
+  `EXAMPLE` (cargo `--example <crate>`): artifact file naming shares the bin table (exe-suffixed
+  families), the directory segment appends `/examples` after the profile (DIR_OUT and both build()
+  dir literals); copy plan (`KIND example`, source `<...>[/<tup>/<profile>]examples/<file>`) and the
+  deferred-finalize roles (example stages to RUNTIME_OUTPUT_DIRECTORY) and the install plan (one
+  RUNTIME row, add_executable stub, no header line) follow the bin rails; metadata import maps cargo
+  `kind:["example"]` targets to `<name>-example|<name>|example` records. CRATE carries the example
+  TARGET name (cargo-legal identifier from Cargo.toml), same contract as bin.
+- **Rationale**: a host (the C6 validation monorepo) owns 28 `[[example]]` cargo targets it wants
+  CMake-target-ized for the VSCode configure/build/debug plane (adjudication: extend the supplier
+  rather than leave a permanent second engine). Examples are a universal cargo shape, not private
+  surface; the bin machinery generalizes by one file-name branch and one directory segment, adding
+  no state and no keywords anywhere else.
+- **Reference**: host-side proof is its examples plane (ctest running `$<TARGET_FILE>` of example
+  handles); offline pin t-rust-exampleplan (naming/copy-plan/argv/metadata/guards, 4 layers).
+  Version 0.1.1 -> 0.2.0 (first API-adding round after D39).

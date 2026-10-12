@@ -39,7 +39,7 @@ docs/          the specification — start at docs/README.md
   modules/           internals reference
   reference/         externally sourced profiles of 12 related projects
 cmake/         the deliverable -- 9 CMake helper modules (pixi / rust / node / python faces + shared .vscode debug + option/platform support)
-tests/         94 `cmake -P` cases: run.sh driver, CTest registration, generator matrix
+tests/         97 `cmake -P` cases: run.sh driver, CTest registration, generator matrix
 examples/      pixi / rust / node / python examples -- fused into the host graph or standalone
 .agents/
   rules/         permanent constraints

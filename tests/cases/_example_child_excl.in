@@ -1,0 +1,3 @@
+include("@ROOT@/cmake/PolyOrchRustHelpers.cmake")
+polyorch_rust_build(TARGET t PACKAGE p CRATE c MANIFEST x/Cargo.toml SHARED EXAMPLE)
+message(STATUS "NO-GUARD-FIRE")
