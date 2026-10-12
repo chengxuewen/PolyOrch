@@ -3053,3 +3053,243 @@ function(polyorch_rust_ide_mount)
         set_target_properties("${M_TARGET}" PROPERTIES FOLDER "${M_FOLDER}")
     endif()
 endfunction()
+
+# Internal: pure argv builder for one wasm-bindgen run. Shape mirrors
+# _polyorch_rust_cbindgen_cmd (env prelude + tool + positional flags), with
+# the wasm-bindgen grammar: `--target <flavor> --out-dir <dir> [--out-name
+# <n>] <module.wasm>` plus the typescript/decl pairing flag. FLAVOR is
+# caller-validated (web | nodejs | bundler | deno -- the tool's own set).
+function(_polyorch_rust_wasm_bindgen_cmd)
+    cmake_parse_arguments(PARSE_ARGV 0 W ""
+        "TOOL;MODULE;FLAVOR;OUT_DIR;OUT_NAME;OUT_CMD" "FLAGS")
+    set(W_TYPESCRIPT "")
+    foreach(_a IN LISTS W_UNPARSED_ARGUMENTS)
+        if(_a STREQUAL "TYPESCRIPT")
+            set(W_TYPESCRIPT 1)
+        else()
+            list(APPEND _extra "${_a}")
+        endif()
+    endforeach()
+    if(_extra)
+        message(FATAL_ERROR "_polyorch_rust_wasm_bindgen_cmd: unknown args: ${_extra}")
+    endif()
+    foreach(_k W_TOOL W_MODULE W_FLAVOR W_OUT_DIR W_OUT_CMD)
+        if(NOT DEFINED ${_k} OR "${${_k}}" STREQUAL "")
+            message(FATAL_ERROR
+                "_polyorch_rust_wasm_bindgen_cmd: missing required argument '${_k}'")
+        endif()
+    endforeach()
+    set(_argv "${CMAKE_COMMAND}" -E env
+        "RUSTFLAGS=" "${W_TOOL}"
+        --target "${W_FLAVOR}"
+        --out-dir "${W_OUT_DIR}")
+    if(W_OUT_NAME)
+        list(APPEND _argv --out-name "${W_OUT_NAME}")
+    endif()
+    if(W_TYPESCRIPT)
+        list(APPEND _argv --typescript)
+    endif()
+    list(APPEND _argv "${W_MODULE}")
+    if(W_FLAGS)
+        list(APPEND _argv ${W_FLAGS})
+    endif()
+    set(${W_OUT_CMD} "${_argv}" PARENT_SCOPE)
+endfunction()
+
+# polyorch_rust_wasm_bindgen(TARGET <rust-handle> FLAVOR <f>...
+#     [OUT_DIR <dir>] [OUT_NAME <n>] [TYPESCRIPT]
+#     [WASM_OPT <AUTO|path|OFF>] [WASM_OPT_FLAGS f...]
+#     [WASM_BINDGEN_VERSION <v>] [PREFIX <dir>] [FLAGS f...] [ALLOW_INSTALL])
+#
+# JS glue + module processing for a wasm32 cdylib handle via wasm-bindgen
+# (the WP7 tool-cluster shape: bootstrap -> pure cmd builder -> custom
+# command -> regen target). TARGET must be a rust handle whose effective
+# triple is a wasm family triple (the family function is the single source
+# of triple truth); the module input resolves AUTO from the handle's
+# IMPORTED_LOCATION (the D29 naming table: <crate>.wasm, probe-verified
+# 2026-10-12) or takes an explicit path. One out-dir per FLAVOR: default
+# <gen>/pkg-<flavor>. WASM_OPT AUTO probes wasm-opt (PATH then PREFIX/bin)
+# and degrades to keeping the original module when absent -- the web lane's
+# measured semantics (the raw size is what gets accounted, v1.1).
+#
+# Deliverables per flavor: the glue rule (OUTPUT the flavor's .js; DEPFILE
+# rerun via --typescript's .d side-channel semantics are tool-owned -- the
+# rule DEPENDS on the module artifact and the bootstrap target instead,
+# re-invocation is tool-bounded), the wasm-opt pass when a tool is present
+# (in-place on the flavor's *_bg.wasm, original preserved as *.raw.wasm --
+# byte-shape identical to the web lane's shell), regen target
+# <handle>-wasm-bindgen[.<flavor>], and a STATUS line per flavor.
+# FOLDER <dir> mirrors the position rule onto every created target.
+function(polyorch_rust_wasm_bindgen)
+    cmake_parse_arguments(PARSE_ARGV 0 WB "ALLOW_INSTALL;TYPESCRIPT"
+        "TARGET;OUT_DIR;OUT_NAME;WASM_OPT;WASM_BINDGEN_VERSION;PREFIX;FOLDER"
+        "FLAVOR;WASM_OPT_FLAGS;FLAGS")
+    if(WB_UNPARSED_ARGUMENTS)
+        message(FATAL_ERROR
+            "polyorch_rust_wasm_bindgen: unknown args: ${WB_UNPARSED_ARGUMENTS}")
+    endif()
+    foreach(_k WB_TARGET WB_FLAVOR)
+        if(NOT DEFINED ${_k} OR "${${_k}}" STREQUAL "")
+            message(FATAL_ERROR
+                "polyorch_rust_wasm_bindgen: missing required argument '${_k}'")
+        endif()
+    endforeach()
+    _polyorch_rust_apply_target_prefix(_wb_t "${WB_TARGET}")
+    set(WB_TARGET "${_wb_t}")
+    _polyorch_rust_require_setup(polyorch_rust_wasm_bindgen)
+    if(NOT TARGET "${WB_TARGET}")
+        message(FATAL_ERROR
+            "polyorch_rust_wasm_bindgen: no such target '${WB_TARGET}' "
+            "(register it with polyorch_rust_build first)")
+    endif()
+
+    # triple identity: the handle's recorded effective triple (hostbuild-
+    # normalized; an empty cross triple IS the host)
+    get_target_property(_xt "${WB_TARGET}" POLYORCH_RUST_EFFECTIVE_TRIPLE)
+    if(NOT _xt)
+        set(_xt "${POLYORCH_RUST_CARGO_TARGET}")
+    endif()
+    if(NOT _xt)
+        set(_xt "${POLYORCH_RUST_HOST_TARGET}")
+    endif()
+    _polyorch_rust_triple_family("${_xt}" _fam)
+    if(NOT _fam STREQUAL "wasm")
+        message(FATAL_ERROR
+            "polyorch_rust_wasm_bindgen: target '${WB_TARGET}' carries triple "
+            "'${_xt}' (family '${_fam}') -- wasm-bindgen needs a wasm-family handle")
+    endif()
+
+    # module input: AUTO from the handle's staged location (the escape
+    # hatch for explicit paths stays unimplemented until a caller needs it)
+    set(_module "$<TARGET_FILE:${WB_TARGET}>")
+
+    # flavors: validated against the tool's own set, one out-dir each
+    foreach(_f ${WB_FLAVOR})
+        if(NOT _f MATCHES "^(web|nodejs|bundler|deno)$")
+            message(FATAL_ERROR
+                "polyorch_rust_wasm_bindgen: unknown FLAVOR '${_f}' (web|nodejs|bundler|deno)")
+        endif()
+    endforeach()
+
+    set(_prefkw "")
+    if(WB_PREFIX)
+        set(_prefkw PREFIX "${WB_PREFIX}")
+    endif()
+    set(_ailkw "")
+    if(WB_ALLOW_INSTALL)
+        set(_ailkw ALLOW_INSTALL)
+    endif()
+    set(_qkw "")
+    if(NOT PolyOrch_RUST_VERBOSE)
+        set(_qkw QUIET)
+    endif()
+    polyorch_rust_tool_bootstrap(TOOL wasm-bindgen VERSION "${WB_WASM_BINDGEN_VERSION}"
+        ${_prefkw} ${_ailkw} ${_qkw}
+        OUT_VAR _tok OUT_TARGET _tt)
+    if(NOT _tok)
+        message(FATAL_ERROR
+            "polyorch_rust_wasm_bindgen: wasm-bindgen unavailable -- put it on "
+            "PATH or PREFIX/bin, or re-run with ALLOW_INSTALL (cargo install, "
+            "crates.io egress). The CLI patch must match the crate pin (the "
+            "schema changes every patch; measured mutual rejection).")
+    endif()
+    set(_tool "${WASM_BINDGEN_TOOL}")
+    set(_tdepkw "")
+    if(_tt)
+        set(_tdepkw DEPENDS "${_tt}")
+    endif()
+
+    set(_genroot "${CMAKE_CURRENT_BINARY_DIR}/polyorch_generated/wasm-bindgen/${WB_TARGET}")
+    set(_optkw "")
+    set(_opt "")
+    if(NOT DEFINED WB_WASM_OPT OR WB_WASM_OPT STREQUAL "AUTO")
+        find_program(_opt wasm-opt)
+        if(NOT _opt AND WB_PREFIX)
+            find_program(_opt wasm-opt HINTS "${WB_PREFIX}/bin" NO_DEFAULT_PATH)
+        endif()
+    elseif(NOT WB_WASM_OPT STREQUAL "OFF")
+        set(_opt "${WB_WASM_OPT}")
+        if(NOT EXISTS "${_opt}")
+            message(FATAL_ERROR
+                "polyorch_rust_wasm_bindgen: WASM_OPT '${_opt}' does not exist")
+        endif()
+    endif()
+
+    foreach(_f ${WB_FLAVOR})
+        set(_od "${_genroot}/pkg-${_f}")
+        if(WB_OUT_DIR)
+            set(_od "${WB_OUT_DIR}/pkg-${_f}")
+        endif()
+        file(MAKE_DIRECTORY "${_od}")
+        set(_js "${_od}/visiaengine_wasm.js")
+        # OUT_NAME semantics: the tool derives <out-name>.js / <out-name>_bg.wasm
+        # from the module stem by default; an explicit OUT_NAME reroutes them.
+        # The stem comes from the HANDLE NAME's dash-normalization (the same
+        # crate-name rule the D29 table applies), NOT a TARGET_FILE genex: an
+        # UNKNOWN IMPORTED handle whose location is itself a genex has no
+        # configure-time base name (measured: 'No target' from TFB_BASE_NAME).
+        set(_onkw "")
+        set(_stem "${WB_TARGET}")
+        if(_stem MATCHES "-shared$|-static$")
+            string(REGEX REPLACE "-(shared|static)$" "" _stem "${_stem}")
+        endif()
+        string(REPLACE "-" "_" _stem "${_stem}")
+        if(WB_OUT_NAME)
+            set(_js "${_od}/${WB_OUT_NAME}.js")
+            set(_stem "${WB_OUT_NAME}")
+            set(_onkw OUT_NAME "${WB_OUT_NAME}")
+        endif()
+
+        set(_tskw "")
+        if(WB_TYPESCRIPT)
+            set(_tskw TYPESCRIPT)
+        endif()
+        _polyorch_rust_wasm_bindgen_cmd(
+            TOOL "${_tool}" MODULE "${_module}" FLAVOR "${_f}"
+            OUT_DIR "${_od}" ${_onkw} ${_tskw}
+            FLAGS ${WB_FLAGS}
+            OUT_CMD _cmd)
+        # DEPENDS the MEDIATOR, not the IMPORTED handle: a cross mediator is
+        # an UNSTAMPED custom target (no OUTPUT file), so a file-level dep on
+        # the handle resolves to nothing in the generator (measured: ninja
+        # 'missing and no known rule'); the mediator orders the cargo build
+        # and the module path rides inside the genex argv.
+        add_custom_command(
+            OUTPUT "${_js}"
+            COMMAND ${_cmd}
+            DEPENDS "${WB_TARGET}-build" ${_tdepkw}
+            VERBATIM)
+        set(_regen "${WB_TARGET}-wasm-bindgen.${_f}")
+        add_custom_target(${_regen} DEPENDS "${_js}")
+        if(WB_FOLDER)
+            set_target_properties(${_regen} PROPERTIES FOLDER "${WB_FOLDER}")
+        endif()
+        message(STATUS "polyorch_rust_wasm_bindgen: flavor ${_f} -> ${_od} (regen: ${_regen})")
+
+        # wasm-opt pass (in-place on the flavor's module, original kept --
+        # the web lane's byte shape; absent tool = keep the original, the
+        # accounting stays the raw size per the v1.1 ruling)
+        if(_opt)
+            set(_bg "${_od}/${_stem}_bg.wasm")
+            set(_bgraw "${_od}/${_stem}_bg.raw.wasm")
+            set(_ocmd "${CMAKE_COMMAND}" -E copy "${_bg}" "${_bgraw}"
+                COMMAND "${_opt}" -Oz ${WB_WASM_OPT_FLAGS}
+                    -o "${_bg}" "${_bgraw}")
+            add_custom_command(
+                OUTPUT "${_bg}.opt"
+                COMMAND ${_ocmd}
+                DEPENDS "${_js}" "${_bgraw}"
+                VERBATIM)
+            # a phony alias keeps the opt pass reachable without racing the
+            # glue rule's OUTPUT set (opt is post-processing, not a product)
+            add_custom_target(${_regen}.opt
+                COMMAND ${_ocmd}
+                DEPENDS "${_js}"
+                USES_TERMINAL)
+            if(WB_FOLDER)
+                set_target_properties(${_regen}.opt PROPERTIES FOLDER "${WB_FOLDER}")
+            endif()
+            message(STATUS "polyorch_rust_wasm_bindgen: wasm-opt pass on ${_f} (${_opt})")
+        endif()
+    endforeach()
+endfunction()

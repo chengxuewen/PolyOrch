@@ -214,7 +214,14 @@ function(_polyorch_rust_artifact_names)
         elseif(_family STREQUAL "macho")
             set(_file "${_lib}.dylib")
         elseif(_family STREQUAL "wasm")
-            set(_file "${A_CRATE}.wasm")    # cdylib -> the module itself; no implib
+            # rust normalizes a dashed crate name to underscores in the
+            # module file name (measured 1.98: crate visiaengine-wasm ->
+            # visiaengine_wasm.wasm; the same normalization the metadata
+            # table applies to lib handles -- gen:139 rationale). The
+            # module is never a link input, so the dash spelling cargo
+            # accepts for ELF .so artifacts has no ELF-style alias here.
+            string(REPLACE "-" "_" _wfile "${A_CRATE}")
+            set(_file "${_wfile}.wasm")   # cdylib -> the module itself; no implib
         else()
             set(_file "${_lib}.so")
         endif()
