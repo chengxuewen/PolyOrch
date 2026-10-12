@@ -93,11 +93,10 @@
 
 MediaServo-era memory (through 2026-08) was **removed** from PolyOrch on 2026-09-18 — no in-repo copy is kept. Source of truth remains the `DEVSYS/MediaServo` repository.
 
-### Open item: EXAMPLE-kind gap in polyorch_rust_build (registered 2026-10-12)
-V (sibling host, C6 name-free zone: identity in .omo plans) attempted the examples-rs migration and
-hit a supplier gap: build()/run() kinds are {bin, static, cdy} + metadata import; cargo [[example]]
-targets are NOT covered (no --example form anywhere in PolyOrchRustHelpers -- grep-measured). Hosts
-with example-shaped suites cannot move to the rust face until either (A) EXAMPLE kind is added
-(build/run verbs + debug/examples/<name> artifact path + metadata import of example targets + a
-PolyOrch test round, mirroring the existing bin machinery) or the hosts keep their own bridge for
-examples. Pending host-side adjudication A/B/C; NOT committed as scope. Do not add silently.
+### Open item RESOLVED (2026-10-12): EXAMPLE kind shipped (D40)
+The gap below closed the same day: D40 added the EXAMPLE artifact kind (cargo --example argv,
+<profile>/examples/ dir segment, copy-plan + RUNTIME staging + install-plan + metadata rows),
+pinned by t-rust-exampleplan; version 0.1.1 -> 0.2.0. The host consumed it the same round (its
+examples plane migrated to rs-<E#> handles; its cmake-smoke drives a stale-sentinel floor
+negative leg against the 0.2.0 marker). Upstream push pending (gitee auth expired on this
+host): 457234e unpublished -- hosts' fresh clones cannot resolve their gitlink until it lands.
