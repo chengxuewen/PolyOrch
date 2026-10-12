@@ -92,3 +92,12 @@
 ## History
 
 MediaServo-era memory (through 2026-08) was **removed** from PolyOrch on 2026-09-18 — no in-repo copy is kept. Source of truth remains the `DEVSYS/MediaServo` repository.
+
+### Open item: EXAMPLE-kind gap in polyorch_rust_build (registered 2026-10-12)
+V (sibling host, C6 name-free zone: identity in .omo plans) attempted the examples-rs migration and
+hit a supplier gap: build()/run() kinds are {bin, static, cdy} + metadata import; cargo [[example]]
+targets are NOT covered (no --example form anywhere in PolyOrchRustHelpers -- grep-measured). Hosts
+with example-shaped suites cannot move to the rust face until either (A) EXAMPLE kind is added
+(build/run verbs + debug/examples/<name> artifact path + metadata import of example targets + a
+PolyOrch test round, mirroring the existing bin machinery) or the hosts keep their own bridge for
+examples. Pending host-side adjudication A/B/C; NOT committed as scope. Do not add silently.
