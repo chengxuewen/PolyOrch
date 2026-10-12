@@ -1810,11 +1810,24 @@ function(polyorch_rust_test)
     # mediator here, so the entries are configure-time literals (the
     # default linker picks C++ over C when the CXX language is enabled).
     # Built test binaries EXECUTE under the forwarded RUNNER automatically.
+    # T-G2 probe (2026-10-12): the wasm family breaks this routing -- cargo
+    # test --target=wasm32 builds test harnesses as .wasm modules and then
+    # EXECUTES them on the host (Exec format error, os error 8, measured);
+    # wasm has no RUNNER plane here to save it. Family routing: wasm triples
+    # test on the HOST (the crate compiles for host; the web-lane mirror
+    # tests are host tests by design), everything else keeps cross routing.
+    set(_test_triple "${POLYORCH_RUST_CARGO_TARGET}")
+    if(_test_triple)
+        _polyorch_rust_triple_family("${_test_triple}" _test_fam)
+        if(_test_fam STREQUAL "wasm")
+            set(_test_triple "")
+        endif()
+    endif()
     set(_fwd_env "")
     set(_lnk_env "")
-    if(POLYORCH_RUST_CARGO_TARGET)
-        list(APPEND _argv "--target=${POLYORCH_RUST_CARGO_TARGET}")
-        _polyorch_rust_forward_env(TRIPLE "${POLYORCH_RUST_CARGO_TARGET}"
+    if(_test_triple)
+        list(APPEND _argv "--target=${_test_triple}")
+        _polyorch_rust_forward_env(TRIPLE "${_test_triple}"
             OUT_ENV _fwd_env)
         _polyorch_rust_forward_env(TRIPLE "${POLYORCH_RUST_HOST_TARGET}"
             OUT_ENV _fwd_env_host)
@@ -3007,3 +3020,36 @@ if(PolyOrch_RUST_VSCODE_DEBUG AND NOT _polyorch_dbg_hooked)
     cmake_language(DEFER DIRECTORY "${CMAKE_SOURCE_DIR}"
         CALL _polyorch_vscode_debug_generate)
 endif()
+
+# ---------------------------------------------------------------- ide mount --
+# polyorch_rust_ide_mount(TARGET <ide-target> MANIFEST <Cargo.toml> [CRATE <name>]
+#                         [FOLDER <f>] [PLAIN])
+#   IDE source mount for crates WITHOUT an artifact handle -- hosts keep
+#   workspace-member crates (plain rlibs, glue crates) outside the artifact
+#   kinds, yet their sources must still appear in IDE target trees, clickable,
+#   under the crate's own folder. Attaches the crate's metadata-authoritative
+#   source list (+ manifest + lockfile, the same display set the verb nodes
+#   use) to TARGET as HEADER_FILE_ONLY sources -- display only, cargo owns the
+#   real compile inputs. PLAIN serves them as plain sources (the
+#   PolyOrch_RUST_SOURCES_PLAIN escape, per-target instead of global).
+#   CRATE defaults to the manifest package name when the manifest declares a
+#   single package; pass it explicitly for multi-package manifests.
+#   FOLDER sets the IDE grouping folder. Requires the rust face setup only in
+#   that the function lives here; the mount itself needs no cargo.
+function(polyorch_rust_ide_mount)
+    set(_one TARGET MANIFEST CRATE FOLDER)
+    cmake_parse_arguments(PARSE_ARGV 0 M "" "${_one}" "")
+    if(M_UNPARSED_ARGUMENTS)
+        message(FATAL_ERROR "polyorch_rust_ide_mount: unknown args: ${M_UNPARSED_ARGUMENTS}")
+    endif()
+    _polyorch_rust_must(M_TARGET M_MANIFEST M_CRATE)
+    if(NOT TARGET "${M_TARGET}")
+        message(FATAL_ERROR "polyorch_rust_ide_mount: no such target '${M_TARGET}'")
+    endif()
+    # SOFT mount: display-only; an unreadable manifest skips instead of failing
+    # the configure (a bare ide-mount target must never gate the build).
+    _polyorch_rust_mount_sources("${M_TARGET}" "${M_MANIFEST}" "${M_CRATE}" SOFT)
+    if(M_FOLDER)
+        set_target_properties("${M_TARGET}" PROPERTIES FOLDER "${M_FOLDER}")
+    endif()
+endfunction()

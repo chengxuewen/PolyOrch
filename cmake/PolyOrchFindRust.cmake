@@ -812,7 +812,18 @@ function(_polyorch_rust_linker_plan)
     set(_wrap "")
     set(_wrapc "")
     set(_runner "")
-    if(_fam STREQUAL "msvc")
+    if(_fam STREQUAL "msvc" OR _fam STREQUAL "wasm")
+        # corr:852 shape: rustc only invokes the linker directly on MSVC ABI
+        # -- no CC wrapper, no runner, and an injected cl would poison env.
+        # wasm (D29 field contact): the same no-C-linker-plane conclusion,
+        # reached 2026-10-12 by live contact -- the elf default-pick filled
+        # CARGO_TARGET_WASM32_..._LINKER with the host c++ and rustc rejected
+        # it ('couldn't extract file stem from specified linker'); rust's
+        # wasm backend links the module itself (rust-lld -> wasm-ld), so
+        # the linker plane must stay ABSENT, exactly like msvc. Emscripten
+        # is rejected at the family layer, so no .so-pair exception exists.
+        # RUNNER (wasmtime/wasmer lanes) is NOT affected: the family check
+        # below independently consults the emulator for non-macho triples;
         # corr:852 shape: rustc only invokes the linker directly on MSVC ABI
         # -- no CC wrapper, no runner, and an injected cl would poison env.
         if(L_OUT_WRAPPER_CONTENT)
