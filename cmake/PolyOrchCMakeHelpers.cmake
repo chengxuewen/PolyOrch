@@ -684,3 +684,134 @@ function(polyorch_add_subdirectory dir)
         endif()
     endif()
 endfunction()
+#-----------------------------------------------------------------------------------------------------------------------
+# polyorch_header_face(TARGET <iface-target> DIRECTORY <dir> [FOLDER <dir>]
+#                      [HEADERS <h>...] [INSTALL] [ALIAS_NAME <ns::name>])
+#
+# A header-only binding face as a REAL target: the IDE tree shows the headers
+# under the target (the qtbase shape -- headers ride the target's SOURCES,
+# qt_internal_collect_module_headers/1838-line target_sources precedent, not
+# the CMake 3.23 FILE_SET route, so the same listing also works for hosts
+# pinned below 3.23), consumers link the target and inherit the include dir,
+# and the disk<->table lock makes a deleted-but-listed header a configure
+# error instead of a silent gap (the probe registry's audit discipline).
+#
+#   TARGET      an existing INTERFACE library (the caller creates it with
+#               add_library + target_include_directories; this function only
+#               adds the visible face -- single responsibility)
+#   DIRECTORY   the header root (BASE_DIR for the relative display paths)
+#   HEADERS     explicit file list, relative to DIRECTORY or absolute.
+#               REQUIRED: a GLOB here would re-introduce the silent-gap class
+#               the audit discipline exists to prevent. The caller's list is
+#               the table; the disk is checked against it at configure.
+#   FOLDER      position-mirror grouping for the IDE tree
+#   INSTALL     mark the file set for install(FILES) collection -- records
+#               the header list in the POLYORCH_HEADER_FACE_<TARGET> global
+#               property so a packaging round can consume it without
+#               re-globbing (a read-only registry, not an install rule).
+#   ALIAS_NAME  add_library(ALIAS) shape (visiaengine::cpp style) is the
+#               caller's concern; nothing aliased here.
+#
+# Disk<->table audit (both directions, configure-time):
+#   * a HEADERS entry missing on disk  -> FATAL (stale table)
+#   * a disk .h/.hpp/.hxx not listed   -> AUTHOR_WARNING (undeclared face;
+#                                        NOT fatal: generated or WIP headers
+#                                        must not hard-block a configure)
+#-----------------------------------------------------------------------------------------------------------------------
+function(polyorch_header_face)
+    cmake_parse_arguments(PARSE_ARGV 0 HF "INSTALL"
+        "TARGET;DIRECTORY;FOLDER" "HEADERS")
+    if(HF_UNPARSED_ARGUMENTS)
+        message(FATAL_ERROR
+            "polyorch_header_face: unknown args: ${HF_UNPARSED_ARGUMENTS}")
+    endif()
+    foreach(_k HF_TARGET HF_DIRECTORY)
+        if(NOT DEFINED ${_k} OR "${${_k}}" STREQUAL "")
+            message(FATAL_ERROR
+                "polyorch_header_face: missing required argument '${_k}'")
+        endif()
+    endforeach()
+    if(NOT TARGET "${HF_TARGET}")
+        message(FATAL_ERROR
+            "polyorch_header_face: no such target '${HF_TARGET}' "
+            "(create the carrier first -- an INTERFACE library for the link "
+            "surface, or a custom target for the IDE-visible face)")
+    endif()
+    get_target_property(_type "${HF_TARGET}" TYPE)
+    if(_type STREQUAL "ALIAS")
+        message(FATAL_ERROR
+            "polyorch_header_face: '${HF_TARGET}' is an ALIAS -- attach to the "
+            "real carrier, aliases cannot take sources")
+    endif()
+    if(NOT EXISTS "${HF_DIRECTORY}")
+        message(FATAL_ERROR
+            "polyorch_header_face: DIRECTORY '${HF_DIRECTORY}' does not exist")
+    endif()
+    if(NOT HF_HEADERS)
+        message(FATAL_ERROR
+            "polyorch_header_face: HEADERS is required and must be explicit "
+            "(a GLOB here would make a deleted header a silent gap)")
+    endif()
+
+    set(_abs "")
+    set(_rel "")
+    foreach(_h ${HF_HEADERS})
+        if(IS_ABSOLUTE "${_h}")
+            set(_p "${_h}")
+            file(RELATIVE_PATH _r "${HF_DIRECTORY}" "${_h}")
+        else()
+            set(_p "${HF_DIRECTORY}/${_h}")
+            set(_r "${_h}")
+        endif()
+        if(NOT EXISTS "${_p}")
+            message(FATAL_ERROR
+                "polyorch_header_face: listed header '${_h}' is not on disk "
+                "under ${HF_DIRECTORY} (stale table -- fix the HEADERS list)")
+        endif()
+        list(APPEND _abs "${_p}")
+        list(APPEND _rel "${_r}")
+    endforeach()
+
+    # undeclared-disk half: warn, do not block
+    file(GLOB _disk
+        "${HF_DIRECTORY}/*.h"
+        "${HF_DIRECTORY}/*.hpp"
+        "${HF_DIRECTORY}/*.hxx")
+    set(_undeclared "")
+    foreach(_d ${_disk})
+        if(NOT _d IN_LIST _abs)
+            list(APPEND _undeclared "${_d}")
+        endif()
+    endforeach()
+    if(_undeclared)
+        message(AUTHOR_WARNING
+            "polyorch_header_face: on disk but not in the HEADERS table "
+            "(generated or WIP headers are fine -- declare or exclude them):\n"
+            "${_undeclared}")
+    endif()
+
+    # the face: headers ride the target's SOURCES (the qtbase shape --
+    # qt_internal_extend_target / the generated-header target_sources at
+    # QtModuleHelpers:1838). Interface libs propagate the listing to
+    # consumers (the link surface keeps its semantics); custom carriers
+    # take the files PRIVATE so only the carrier's IDE node lists them.
+    # NOTE (measured via the cmake-file-api): an INTERFACE target never
+    # enters the generator's target list, so the IDE-VISIBLE variant is
+    # the custom-carrier one; hosts wanting both surfaces create the
+    # INTERFACE link target AND a custom face carrier, and may call this
+    # function on both with the same HEADERS list (the table is the single
+    # source; the audit runs per call).
+    if(_type STREQUAL "INTERFACE_LIBRARY")
+        target_sources("${HF_TARGET}" INTERFACE ${_abs})
+    else()
+        target_sources("${HF_TARGET}" PRIVATE ${_abs})
+    endif()
+
+    if(HF_FOLDER)
+        set_target_properties("${HF_TARGET}" PROPERTIES FOLDER "${HF_FOLDER}")
+    endif()
+    if(HF_INSTALL)
+        set_property(GLOBAL APPEND PROPERTY
+            "POLYORCH_HEADER_FACE_${HF_TARGET}" ${_abs})
+    endif()
+endfunction()
