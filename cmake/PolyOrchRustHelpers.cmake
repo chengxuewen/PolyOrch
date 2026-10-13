@@ -3414,20 +3414,34 @@ function(polyorch_rust_wasm_serve)
             COMMAND ${CMAKE_COMMAND} -E copy_if_different "${_f}" "${WS_DIRECTORY}/${_fn}")
     endforeach()
     list(APPEND _copy_cmds
-        COMMAND ${CMAKE_COMMAND} -E copy_directory "${_pkg}" "${WS_DIRECTORY}/pkg")
+        COMMAND ${CMAKE_COMMAND} -E chdir "${WS_DIRECTORY}"
+                ${CMAKE_COMMAND} -E copy_directory "${_pkg}" pkg)
 
     # serve step: python3 http.server with the wasm MIME pinned, in the
     # assembled dir, foreground (USES_TERMINAL; Ctrl-C is the stop).
-    # $$-escaped ${} free -- pure -c code, no shell var forms to protect.
+    # Two live-contact fixes baked in (2026-10-13):
+    #  * the -c code is ONE argv element (quoted -- the mid-element
+    #    semicolons are python's, argv must not split there);
+    #  * the FIRST command creates the assembly dir and every later step
+    #    (copies + server) runs `cmake -E chdir` INTO it explicitly --
+    #    WORKING_DIRECTORY on the target is evaluated by the generator
+    #    before the first command runs and fails on a fresh tree.
+    # the server binary: serve is self-sufficient (no setup gate), so it
+    # locates its own interpreter -- the pixi/conda pythons on this repo's
+    # hosts all qualify; a bare host without python3 fails loud here.
+    find_package(Python3 QUIET COMPONENTS Interpreter)
+    if(NOT Python3_EXECUTABLE)
+        message(FATAL_ERROR
+            "polyorch_rust_wasm_serve: no python3 found (the static server "
+            "is python3 http.server); install python3 or set Python3_EXECUTABLE")
+    endif()
+    set(_pycode "import http.server,sys;h=http.server.SimpleHTTPRequestHandler;h.extensions_map['wasm']='application/wasm';http.server.test(HandlerClass=h,port=${_port})")
     set(_serve_cmd
-        ${CMAKE_COMMAND} -E env
-        "${Python3_EXECUTABLE};-c;import http.server,sys;h=http.server.SimpleHTTPRequestHandler;h.extensions_map['wasm']='application/wasm';http.server.test(HandlerClass=h,port=${_port})")
-
+        "${Python3_EXECUTABLE}" -c "${_pycode}")
     add_custom_target("${WS_NAME_PREFIX}-serve"
         COMMAND ${CMAKE_COMMAND} -E make_directory "${WS_DIRECTORY}"
         ${_copy_cmds}
-        COMMAND ${_serve_cmd}
-        WORKING_DIRECTORY "${WS_DIRECTORY}"
+        COMMAND ${CMAKE_COMMAND} -E chdir "${WS_DIRECTORY}" ${_serve_cmd}
         USES_TERMINAL
         VERBATIM
         COMMENT "${WS_NAME_PREFIX}: assemble + serve http://127.0.0.1:${_port} (Ctrl-C stops)")
