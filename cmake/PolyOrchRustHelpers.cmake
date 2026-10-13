@@ -3118,11 +3118,12 @@ endfunction()
 # re-invocation is tool-bounded), the wasm-opt pass when a tool is present
 # (in-place on the flavor's *_bg.wasm, original preserved as *.raw.wasm --
 # byte-shape identical to the web lane's shell), regen target
-# <handle>-wasm-bindgen[.<flavor>], and a STATUS line per flavor.
+# regen targets: NAME_PREFIX <lane> -> <lane>-<flavor> (consumer-facing
+# flavor words, e.g. visiaengine-wasm-web), else <handle>-wasm-bindgen[.<flavor>].
 # FOLDER <dir> mirrors the position rule onto every created target.
 function(polyorch_rust_wasm_bindgen)
     cmake_parse_arguments(PARSE_ARGV 0 WB "ALLOW_INSTALL;TYPESCRIPT"
-        "TARGET;OUT_DIR;OUT_NAME;WASM_OPT;WASM_BINDGEN_VERSION;PREFIX;FOLDER"
+        "TARGET;NAME_PREFIX;OUT_DIR;OUT_NAME;WASM_OPT;WASM_BINDGEN_VERSION;PREFIX;FOLDER"
         "FLAVOR;WASM_OPT_FLAGS;FLAGS")
     if(WB_UNPARSED_ARGUMENTS)
         message(FATAL_ERROR
@@ -3259,12 +3260,20 @@ function(polyorch_rust_wasm_bindgen)
             COMMAND ${_cmd}
             DEPENDS "${WB_TARGET}-build" ${_tdepkw}
             VERBATIM)
-        set(_regen "${WB_TARGET}-wasm-bindgen.${_f}")
+        # regen target name: the caller's consumer-facing word wins when given
+        # (NAME_PREFIX <lane> -> "<lane>-<flavor>", e.g. visiaengine-wasm-web
+        # -- the name answers "which flavor do I want", not which tool runs);
+        # without it the tool-grammar fallback keeps the handle lineage.
+        if(WB_NAME_PREFIX)
+            set(_regen "${WB_NAME_PREFIX}-${_f}-build")
+        else()
+            set(_regen "${WB_TARGET}-wasm-bindgen.${_f}")
+        endif()
         add_custom_target(${_regen} DEPENDS "${_js}")
         if(WB_FOLDER)
             set_target_properties(${_regen} PROPERTIES FOLDER "${WB_FOLDER}")
         endif()
-        message(STATUS "polyorch_rust_wasm_bindgen: flavor ${_f} -> ${_od} (regen: ${_regen})")
+        message(STATUS "polyorch_rust_wasm_bindgen: flavor ${_f} -> ${_od} (button: ${_regen})")
 
         # wasm-opt pass (in-place on the flavor's module, original kept --
         # the web lane's byte shape; absent tool = keep the original, the
@@ -3282,12 +3291,12 @@ function(polyorch_rust_wasm_bindgen)
                 VERBATIM)
             # a phony alias keeps the opt pass reachable without racing the
             # glue rule's OUTPUT set (opt is post-processing, not a product)
-            add_custom_target(${_regen}.opt
+            add_custom_target(${_regen}-opt
                 COMMAND ${_ocmd}
                 DEPENDS "${_js}"
                 USES_TERMINAL)
             if(WB_FOLDER)
-                set_target_properties(${_regen}.opt PROPERTIES FOLDER "${WB_FOLDER}")
+                set_target_properties(${_regen}-opt PROPERTIES FOLDER "${WB_FOLDER}")
             endif()
             message(STATUS "polyorch_rust_wasm_bindgen: wasm-opt pass on ${_f} (${_opt})")
         endif()
