@@ -3165,6 +3165,9 @@ function(polyorch_rust_wasm_bindgen)
     set(_module "$<TARGET_FILE:${WB_TARGET}>")
 
     # flavors: validated against the tool's own set, one out-dir each
+    set(_flavor_outputs "")
+    set(_opt_cmds "")
+    set(_flavor_count 0)
     foreach(_f ${WB_FLAVOR})
         if(NOT _f MATCHES "^(web|nodejs|bundler|deno)$")
             message(FATAL_ERROR
@@ -3260,20 +3263,26 @@ function(polyorch_rust_wasm_bindgen)
             COMMAND ${_cmd}
             DEPENDS "${WB_TARGET}-build" ${_tdepkw}
             VERBATIM)
-        # regen target name: the caller's consumer-facing word wins when given
-        # (NAME_PREFIX <lane> -> "<lane>-<flavor>", e.g. visiaengine-wasm-web
-        # -- the name answers "which flavor do I want", not which tool runs);
-        # without it the tool-grammar fallback keeps the handle lineage.
-        if(WB_NAME_PREFIX)
-            set(_regen "${WB_NAME_PREFIX}-${_f}-build")
-        else()
+        # NAME_PREFIX mode (the consumer-facing shape): NO per-flavor buttons --
+        # the flavors ship together (a module change invalidates every glue;
+        # a single-crate lane has no independent per-flavor lifecycle), so one
+        # <prefix>-js-build aggregate collects every flavor's OUTPUT and ninja's
+        # phony semantics keep per-flavor incrementality. Single-flavor needs
+        # degrade naturally: pass one FLAVOR and the aggregate has one member.
+        # Without NAME_PREFIX the tool-grammar fallback keeps the handle
+        # lineage and per-flavor buttons (the supplier-test surface).
+        list(APPEND _flavor_outputs "${_js}")
+        math(EXPR _flavor_count "${_flavor_count} + 1")
+        if(NOT WB_NAME_PREFIX)
             set(_regen "${WB_TARGET}-wasm-bindgen.${_f}")
+            add_custom_target(${_regen} DEPENDS "${_js}")
+            if(WB_FOLDER)
+                set_target_properties(${_regen} PROPERTIES FOLDER "${WB_FOLDER}")
+            endif()
+            message(STATUS "polyorch_rust_wasm_bindgen: flavor ${_f} -> ${_od} (button: ${_regen})")
+        else()
+            message(STATUS "polyorch_rust_wasm_bindgen: flavor ${_f} -> ${_od} (into ${WB_NAME_PREFIX}-build)")
         endif()
-        add_custom_target(${_regen} DEPENDS "${_js}")
-        if(WB_FOLDER)
-            set_target_properties(${_regen} PROPERTIES FOLDER "${WB_FOLDER}")
-        endif()
-        message(STATUS "polyorch_rust_wasm_bindgen: flavor ${_f} -> ${_od} (button: ${_regen})")
 
         # wasm-opt pass (in-place on the flavor's module, original kept --
         # the web lane's byte shape; absent tool = keep the original, the
@@ -3289,16 +3298,36 @@ function(polyorch_rust_wasm_bindgen)
                 COMMAND ${_ocmd}
                 DEPENDS "${_js}" "${_bgraw}"
                 VERBATIM)
-            # a phony alias keeps the opt pass reachable without racing the
-            # glue rule's OUTPUT set (opt is post-processing, not a product)
-            add_custom_target(${_regen}-opt
-                COMMAND ${_ocmd}
-                DEPENDS "${_js}"
-                USES_TERMINAL)
-            if(WB_FOLDER)
-                set_target_properties(${_regen}-opt PROPERTIES FOLDER "${WB_FOLDER}")
+            # NAME_PREFIX mode: the opt pass rides the aggregate chain (its
+            # custom command joins the same phony); fallback keeps its own
+            # per-flavor button. Post-processing, not a product.
+            if(NOT WB_NAME_PREFIX)
+                add_custom_target(${_regen}-opt
+                    COMMAND ${_ocmd}
+                    DEPENDS "${_js}"
+                    USES_TERMINAL)
+                if(WB_FOLDER)
+                    set_target_properties(${_regen}-opt PROPERTIES FOLDER "${WB_FOLDER}")
+                endif()
             endif()
+            list(APPEND _opt_cmds "${_ocmd}")
             message(STATUS "polyorch_rust_wasm_bindgen: wasm-opt pass on ${_f} (${_opt})")
         endif()
     endforeach()
+
+    # the NAME_PREFIX aggregate: ONE phony button for every flavor's outputs.
+    # Pure DEPENDS: the flavor .js files are file-level OUTPUTs (their rules
+    # order the glue), and the opt pass chains via its own OUTPUT depending
+    # on the js -- ninja replays whatever is stale, per-flavor incrementality
+    # intact. No COMMAND here: a phony that runs nothing cannot mis-order.
+    if(WB_NAME_PREFIX)
+        add_custom_target("${WB_NAME_PREFIX}-js-build"
+            COMMENT "${WB_NAME_PREFIX}: the js deliverable (all glue flavors)"
+            DEPENDS ${_flavor_outputs}
+            VERBATIM)
+        if(WB_FOLDER)
+            set_target_properties("${WB_NAME_PREFIX}-js-build" PROPERTIES FOLDER "${WB_FOLDER}")
+        endif()
+        message(STATUS "polyorch_rust_wasm_bindgen: aggregate button ${WB_NAME_PREFIX}-js-build (${_flavor_count} flavor(s))")
+    endif()
 endfunction()
