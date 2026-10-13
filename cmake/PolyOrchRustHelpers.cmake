@@ -3320,6 +3320,18 @@ function(polyorch_rust_wasm_bindgen)
     # order the glue), and the opt pass chains via its own OUTPUT depending
     # on the js -- ninja replays whatever is stale, per-flavor incrementality
     # intact. No COMMAND here: a phony that runs nothing cannot mis-order.
+    # the serve surface's anchor: WHERE the pkg-<flavor> dirs landed
+    # (stamped on the module handle; polyorch_rust_wasm_serve reads it).
+    # OUT_DIR given -> pkg-<flavor> lands under it; default -> the
+    # generated tree. One root for both, the per-flavor suffix rides the
+    # serve side's pkg-<flavor> join.
+    if(WB_OUT_DIR)
+        set(_wasm_pkg_root "${WB_OUT_DIR}")
+    else()
+        set(_wasm_pkg_root "${_genroot}")
+    endif()
+    set_target_properties("${WB_TARGET}" PROPERTIES
+        POLYORCH_WASM_PKG_ROOT "${_wasm_pkg_root}")
     if(WB_NAME_PREFIX)
         add_custom_target("${WB_NAME_PREFIX}-js-build"
             COMMENT "${WB_NAME_PREFIX}: the js deliverable (all glue flavors)"
@@ -3330,4 +3342,100 @@ function(polyorch_rust_wasm_bindgen)
         endif()
         message(STATUS "polyorch_rust_wasm_bindgen: aggregate button ${WB_NAME_PREFIX}-js-build (${_flavor_count} flavor(s))")
     endif()
+endfunction()
+
+# polyorch_rust_wasm_serve(TARGET <bindgen-target> NAME_PREFIX <p>
+#     DIRECTORY <dir> SOURCES <file>... DATA <file>...
+#     [FLAVOR <f>] [PORT <n>] [FOLDER <ide>])
+#
+# The wasm delivery chain's last mile: assemble a static demo directory
+# (page files + data + ONE bindgen flavor's pkg mounted as pkg/) and
+# serve it with python3's http.server -- ONE button, from stale sources
+# to a running page. Serving a stale pkg is structurally impossible: the
+# serve target depends on the flavor's file-level OUTPUT, so the glue
+# chain (and the wasm module behind it) replays first whenever stale.
+#
+# MIME: bare python <3.13 serves .wasm as application/octet-stream and
+# browsers REJECT it; hosts with /etc/mime.types often serve it anyway
+# (measured), but the serving never relies on the host: the command
+# injects an extensions_map override for the wasm extension via -c.
+# Port-in-use fails loud via EADDRINUSE -- a foreground dev server is
+# expected to collide loudly and be restarted, not to scan ports.
+function(polyorch_rust_wasm_serve)
+    cmake_parse_arguments(PARSE_ARGV 0 WS ""
+        "TARGET;NAME_PREFIX;DIRECTORY;FLAVOR;PORT;FOLDER" "SOURCES;DATA")
+    if(WS_UNPARSED_ARGUMENTS)
+        message(FATAL_ERROR
+            "polyorch_rust_wasm_serve: unknown args: ${WS_UNPARSED_ARGUMENTS}")
+    endif()
+    foreach(_k WS_TARGET WS_NAME_PREFIX WS_DIRECTORY WS_SOURCES)
+        if(NOT DEFINED ${_k} OR "${${_k}}" STREQUAL "")
+            message(FATAL_ERROR
+                "polyorch_rust_wasm_serve: missing required argument '${_k}'")
+        endif()
+    endforeach()
+    # deliberately NO _polyorch_rust_require_setup: the serve surface
+    # assembles files and starts a static server -- it never drives
+    # cargo/rustc, so a rust toolchain is not its prerequisite (the
+    # glue build edge comes from the bindgen side, which had its own
+    # setup gate at registration time).
+    if(NOT TARGET "${WS_TARGET}")
+        message(FATAL_ERROR
+            "polyorch_rust_wasm_serve: no such target '${WS_TARGET}'")
+    endif()
+    set(_flavor "${WS_FLAVOR}")
+    if(NOT _flavor)
+        set(_flavor web)
+    endif()
+    set(_port "${WS_PORT}")
+    if(NOT _port)
+        set(_port 8080)
+    endif()
+    # the flavor's pkg dir: the bindgen call's OUT_DIR + pkg-<flavor>
+    # (the lane records it as the property; the bindgen call stamps it)
+    get_target_property(_pkgroot "${WS_TARGET}" POLYORCH_WASM_PKG_ROOT)
+    if(NOT _pkgroot)
+        message(FATAL_ERROR
+            "polyorch_rust_wasm_serve: ${WS_TARGET} carries no "
+            "POLYORCH_WASM_PKG_ROOT (call polyorch_rust_wasm_bindgen first)")
+    endif()
+    set(_pkg "${_pkgroot}/pkg-${_flavor}")
+    if(NOT EXISTS "${_pkg}")
+        message(FATAL_ERROR
+            "polyorch_rust_wasm_serve: pkg dir does not exist: ${_pkg}")
+    endif()
+
+    # assembly: copy_if_different each file, copy_directory the pkg.
+    # DEPENDS the flavor's .js OUTPUT -- the stale-glue replay edge.
+    set(_copy_cmds "")
+    foreach(_f ${WS_SOURCES} ${WS_DATA})
+        get_filename_component(_fn "${_f}" NAME)
+        list(APPEND _copy_cmds
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different "${_f}" "${WS_DIRECTORY}/${_fn}")
+    endforeach()
+    list(APPEND _copy_cmds
+        COMMAND ${CMAKE_COMMAND} -E copy_directory "${_pkg}" "${WS_DIRECTORY}/pkg")
+
+    # serve step: python3 http.server with the wasm MIME pinned, in the
+    # assembled dir, foreground (USES_TERMINAL; Ctrl-C is the stop).
+    # $$-escaped ${} free -- pure -c code, no shell var forms to protect.
+    set(_serve_cmd
+        ${CMAKE_COMMAND} -E env
+        "${Python3_EXECUTABLE};-c;import http.server,sys;h=http.server.SimpleHTTPRequestHandler;h.extensions_map['wasm']='application/wasm';http.server.test(HandlerClass=h,port=${_port})")
+
+    add_custom_target("${WS_NAME_PREFIX}-serve"
+        COMMAND ${CMAKE_COMMAND} -E make_directory "${WS_DIRECTORY}"
+        ${_copy_cmds}
+        COMMAND ${_serve_cmd}
+        WORKING_DIRECTORY "${WS_DIRECTORY}"
+        USES_TERMINAL
+        VERBATIM
+        COMMENT "${WS_NAME_PREFIX}: assemble + serve http://127.0.0.1:${_port} (Ctrl-C stops)")
+    if(TARGET "${WS_TARGET}-build")
+        add_dependencies("${WS_NAME_PREFIX}-serve" "${WS_TARGET}-build")
+    endif()
+    if(WS_FOLDER)
+        set_target_properties("${WS_NAME_PREFIX}-serve" PROPERTIES FOLDER "${WS_FOLDER}")
+    endif()
+    message(STATUS "polyorch_rust_wasm_serve: button ${WS_NAME_PREFIX}-serve (flavor ${_flavor}, port ${_port})")
 endfunction()
