@@ -805,6 +805,12 @@ function(polyorch_header_face)
         target_sources("${HF_TARGET}" INTERFACE ${_abs})
     else()
         target_sources("${HF_TARGET}" PRIVATE ${_abs})
+        # the viewer-only contract, printed at the point of creation: a custom
+        # carrier cannot be linked into another target (CMake enforces this at
+        # the consumer's link call -- "of type UTILITY may not be linked",
+        # measured); naming the link face here saves the misdirected call.
+        message(STATUS "polyorch_header_face: '${HF_TARGET}' is a VIEWER-ONLY carrier "
+            "(sources are for IDE visibility; link via the lane's INTERFACE face)")
     endif()
 
     if(HF_FOLDER)
