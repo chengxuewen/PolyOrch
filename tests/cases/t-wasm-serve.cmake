@@ -23,6 +23,8 @@ polyorch_rust_wasm_serve(TARGET wasmmod NAME_PREFIX visiaengine-wasm
     SOURCES "${CMAKE_SOURCE_DIR}/page.html"
     DATA "${CMAKE_SOURCE_DIR}/park.geojson"
     FLAVOR web PORT 8017 FOLDER "bindings/wasm")
+get_target_property(_srcs visiaengine-wasm-serve SOURCES)
+message(STATUS "SRC=${_srcs}")
 ]=])
 
 set(_cmd_dir "${CMAKE_CURRENT_LIST_DIR}/../../cmake")
@@ -44,6 +46,12 @@ if(NOT EXISTS "${_bm}")
     message(FATAL_ERROR "no build.make for visiaengine-wasm-serve")
 endif()
 file(READ "${_bm}" _body)
+string(REGEX MATCH "SRC=[^\n]*" _srcline "${_o}${_e}")
+foreach(marker "page.html" "park.geojson")
+    if(NOT _srcline MATCHES "${marker}")
+        message(FATAL_ERROR "serve SOURCES missing ${marker}: ${_srcline}")
+    endif()
+endforeach()
 # the serve body moved to a generated .py (semicolons must not ride
 # command lists); build.make pins the script path, the script pins content
 foreach(marker "copy_if_different" "copy_directory" "polyorch-wasm-serve-8017.py")
@@ -62,4 +70,5 @@ foreach(marker "extensions_map" "application/wasm" "8017")
         message(FATAL_ERROR "serve script missing marker: ${marker}")
     endif()
 endforeach()
-message(STATUS "t-wasm-serve: button ledger + assembly + script/MIME pins PASS")
+# (cross-tree probe: the child project prints its own SOURCES property)
+message(STATUS "t-wasm-serve: button ledger + assembly + script/MIME + SOURCES pins PASS")

@@ -3535,6 +3535,13 @@ function(polyorch_rust_wasm_serve)
     if(TARGET "${WS_TARGET}-build")
         add_dependencies("${WS_NAME_PREFIX}-serve" "${WS_TARGET}-build")
     endif()
+    # the button shows its own stage list: the assembled page/data files ride
+    # SOURCES (custom-target SOURCES are IDE display only -- nothing compiles;
+    # the header_face viewer mechanism). Without it the serve node is headless
+    # in the IDE tree and its inputs are only findable on disk (user catch,
+    # T-H11: "该 target 没有包含 source").
+    set_target_properties("${WS_NAME_PREFIX}-serve" PROPERTIES
+        SOURCES "${WS_SOURCES};${WS_DATA}")
     if(WS_FOLDER)
         set_target_properties("${WS_NAME_PREFIX}-serve" PROPERTIES FOLDER "${WS_FOLDER}")
     endif()
