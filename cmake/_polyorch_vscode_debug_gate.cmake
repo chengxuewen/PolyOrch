@@ -6,6 +6,8 @@
 #   PolyOrch_VSCODE_DEBUG_ALL      composite, BOOL cache, default OFF
 #                                  (declared in PolyOrchVSCodeDebugHelpers.cmake)
 #   PolyOrch_VSCODE_DEBUG_<FACE>   per-face, option cache, default OFF
+#                                  (FACES: RUST | NODE | PYTHON | NATIVE -- native is the
+#                                  T-H8 c/cpp/qt CodeLLDB face; no legacy name exists)
 #
 # Semantics (pure OR):
 #   ALL=ON              -> every face ON (the composite switch wins)
@@ -32,10 +34,10 @@
 
 function(_polyorch_vscode_debug_gate FACE OUT)
     string(TOUPPER "${FACE}" _face)
-    if(NOT _face MATCHES "^(RUST|NODE|PYTHON)$")
+    if(NOT _face MATCHES "^(RUST|NODE|PYTHON|NATIVE)$")
         message(FATAL_ERROR
             "_polyorch_vscode_debug_gate: unknown face '${FACE}' "
-            "(RUST | NODE | PYTHON)")
+            "(RUST | NODE | PYTHON | NATIVE)")
     endif()
 
     # the composite switch: ON forces every face
