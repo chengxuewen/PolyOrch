@@ -39,15 +39,17 @@ include_guard(GLOBAL)
 # the COMMAND list is assembled (cmake -E env hands the body to sh
 # verbatim). The binary rides argv $0, its arguments $@.
 function(_polyorch_gui_probe_script OUT)
-    set(_s [==[
-if [ -z "$${DISPLAY:-}" ] && [ -z "$${WAYLAND_DISPLAY:-}" ] &&
-   [ -z "$${WAYLAND_SOCKET:-}" ] && compgen -G '/tmp/.X11-unix/X*' >/dev/null; then
-    DISPLAY=:0; export DISPLAY
-    echo 'polyorch run surface: no display variables, falling back to DISPLAY=:0 (local X socket probe)' >&2
-fi
-exec "$$0" "$$@"
-==]==])
-    string(REGEX REPLACE "\$\$" "\$" _s "${_s}")
+    # ONE single-line script: the Ninja generator flattens newlines in
+    # quoted command arguments out of existence (measured: multi-line
+    # shipped as "&&[" syntax errors) -- semicolons are the portable
+    # separator. The bracket argument expands NOTHING, single $ rides
+    # verbatim (the inherited $$+REGEX collapse never matched: see the
+    # T-H9 history note below).
+    # History: the quoted-era $$ + REGEX collapse was doubly broken --
+    # the pattern never matched inner pairs AND the bracket-close was
+    # malformed; both shipped into ninja command lines (user-reported,
+    # 2026-10-14).
+    set(_s [==[if [ -z "${DISPLAY:-}" ] && [ -z "${WAYLAND_DISPLAY:-}" ] && [ -z "${WAYLAND_SOCKET:-}" ] && ls -d /tmp/.X11-unix/X* >/dev/null 2>&1; then DISPLAY=:0; export DISPLAY; echo 'polyorch run surface: no display variables, falling back to DISPLAY=:0 (local X socket probe)' >&2; fi; exec "$0" "$@"]==])
     set(${OUT} "${_s}" PARENT_SCOPE)
 endfunction()
 
