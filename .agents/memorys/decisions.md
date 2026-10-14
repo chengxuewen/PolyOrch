@@ -740,3 +740,37 @@ byte-exact. offline 68/0/26, matrix 6/6. User CONFIRMED VSCode F5 binds+pauses a
 - **Reference**: host-side proof is its examples plane (ctest running `$<TARGET_FILE>` of example
   handles); offline pin t-rust-exampleplan (naming/copy-plan/argv/metadata/guards, 4 layers).
   Version 0.1.1 -> 0.2.0 (first API-adding round after D39).
+
+## D41: the debug-surface knob family + the full octk_option port + the NATIVE face (2026-10-14, user-adjudicated rounds T-H7/T-H8)
+
+Three coupled API decisions, all user-ruled:
+
+1. **Knob namespace**: `PolyOrch_VSCODE_DEBUG_{ALL,RUST,NODE,PYTHON,NATIVE}`
+   -- FEATURE first, FACE second (the old `POLYORCH_<FACE>_VSCODE_DEBUG`
+   order put the axis last). ALL is BOOLEAN and forces every face through
+   the OR_CONDITION mechanism (composite switches OR, never enumerate).
+   Legacy triple honored one transition cycle (STATUS + both-set FATAL);
+   removal gate lives in the host repo's status.md Open Items.
+
+2. **octk_option ported FULLY** (272 lines: DEPENDS/EMIT_IF/OR_CONDITION/
+   SET/SET_NEGATE/VERIFY + the expression evaluator + INPUT_ overrides).
+   The recommendation was the six-line sugar with the extraction roadmap;
+   the user overruled ("强烈要求全量移植") -- the thin port had produced
+   the display/effect divergence (OR_CONDITION without the cache FORCE),
+   proving half-semantics are worse than none. VERIFY, listed in octk's
+   doc comment but never consumed there, is made real here: declaration-
+   time FATAL on a false precondition.
+
+3. **The NATIVE face** (T-H8): c/cpp/qt executables debug through the
+   SAME CodeLLDB machinery as rust (embedded lldb: no cpptools extension,
+   no system debugger binary). polyorch_native_debug registers specs at
+   declaration time (the declaring directory is the last scope that sees
+   its own output-dir chain); task rows build the TARGET ITSELF (native
+   has no mediator -- per-face grammar, not a rust copy). Face word
+   NATIVE: CPP/CXX rejected (they exclude the C majority of the lane).
+
+Consequences: the DEFER generator now merges FOUR faces; the shared module
+is the native face's home; OptionHelpers is self-carried by the faces
+(standalone test legs include single modules -- cross-module functions must
+ride their consumers). Suite 78/0/26 (t-option 10, t-native-debug 5,
+t-vscode-knobs 6).
