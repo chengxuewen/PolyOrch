@@ -1390,7 +1390,7 @@ endfunction()
 # <TARGET>-build custom mediator that owns the rule. Linking <TARGET>
 # suffices: the auto-build edge propagates the mediator ordering to every
 # consumer. The legacy <TARGET>-cargo name is a compatibility shim. A bare
-# cmake --build reaches the artifacts through the polyorch-rust-all
+# cmake --build reaches the artifacts through the opt-in aggregate
 # aggregate target; the mediators themselves are deliberately NOT ALL.
 # DEPENDS is deprecated -- superseded by the auto-build edge.
 # Without PROFILE the cargo profile follows the configuration. Single-

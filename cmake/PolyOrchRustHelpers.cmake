@@ -766,20 +766,22 @@ function(polyorch_rust_build)
     # prerequisite of the consumer; measured on cmake 4.4.3), replacing
     # per-consumer manual wiring of the mediator.
     add_dependencies("${B_TARGET}" "${_med}")
-    # Opt-in aggregate: `cmake --build . --target <aggregate>` builds every
-    # rust artifact registered in the tree without putting cargo into a bare
-    # build's default target set. The name is PolyOrch_RUST_AGGREGATE_NAME
-    # (default polyorch-rust-all); a host fusing MULTIPLE example trees via
-    # add_subdirectory sets it per directory scope so each subtree gets its
-    # own aggregate instead of silently merging every mediator into one.
+    # Opt-in aggregate, STRICTLY (T-H10): the aggregate exists only when the
+    # host NAMES it (PolyOrch_RUST_AGGREGATE_NAME -- the examples fusion loop
+    # sets it per subtree; standalone hosts that want a tree-wide "build all
+    # rust artifacts" button set it themselves). The old default name made a
+    # polyorch-named button appear in EVERY rust host's IDE tree -- hosts
+    # with their own lane aggregates (the common shape) got a redundant
+    # fourth one, and worse: see the FOLDER rule below.
     set(_agg "${PolyOrch_RUST_AGGREGATE_NAME}")
-    if(NOT _agg)
-        set(_agg polyorch-rust-all)
+    set(_agg_new OFF)
+    if(_agg)
+        if(NOT TARGET "${_agg}")
+            add_custom_target("${_agg}")
+            set(_agg_new ON)
+        endif()
+        add_dependencies("${_agg}" "${_med}")
     endif()
-    if(NOT TARGET "${_agg}")
-        add_custom_target("${_agg}")
-    endif()
-    add_dependencies("${_agg}" "${_med}")
     # IDE folder: explicit FOLDER wins; default = the calling directory
     # relative to the source root ("where you call it is where it lives").
     set(_fold "${B_FOLDER}")
@@ -800,7 +802,16 @@ function(polyorch_rust_build)
     # aggregate that builds it on demand (WP13: the aggregate used to be
     # created before this block but never joined the FOLDER -- it floated
     # at the tree root, glaring once subtrees were fused).
-    set_target_properties("${B_TARGET}" "${_med}" "${_agg}"
+    # T-H10: the aggregate joins ONLY the creating call's folder (measured
+    # defect: every registration rewrote its FOLDER, so the tree-wide button
+    # drifted into whichever lane registered last -- the user caught it in
+    # the host's examples/rs). Members are pinned per call; the aggregate is
+    # pinned once.
+    set(_fold_targets "${B_TARGET}" "${_med}")
+    if(_agg AND _agg_new)
+        list(APPEND _fold_targets "${_agg}")
+    endif()
+    set_target_properties(${_fold_targets}
         PROPERTIES FOLDER "${_fold}")
     # WP4 deferred finalize: late-read the output-directory properties and
     # re-shape the IMPORTED locations (per-CFG on multi-config), staging a

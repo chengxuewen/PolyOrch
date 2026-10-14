@@ -38,7 +38,8 @@ endif()
 # --- main fixture: configure + build the aggregate (covers the PREBUILD leg) --
 execute_process(COMMAND "${CMAKE_COMMAND}"
     "-DFIXTURE=${_fx}" "-DBUILD=${_b}" "-DCONFIG=${_cfg}"
-    "-DTARGETS=polyorch-rust-all" ${_genargs}
+    "-DPASSTHROUGH=-DPolyOrch_RUST_AGGREGATE_NAME=polyorch-rust-all"
+        "-DTARGETS=polyorch-rust-all" ${_genargs}
     -P "${_drv}"
     RESULT_VARIABLE _rc OUTPUT_VARIABLE _out ERROR_VARIABLE _err)
 set(_dlog "${_out}${_err}")

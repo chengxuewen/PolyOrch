@@ -25,7 +25,8 @@ set(_fx "${CMAKE_CURRENT_LIST_DIR}/../fixtures/import-ws")
 _polyorch_pixi_scratch(_s)
 
 set(_dargs "-DFIXTURE=${_fx}" "-DBUILD=${_s}/b" "-DCONFIG=${_cfg}"
-           "-DTARGETS=polyorch-rust-all")
+           "-DPASSTHROUGH=-DPolyOrch_RUST_AGGREGATE_NAME=polyorch-rust-all"
+        "-DTARGETS=polyorch-rust-all")
 if("$ENV{POLYORCH_TEST_GENERATOR}")
     list(APPEND _dargs "-DGENERATOR=$ENV{POLYORCH_TEST_GENERATOR}")
 endif()
