@@ -34,6 +34,7 @@
 cmake_minimum_required(VERSION 3.25)
 
 include_guard(GLOBAL)  # 2026-10-10 embed ruling: idempotent same-path re-include; sits between the cmr (needed by nothing above) and the options block (which MUST stay after the cmr, D33)
+include("${CMAKE_CURRENT_LIST_DIR}/PolyOrchOptionHelpers.cmake")  # polyorch_option (T-H7 declaration sugar; guarded, idempotent)
 
 # ---------------------------------------------------------------------------
 # options
@@ -47,8 +48,9 @@ include_guard(GLOBAL)  # 2026-10-10 embed ruling: idempotent same-path re-includ
 # before any cmr the policy context is OLD and option() WIPES the pre-set
 # variable -- the standalone opt-in would silently no-op, invisible on
 # node-less hosts (measured, D33).
-option(PolyOrch_VSCODE_DEBUG_NODE
-    "Generate VSCode js-debug launch configs for polyorch_node_debug handles" OFF)
+polyorch_option(PolyOrch_VSCODE_DEBUG_NODE
+    "Generate VSCode js-debug launch configs for polyorch_node_debug handles" OFF
+    OR_CONDITION PolyOrch_VSCODE_DEBUG_ALL)
 # legacy knob (T-H7 rename): honored one cycle via _polyorch_vscode_debug_gate
 
 # PolyOrch_NODE_SOURCES_PLAIN -- serve the IDE source mount as plain

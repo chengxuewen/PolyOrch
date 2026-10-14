@@ -69,6 +69,7 @@
 # Requires CMake >= 3.25 (PARSE_ARGV, NO_CACHE find_program, cmake_path).
 
 include_guard(GLOBAL)
+include("${CMAKE_CURRENT_LIST_DIR}/PolyOrchOptionHelpers.cmake")  # polyorch_option (T-H7 declaration sugar; guarded, idempotent)
 
 #
 # Module organization (2026-09-22 ruling): toolchain discovery, triple
@@ -2940,8 +2941,9 @@ endfunction()
 # document lands beside it as <file>.polyorch-new for manual adoption.
 # ===========================================================================
 
-option(PolyOrch_VSCODE_DEBUG_RUST
-    "Generate .vscode launch/tasks configs for polyorch_rust_run targets" OFF)
+polyorch_option(PolyOrch_VSCODE_DEBUG_RUST
+    "Generate .vscode launch/tasks configs for polyorch_rust_run targets" OFF
+    OR_CONDITION PolyOrch_VSCODE_DEBUG_ALL)
 # legacy knob (T-H7 rename): honored one cycle via _polyorch_vscode_debug_gate
 set(PolyOrch_RUST_VSCODE_DIR "" CACHE PATH
     "Directory for the generated .vscode files (empty = <CMAKE_SOURCE_DIR>/.vscode)")

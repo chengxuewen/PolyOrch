@@ -20,9 +20,11 @@
 # ===========================================================================
 
 include_guard(GLOBAL)  # 2026-10-10 embed ruling: idempotent same-path re-include
+include("${CMAKE_CURRENT_LIST_DIR}/PolyOrchOptionHelpers.cmake")  # polyorch_option (T-H7 declaration sugar; guarded, idempotent)
 
-option(PolyOrch_VSCODE_DEBUG_PYTHON
-    "Generate .vscode debugpy launch configs for polyorch_python_run targets" OFF)
+polyorch_option(PolyOrch_VSCODE_DEBUG_PYTHON
+    "Generate .vscode debugpy launch configs for polyorch_python_run targets" OFF
+    OR_CONDITION PolyOrch_VSCODE_DEBUG_ALL)
 # legacy knob (T-H7 rename): honored one cycle via _polyorch_vscode_debug_gate
 option(PolyOrch_PYTHON_SOURCES_PLAIN
     "Serve mounted python sources as plain entries (IDE header-fold escape)" OFF)
