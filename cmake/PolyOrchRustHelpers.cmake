@@ -3393,7 +3393,8 @@ function(polyorch_rust_wasm_bindgen)
         set(_wasm_pkg_root "${_genroot}")
     endif()
     set_target_properties("${WB_TARGET}" PROPERTIES
-        POLYORCH_WASM_PKG_ROOT "${_wasm_pkg_root}")
+        POLYORCH_WASM_PKG_ROOT "${_wasm_pkg_root}"
+        POLYORCH_WASM_JS_OUTPUTS "${_flavor_outputs}")
     if(WB_NAME_PREFIX)
         add_custom_target("${WB_NAME_PREFIX}-js-build"
             COMMENT "${WB_NAME_PREFIX}: the js deliverable (all glue flavors)"
@@ -3497,13 +3498,37 @@ function(polyorch_rust_wasm_serve)
             "polyorch_rust_wasm_serve: no python3 found (the static server "
             "is python3 http.server); install python3 or set Python3_EXECUTABLE")
     endif()
-    set(_pycode "import http.server,sys;h=http.server.SimpleHTTPRequestHandler;h.extensions_map['wasm']='application/wasm';http.server.test(HandlerClass=h,port=${_port})")
-    set(_serve_cmd
-        "${Python3_EXECUTABLE}" -c "${_pycode}")
+    # The serve body is a GENERATED .py file, not a -c one-liner: a ';'
+    # inside the code re-enters CMake list semantics (the command-list
+    # expansion splits it into separate argv -- measured: python ran only
+    # "import http.server,sys" and exited 0, the server never bound; the
+    # same C21 class wearing a new hat). Writing the script kills the
+    # quoting ladder entirely.
+    set(_serve_script "${CMAKE_CURRENT_BINARY_DIR}/polyorch-wasm-serve-${_port}.py")
+    file(WRITE "${_serve_script}"
+"import http.server
+"
+"h = http.server.SimpleHTTPRequestHandler
+"
+"h.extensions_map['wasm'] = 'application/wasm'
+"
+"http.server.test(HandlerClass=h, port=${_port})
+")
+    set(_serve_cmd "${Python3_EXECUTABLE}" "${_serve_script}")
+    # the glue edge AT CONSTRUCTION: every flavor's .js OUTPUT is a file-level
+    # DEPENDS (the copy_directory step reads them at RUN time -- without this
+    # edge a fresh tree served an empty pkg/; measured, T-H11 live catch.
+    # A post-hoc set_property(DEPENDS) does NOT reach the Ninja graph --
+    # also measured; constructor is the only door).
+    get_target_property(_jsouts "${WS_TARGET}" POLYORCH_WASM_JS_OUTPUTS)
+    if(NOT _jsouts OR _jsouts STREQUAL "NOTFOUND")
+        set(_jsouts "")
+    endif()
     add_custom_target("${WS_NAME_PREFIX}-serve"
         COMMAND ${CMAKE_COMMAND} -E make_directory "${WS_DIRECTORY}"
         ${_copy_cmds}
         COMMAND ${CMAKE_COMMAND} -E chdir "${WS_DIRECTORY}" ${_serve_cmd}
+        DEPENDS ${_jsouts}
         USES_TERMINAL
         VERBATIM
         COMMENT "${WS_NAME_PREFIX}: assemble + serve http://127.0.0.1:${_port} (Ctrl-C stops)")
