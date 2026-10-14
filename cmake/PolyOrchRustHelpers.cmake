@@ -1506,6 +1506,36 @@ function(_polyorch_rust_metadata_sources MANIFEST CRATE OUT)
             endforeach()
         endforeach()
     endif()
+    # The [[example]] bottom (D40's ide-mount debt, measured 2026-10-13):
+    # a cargo package's example targets are NOT packages -- the package
+    # scan above never matches them (E101_clear lives in
+    # packages[i].targets[].name with kind "example"). When the package
+    # scan found nothing, scan every package's targets for the name and
+    # take ONLY the matching target's src_path -- the shared-[[example]]
+    # -home shape (a "cargo examples package" carrying 29 targets) must
+    # mount one file per CRATE, not the whole package (the lib branch's
+    # mount-all + directory-glob would glue every example to every node).
+    if(NOT _acc)
+        if(_np GREATER 0)
+            math(EXPR _plast "${_np} - 1")
+            foreach(_pi RANGE 0 ${_plast})
+                string(JSON _nt LENGTH "${_json}" "packages" ${_pi} "targets")
+                math(EXPR _tlast "${_nt} - 1")
+                foreach(_ti RANGE 0 ${_tlast})
+                    string(JSON _tn GET "${_json}" "packages" ${_pi} "targets" ${_ti} "name")
+                    if(NOT _tn STREQUAL "${CRATE}")
+                        continue()
+                    endif()
+                    string(JSON _tk GET "${_json}" "packages" ${_pi} "targets" ${_ti} "kind" 0)
+                    if(NOT _tk STREQUAL "example")
+                        continue()
+                    endif()
+                    string(JSON _sp GET "${_json}" "packages" ${_pi} "targets" ${_ti} "src_path")
+                    list(APPEND _acc "${_sp}")
+                endforeach()
+            endforeach()
+        endif()
+    endif()
     foreach(_d IN LISTS _dirs)
         file(GLOB _mod LIST_DIRECTORIES false "${_d}/*.rs")
         list(APPEND _acc ${_mod})
