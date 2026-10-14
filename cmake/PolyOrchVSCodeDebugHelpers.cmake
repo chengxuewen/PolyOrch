@@ -129,7 +129,7 @@ function(_polyorch_vscode_debug_generate)
         file(READ "${_f}" _prev)
         string(REGEX MATCHALL "__POLYORCH_GENERATED_BEGIN__" _prev_blocks "${_prev}")
         if(_prev_blocks)
-            string(REGEX MATCH ""name"[ \t]*:[ \t]*\"[^\"]+\"" _probe "${_prev}")
+            string(REGEX MATCH "\"name\"[ \t]*:[ \t]*\"[^\"]+\"" _probe "${_prev}")
             if(_probe AND _prev MATCHES "__POLYORCH_GENERATED_BEGIN__")
                 # the previous region carried rows (a name survived in the file)
                 message(STATUS

@@ -39,7 +39,7 @@ include_guard(GLOBAL)  # 2026-10-10 embed ruling: idempotent same-path re-includ
 # options
 # ---------------------------------------------------------------------------
 
-# PolyOrch_NODE_VSCODE_DEBUG -- emit js-debug launch rows for handles
+# PolyOrch_VSCODE_DEBUG_NODE -- emit js-debug launch rows for handles
 # registered by polyorch_node_debug() (default OFF; examples opt in).
 # Declared AFTER the module's own cmake_minimum_required above and NOT at
 # the file top like the python/rust gates (they carry no cmr): under
@@ -704,7 +704,7 @@ endfunction()
 # at the built entry and VSCode maps breakpoints back through outFiles.
 # Pure configure-time registration -- no process, no PM call.
 #
-# GATE-FIRST (D33 ruling): with PolyOrch_NODE_VSCODE_DEBUG OFF the verb
+# GATE-FIRST (D33 ruling): with PolyOrch_VSCODE_DEBUG_NODE OFF the verb
 # returns before ANY validation -- zero footprint in the strongest sense
 # (no spec, no FATAL, not even for a ghost handle). The registration is a
 # debug-surface side effect, not a build verb; the loud contracts below

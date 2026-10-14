@@ -54,7 +54,7 @@ endforeach()
 
 # ---- FATAL sublegs (run FIRST: the parent's gate-ON legs fill the table) --
 if(POLYORCH_TEST_NODE_VSCODE_BAD)
-    set(PolyOrch_NODE_VSCODE_DEBUG ON)   # branch-local, after the include
+    set(PolyOrch_VSCODE_DEBUG_NODE ON)   # branch-local, after the include
     if(POLYORCH_TEST_NODE_VSCODE_BAD STREQUAL "pipe-name")
         polyorch_node_debug(TARGET "p1" NAME "bad|name")
     elseif(POLYORCH_TEST_NODE_VSCODE_BAD STREQUAL "pipe-args")
@@ -107,7 +107,7 @@ if(_sp0)
 endif()
 
 # ---- verb -> spec -> rows tables (gate raised per-leg, doctrine-safe) -----
-set(PolyOrch_NODE_VSCODE_DEBUG ON)
+set(PolyOrch_VSCODE_DEBUG_NODE ON)
 polyorch_node_debug(TARGET "p1")
 polyorch_node_debug(TARGET "p2")
 polyorch_node_debug(TARGET "p3" ARGS "one" "two" ENVS "NODE_ENV=dev"
@@ -236,7 +236,7 @@ drv_run(_dl _rc SKIP_VAR _skip
     BUILD "${_s}/ws-on"
     PASSTHROUGH "-DPolyOrchNodeExe=${_stub_dir}/node"
         "-DPolyOrchNodeNpm=${_stub_dir}/npm"
-        "-DPolyOrch_NODE_VSCODE_DEBUG=ON"
+        "-DPolyOrch_VSCODE_DEBUG_NODE=ON"
         "-DPolyOrch_VSCODE_DIR=${_s}/vson")
 ck(_rc EQUAL 0)
 file(READ "${_s}/vson/launch.json" _on)
@@ -286,7 +286,7 @@ file(WRITE "${_mh}/dirB/dist/index.js" "console.log(1)\n")
 execute_process(
     COMMAND "${CMAKE_COMMAND}" -S "${_mh}" -B "${_mh}/b"
         "-DPolyOrch_VSCODE_DIR=${_s}/vsorder"
-        "-DPolyOrch_PYTHON_VSCODE_DEBUG=ON" "-DPolyOrch_NODE_VSCODE_DEBUG=ON"
+        "-DPolyOrch_VSCODE_DEBUG_PYTHON=ON" "-DPolyOrch_VSCODE_DEBUG_NODE=ON"
         "-DPolyOrchNodeExe=${_stub_dir}/node" "-DPolyOrchNodeNpm=${_stub_dir}/npm"
         "-DPolyOrchPythonExe=${_stub_dir}/node"
         "-DPOLYORCH_ORDER_MODDIR=${CMAKE_CURRENT_LIST_DIR}/../../cmake"

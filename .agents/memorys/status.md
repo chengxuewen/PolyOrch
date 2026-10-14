@@ -63,6 +63,9 @@
 
 ## Open Items
 
+- [ ] **T-H7 legacy-knob removal gate** (the T-H7.1 removal contract): delete the three compat reads (PolyOrch_{RUST,NODE,PYTHON}_VSCODE_DEBUG -> the PolyOrch_VSCODE_DEBUG_* family) when BOTH hold: (a) zero grep hits for the three old names over both repos' formal surfaces, (b) one minor cycle since landing. One cleanup commit: compat reads + STATUS lines + this line, together.
+
+
 - [x] **O1 RESOLVED** (2026-09-20, D10) -- validation repository is the sibling monorepo hosting this checkout; identity recorded only in the git-excluded plan zone per C6
 - [x] **O6 RESOLVED** (2026-09-22) -- Linux contact happened in force: every e2e/matrix leg (incl. the real musl cross route) ran on this Linux/x86_64 host; the CMake surface itself is host-agnostic, so no platform-specific amendment was needed
 - [x] **O9 RULED** (2026-09-22, D17) -- invariant 2 governs configuration, not artifact bytes; staged copy into standard dirs permitted, uniform path = layout convention, native paths may ride debug metadata; contracts amended same commit; unlocks full-port WP4

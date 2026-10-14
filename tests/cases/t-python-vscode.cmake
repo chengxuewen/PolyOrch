@@ -98,7 +98,7 @@ set(_b "${_s}/py-vsdbg")
 drv_run(_dlog _rc SKIP_VAR _skip
     FIXTURE "${CMAKE_CURRENT_LIST_DIR}/../fixtures/python-run"
     BUILD "${_b}"
-    PASSTHROUGH "-DPolyOrchPythonExe=${_stub}" "-DPolyOrch_PYTHON_VSCODE_DEBUG=ON" "-DPolyOrch_VSCODE_DIR=${_s}/vs3")
+    PASSTHROUGH "-DPolyOrchPythonExe=${_stub}" "-DPolyOrch_VSCODE_DEBUG_PYTHON=ON" "-DPolyOrch_VSCODE_DIR=${_s}/vs3")
 ck(_rc EQUAL 0)
 file(READ "${_s}/vs3/launch.json" _g)
 ck(_g MATCHES "PolyOrch: greet")
@@ -115,7 +115,7 @@ file(REMOVE "${_s}/vs3/launch.json")
 drv_run(_dlog2 _rc2 SKIP_VAR _skip2
     FIXTURE "${CMAKE_CURRENT_LIST_DIR}/../fixtures/python-run"
     BUILD "${_b}"
-    PASSTHROUGH "-DPolyOrchPythonExe=${_stub}" "-DPolyOrch_PYTHON_VSCODE_DEBUG=OFF" "-DPolyOrch_VSCODE_DIR=${_s}/vs3")
+    PASSTHROUGH "-DPolyOrchPythonExe=${_stub}" "-DPolyOrch_VSCODE_DEBUG_PYTHON=OFF" "-DPolyOrch_VSCODE_DIR=${_s}/vs3")
 ck(_rc2 EQUAL 0)
 ck(NOT EXISTS "${_s}/vs3/launch.json")
 message(STATUS "t-python-vscode: OK (rows + combined region + migration + live gate both polarities)")

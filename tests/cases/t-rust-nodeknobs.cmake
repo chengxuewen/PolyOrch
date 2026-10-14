@@ -56,7 +56,7 @@ list(APPEND _pass2 "-DPolyOrch_NODE_TARGET_PREFIX=po-node")
 _polyorch_pixi_scratch(_s2)
 # D33: the gate + a PARKED output dir ride leg2. Appended after the scratch
 # exists -- list(APPEND) expands ${_s2} NOW (the 02df192 catch, kept warm).
-list(APPEND _pass2 "-DPolyOrch_NODE_VSCODE_DEBUG=ON" "-DPolyOrch_VSCODE_DIR=${_s2}/vs")
+list(APPEND _pass2 "-DPolyOrch_VSCODE_DEBUG_NODE=ON" "-DPolyOrch_VSCODE_DIR=${_s2}/vs")
 set(_b2 "${_s2}/knobs-pref")
 drv_run(_dlog2 _rc SKIP_VAR _skip
     FIXTURE "${CMAKE_CURRENT_LIST_DIR}/../fixtures/node-ws"

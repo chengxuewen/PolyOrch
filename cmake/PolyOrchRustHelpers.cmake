@@ -2928,7 +2928,7 @@ endfunction()
 # polyorch_rust_run registers a CodeLLDB launch config + matching build task
 # into <CMAKE_SOURCE_DIR>/.vscode (or PolyOrch_RUST_VSCODE_DIR), merged as a
 # managed region so user content survives reconfigure byte-for-byte. Gated by
-# PolyOrch_RUST_VSCODE_DEBUG (default OFF; examples opt in). Test debugging
+# PolyOrch_VSCODE_DEBUG_RUST (default OFF; examples opt in). Test debugging
 # is deliberately NOT generated (cargo's fingerprint-hashed test binaries are
 # unknowable at configure time -- rust-analyzer's test lens is the ecosystem
 # answer; ruled 2026-09-24).

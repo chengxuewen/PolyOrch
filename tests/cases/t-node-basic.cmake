@@ -28,7 +28,7 @@ set(_entry "${_fx}/src/index.js")
 # ---- ON polarity: gate passed, output parked ------------------------------
 execute_process(
     COMMAND "${CMAKE_COMMAND}" -S "${_fx}" -B "${_s}/on"
-        "-DPolyOrch_NODE_VSCODE_DEBUG=ON"
+        "-DPolyOrch_VSCODE_DEBUG_NODE=ON"
         "-DPolyOrch_VSCODE_DIR=${_s}/vson"
     RESULT_VARIABLE _rc OUTPUT_VARIABLE _out ERROR_VARIABLE _err)
 ck(_rc EQUAL 0)
