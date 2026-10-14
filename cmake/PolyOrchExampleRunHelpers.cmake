@@ -29,6 +29,28 @@
 
 include_guard(GLOBAL)
 
+# _polyorch_gui_probe_script(OUT) -- the display-probe chain the GUI
+# run surfaces share (polyorch_example_run + polyorch_rust_run GUI,
+# T-H9). Evaluated when the button RUNS, never at configure time.
+# The script body passes as ONE pre-expanded string: CMake must not
+# parse the shell's ${DISPLAY:-} forms as its own variable
+# references, so every $ the shell needs is written $$ inside the
+# bracket template and string(REGEX REPLACE) collapses $$ -> $ before
+# the COMMAND list is assembled (cmake -E env hands the body to sh
+# verbatim). The binary rides argv $0, its arguments $@.
+function(_polyorch_gui_probe_script OUT)
+    set(_s [==[
+if [ -z "$${DISPLAY:-}" ] && [ -z "$${WAYLAND_DISPLAY:-}" ] &&
+   [ -z "$${WAYLAND_SOCKET:-}" ] && compgen -G '/tmp/.X11-unix/X*' >/dev/null; then
+    DISPLAY=:0; export DISPLAY
+    echo 'polyorch run surface: no display variables, falling back to DISPLAY=:0 (local X socket probe)' >&2
+fi
+exec "$$0" "$$@"
+==]==])
+    string(REGEX REPLACE "\$\$" "\$" _s "${_s}")
+    set(${OUT} "${_s}" PARENT_SCOPE)
+endfunction()
+
 function(polyorch_example_run)
     set(_one TARGET FOLDER)
     set(_opt GUI)
@@ -48,23 +70,7 @@ function(polyorch_example_run)
     endif()
 
     if(ER_GUI)
-        # Display-probe chain, evaluated when the button runs (exec
-        # time), not at configure time. Binary + args ride argv.
-        # The script body passes as ONE pre-expanded string: CMake must
-        # not parse the shell's ${DISPLAY:-} forms as its own variable
-        # references, so every $ the shell needs is written $$ here and
-        # string(REGEX REPLACE) collapses $$ -> $ before the COMMAND
-        # list is assembled (cmake -E env inherits and hands the body
-        # to sh verbatim).
-        set(_probe_script [==[
-if [ -z "$${DISPLAY:-}" ] && [ -z "$${WAYLAND_DISPLAY:-}" ] &&
-   [ -z "$${WAYLAND_SOCKET:-}" ] && compgen -G '/tmp/.X11-unix/X*' >/dev/null; then
-    DISPLAY=:0; export DISPLAY
-    echo 'polyorch_example_run: no display variables, falling back to DISPLAY=:0 (local X socket probe)' >&2
-fi
-exec "$0" "$@"
-==]==])
-string(REGEX REPLACE "\$\$" "\$" _probe_script "${_probe_script}")
+        _polyorch_gui_probe_script(_probe_script)
         set(_cmd
             ${CMAKE_COMMAND} -E env sh -c "${_probe_script}"
             $<TARGET_FILE:${ER_TARGET}> ${ER_ARGS})

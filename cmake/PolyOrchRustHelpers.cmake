@@ -70,6 +70,7 @@
 
 include_guard(GLOBAL)
 include("${CMAKE_CURRENT_LIST_DIR}/PolyOrchOptionHelpers.cmake")  # polyorch_option (T-H7 declaration sugar; guarded, idempotent)
+include("${CMAKE_CURRENT_LIST_DIR}/PolyOrchExampleRunHelpers.cmake")  # _polyorch_gui_probe_script (T-H9; guarded, idempotent)
 
 #
 # Module organization (2026-09-22 ruling): toolchain discovery, triple
@@ -1910,7 +1911,7 @@ endfunction()
 # wired as a dependency, so building run-<TARGET> builds the binary first.
 function(polyorch_rust_run)
     set(_one TARGET FOLDER)
-    cmake_parse_arguments(PARSE_ARGV 0 R "" "${_one}" "")
+    cmake_parse_arguments(PARSE_ARGV 0 R "GUI" "${_one}" "")
     if(R_UNPARSED_ARGUMENTS)
         message(FATAL_ERROR "polyorch_rust_run: unknown args: ${R_UNPARSED_ARGUMENTS}")
     endif()
@@ -1929,9 +1930,24 @@ function(polyorch_rust_run)
     if(POLYORCH_RUST_CARGO_TARGET AND CMAKE_CROSSCOMPILING_EMULATOR)
         set(_emu ${CMAKE_CROSSCOMPILING_EMULATOR})
     endif()
-    add_custom_target("${R_TARGET}-run"
-        COMMAND ${_emu} $<TARGET_FILE:${R_TARGET}>
-        COMMENT "run $<TARGET_FILE:${R_TARGET}>")
+    # T-H9 GUI: the display-probe chain the manual run buttons had (the
+    # debug preset's dual-state handed the button to run() WITHOUT it --
+    # live catch: the vscode-server tree carries no DISPLAY while this
+    # host's :0 socket exists, and the direct exec died in winit). The
+    # probe rides exec time; the emulator branch keeps its own display
+    # semantics (a forced :0 would be wrong inside the emulator).
+    if(R_GUI AND NOT _emu)
+        _polyorch_gui_probe_script(_probe)
+        add_custom_target("${R_TARGET}-run"
+            COMMAND ${CMAKE_COMMAND} -E env sh -c "${_probe}" $<TARGET_FILE:${R_TARGET}>
+            USES_TERMINAL
+            VERBATIM
+            COMMENT "run ${R_TARGET} (GUI display-probe chain)")
+    else()
+        add_custom_target("${R_TARGET}-run"
+            COMMAND ${_emu} $<TARGET_FILE:${R_TARGET}>
+            COMMENT "run $<TARGET_FILE:${R_TARGET}>")
+    endif()
     # IDE parity with the build mediator: the run node carries the same
     # display files (the future debug workflow opens sources right where it
     # launches). Stamps ride the handle (MANIFEST/PACKAGE) and the mediator
