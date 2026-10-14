@@ -4,6 +4,7 @@
 #
 # Family (namespace order: FEATURE_FACE, ALL boolean):
 #   PolyOrch_VSCODE_DEBUG_ALL      composite, BOOL cache, default OFF
+#                                  (declared in PolyOrchVSCodeDebugHelpers.cmake)
 #   PolyOrch_VSCODE_DEBUG_<FACE>   per-face, option cache, default OFF
 #
 # Semantics (pure OR):

@@ -27,6 +27,10 @@
 # ===========================================================================
 
 include_guard(GLOBAL)  # 2026-10-10 embed ruling: idempotent same-path re-include
+# the family's composite switch: declared here because it belongs to NO
+# single face (the three face knobs hang their OR_CONDITION off it).
+polyorch_option(PolyOrch_VSCODE_DEBUG_ALL
+    "Composite switch: ON forces every face's VSCode debug surface (the face knobs are ignored while ON)" OFF)
 include("${CMAKE_CURRENT_LIST_DIR}/_polyorch_vscode_debug_gate.cmake")  # the read-time knob gate (T-H7)
 
 set(PolyOrch_VSCODE_DIR "" CACHE PATH
