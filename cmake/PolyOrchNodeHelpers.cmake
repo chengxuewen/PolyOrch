@@ -47,8 +47,9 @@ include_guard(GLOBAL)  # 2026-10-10 embed ruling: idempotent same-path re-includ
 # before any cmr the policy context is OLD and option() WIPES the pre-set
 # variable -- the standalone opt-in would silently no-op, invisible on
 # node-less hosts (measured, D33).
-option(PolyOrch_NODE_VSCODE_DEBUG
+option(PolyOrch_VSCODE_DEBUG_NODE
     "Generate VSCode js-debug launch configs for polyorch_node_debug handles" OFF)
+# legacy knob (T-H7 rename): honored one cycle via _polyorch_vscode_debug_gate
 
 # PolyOrch_NODE_SOURCES_PLAIN -- serve the IDE source mount as plain
 # sources instead of HEADER_FILE_ONLY (escape hatch for IDE versions that
@@ -709,7 +710,8 @@ endfunction()
 # debug-surface side effect, not a build verb; the loud contracts below
 # hold inside the gate-ON domain.
 function(polyorch_node_debug)
-    if(NOT PolyOrch_NODE_VSCODE_DEBUG)
+    _polyorch_vscode_debug_gate(NODE _ndv_on)
+    if(NOT _ndv_on)
         return()
     endif()
     set(_one TARGET NAME OUTFILES)
@@ -887,7 +889,8 @@ endfunction()
 # ===========================================================================
 include("${CMAKE_CURRENT_LIST_DIR}/PolyOrchVSCodeDebugHelpers.cmake")
 get_property(_polyorch_ndv_hooked GLOBAL PROPERTY POLYORCH_VSCODE_HOOKED)
-if(PolyOrch_NODE_VSCODE_DEBUG AND NOT _polyorch_ndv_hooked)
+_polyorch_vscode_debug_gate(NODE _ndv_defer_on)
+if(_ndv_defer_on AND NOT _polyorch_ndv_hooked)
     set_property(GLOBAL PROPERTY POLYORCH_VSCODE_HOOKED TRUE)
     # DEFER TO THE TOP-LEVEL DIRECTORY'S END, not the including
     # directory's: faces opted in by LATER sibling subdirs must have

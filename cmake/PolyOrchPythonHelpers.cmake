@@ -21,8 +21,9 @@
 
 include_guard(GLOBAL)  # 2026-10-10 embed ruling: idempotent same-path re-include
 
-option(PolyOrch_PYTHON_VSCODE_DEBUG
+option(PolyOrch_VSCODE_DEBUG_PYTHON
     "Generate .vscode debugpy launch configs for polyorch_python_run targets" OFF)
+# legacy knob (T-H7 rename): honored one cycle via _polyorch_vscode_debug_gate
 option(PolyOrch_PYTHON_SOURCES_PLAIN
     "Serve mounted python sources as plain entries (IDE header-fold escape)" OFF)
 
@@ -261,7 +262,8 @@ function(polyorch_python_run)
     endif()
 
     # T3: debug-spec registration (gate OFF -> zero footprint).
-    if(PolyOrch_PYTHON_VSCODE_DEBUG)
+    _polyorch_vscode_debug_gate(PYTHON _pyv_on)
+    if(_pyv_on)
         string(REPLACE ";" "," _argsj "${R_ARGS}")
         string(REPLACE ";" "," _envsj "${R_ENVS}")
         if(R_NAME)
@@ -355,7 +357,8 @@ endfunction()
 # ===========================================================================
 include("${CMAKE_CURRENT_LIST_DIR}/PolyOrchVSCodeDebugHelpers.cmake")
 get_property(_polyorch_pyv_hooked GLOBAL PROPERTY POLYORCH_VSCODE_HOOKED)
-if(PolyOrch_PYTHON_VSCODE_DEBUG AND NOT _polyorch_pyv_hooked)
+_polyorch_vscode_debug_gate(PYTHON _pyv_defer_on)
+if(_pyv_defer_on AND NOT _polyorch_pyv_hooked)
     set_property(GLOBAL PROPERTY POLYORCH_VSCODE_HOOKED TRUE)
     # DEFER TO THE TOP-LEVEL DIRECTORY'S END, not the including
     # directory's: faces opted in by LATER sibling subdirs must have

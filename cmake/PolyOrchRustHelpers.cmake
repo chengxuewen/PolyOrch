@@ -1943,7 +1943,8 @@ function(polyorch_rust_run)
     if(TARGET "${R_TARGET}-build")
         add_dependencies("${R_TARGET}-run" "${R_TARGET}-build")
     endif()
-    if(PolyOrch_RUST_VSCODE_DEBUG)
+    _polyorch_vscode_debug_gate(RUST _dbg_on)
+    if(_dbg_on)
         _polyorch_rust_debug_register("${R_TARGET}")
     endif()
     set(_fold "${R_FOLDER}")
@@ -2939,8 +2940,9 @@ endfunction()
 # document lands beside it as <file>.polyorch-new for manual adoption.
 # ===========================================================================
 
-option(PolyOrch_RUST_VSCODE_DEBUG
+option(PolyOrch_VSCODE_DEBUG_RUST
     "Generate .vscode launch/tasks configs for polyorch_rust_run targets" OFF)
+# legacy knob (T-H7 rename): honored one cycle via _polyorch_vscode_debug_gate
 set(PolyOrch_RUST_VSCODE_DIR "" CACHE PATH
     "Directory for the generated .vscode files (empty = <CMAKE_SOURCE_DIR>/.vscode)")
 
@@ -3040,7 +3042,8 @@ include("${CMAKE_CURRENT_LIST_DIR}/PolyOrchVSCodeDebugHelpers.cmake")
 # round, so re-registration across configures stays correct; multiple
 # includes across directories collapse via the shared flag).
 get_property(_polyorch_dbg_hooked GLOBAL PROPERTY POLYORCH_VSCODE_HOOKED)
-if(PolyOrch_RUST_VSCODE_DEBUG AND NOT _polyorch_dbg_hooked)
+_polyorch_vscode_debug_gate(RUST _dbg_defer_on)
+if(_dbg_defer_on AND NOT _polyorch_dbg_hooked)
     set_property(GLOBAL PROPERTY POLYORCH_VSCODE_HOOKED TRUE)
     # DEFER TO THE TOP-LEVEL DIRECTORY'S END, not the including
     # directory's: faces opted in by LATER sibling subdirs must have

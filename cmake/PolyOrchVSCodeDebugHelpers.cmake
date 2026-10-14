@@ -27,6 +27,7 @@
 # ===========================================================================
 
 include_guard(GLOBAL)  # 2026-10-10 embed ruling: idempotent same-path re-include
+include("${CMAKE_CURRENT_LIST_DIR}/_polyorch_vscode_debug_gate.cmake")  # the read-time knob gate (T-H7)
 
 set(PolyOrch_VSCODE_DIR "" CACHE PATH
     "Directory for generated .vscode debug files (empty = <CMAKE_SOURCE_DIR>/.vscode)")
@@ -121,6 +122,23 @@ function(_polyorch_vscode_debug_generate)
         endif()
     endif()
     set(_st "")
+    # empty-over-nonempty is the preset-switch signature (the debug preset
+    # inherits default's binaryDir): dropping 29 rows silently is how F5
+    # breaks invisibly -- say it once, loudly (T-H7.4 4b, Momus).
+    if(NOT _launch AND EXISTS "${_f}")
+        file(READ "${_f}" _prev)
+        string(REGEX MATCHALL "__POLYORCH_GENERATED_BEGIN__" _prev_blocks "${_prev}")
+        if(_prev_blocks)
+            string(REGEX MATCH ""name"[ \t]*:[ \t]*\"[^\"]+\"" _probe "${_prev}")
+            if(_probe AND _prev MATCHES "__POLYORCH_GENERATED_BEGIN__")
+                # the previous region carried rows (a name survived in the file)
+                message(STATUS
+                    "PolyOrch VSCode debug: this configure registered ZERO launch rows "
+                    "-- writing an empty launch region (the debug gate is OFF; preset "
+                    "switched? reconfigure with the debug knob family to restore F5)")
+            endif()
+        endif()
+    endif()
     _polyorch_vscode_region_write("${_f}" "${_begin}" "${_end}" "${_launch}"
         "{\n    \"version\": \"0.2.0\",\n    \"configurations\": [\n%ROWS%\n    ]\n}"
         _st)
