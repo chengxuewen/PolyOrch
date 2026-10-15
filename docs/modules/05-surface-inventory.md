@@ -85,7 +85,7 @@ Covered by: `t-rust-node`, `t-rust-noderun`, `t-rust-nodebadargs`, `t-rust-nodek
 Covered by: `t-python-run`, `t-python-setup-missing`, `t-python-knobs`,
 `t-python-vscode`, `t-python-vsdbg` (+ the gated `t-python-dap`), `t-python-sources`, `t-rust-fusion`.
 
-### `PolyOrchExampleRunHelpers.cmake` -- native-lane run button (v0.2.1)
+### `PolyOrchExampleRunHelpers.cmake` -- native-lane run button (v0.2.2)
 
 | Function | Signature (source comment) |
 |---|---|
@@ -93,7 +93,12 @@ Covered by: `t-python-run`, `t-python-setup-missing`, `t-python-knobs`,
 
 Covered by: `t-example-run`. WORKING_DIRECTORY rides the native
 `add_custom_target` kwarg (house idiom of the run faces); the button
-carries deliberately NO `add_dependencies` (per-site build edges).
+carries deliberately NO `add_dependencies` (per-site build edges). The
+GUI probe is written INLINE in the COMMAND (a `set(_cmd ...
+"${probe}")` + `COMMAND ${_cmd}` two-step split the ';'-joined probe at
+every ';' and shipped a rc=2 syntax-error button -- found by the first
+host consumer's live run; the marker legs cannot see it, so
+`t-example-run` pin 7 EXECUTES both GUI buttons).
 
 ### `PolyOrchPixiHelpers.cmake` -- pixi environments
 
