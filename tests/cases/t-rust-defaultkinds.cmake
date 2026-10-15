@@ -49,6 +49,14 @@ ck_dk_fail(dk-optout "pick exactly one of BINARY, STATIC, SHARED"
 ck_dk_fail(dk-badkind "PolyOrch_RUST_DEFAULT_KINDS.*'weird'.*bin[|]static[|]shared"
     "set(PolyOrch_RUST_DEFAULT_KINDS \"static;weird\" CACHE INTERNAL \"\")\n${_call}")
 
+# (2b) R3: LIB is opt-in ONLY -- the default-kinds surface deliberately
+#      does NOT accept it (child A's knob-unset pair + NOBARE already prove
+#      no INTERFACE member ever appears). The accepted-set message keeps its
+#      bin|static|shared spelling: the knob is the static-shape dispatch,
+#      not the full kind grammar.
+ck_dk_fail(dk-lib "PolyOrch_RUST_DEFAULT_KINDS entry 'LIB' is not one of bin[|]static[|]shared"
+    "set(PolyOrch_RUST_DEFAULT_KINDS \"LIB\" CACHE INTERNAL \"\")\n${_call}")
+
 # ---------------------------------------------------------- child harness ----
 file(WRITE "${_s}/_dkinds.in" [==[
 cmake_minimum_required(VERSION 3.25)

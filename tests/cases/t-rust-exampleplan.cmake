@@ -77,7 +77,7 @@ macro(expect_fatal child phrase)
 endmacro()
 expect_fatal("${_s}/nocrate.cmake" "KIND bin/example needs CRATE")
 expect_fatal("${_s}/excl.cmake"
-    "BINARY, STATIC, SHARED and EXAMPLE are mutually exclusive")
+    "BINARY, STATIC, SHARED, EXAMPLE and LIB are mutually exclusive")
 
 # ----------------------------------------------------- metadata target rows --
 # The document is plain JSON text -- composed literally, no JSON API needed

@@ -73,7 +73,10 @@ done
 if command -v ninja >/dev/null 2>&1; then
     cells=$((cells+1))
     b="$root/b-mc"
-    excl='^polyorch::t-rust-(rule-wiring|import-ws|link-c|install-e2e|install-export|multitarget|cxxbridge-e2e|nostd|node|noderun|nodebadargs|nodeknobs|nodesetup-missing)$'
+    excl='^polyorch::t-rust-(rule-wiring|import-ws|link-c|install-e2e|install-export|multitarget|cxxbridge-e2e|nostd|node|noderun|nodebadargs|nodeknobs|nodesetup-missing|lib)$'
+    # R3 t-rust-lib joins the list: the fixture writes its artifact contract
+    # as a configure-time literal path (the single-config shape of every
+    # driver-gated rust fixture above).
     # the node family (D29) rides the same single-config fixture-driver
     # contract as install-export: the dist/ products are SOURCE-tree
     # artifacts with no per-config shape, so the MC cell excludes them;

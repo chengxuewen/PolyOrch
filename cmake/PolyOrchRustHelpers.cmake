@@ -13,6 +13,9 @@
 # backed by the <TARGET>-build mediator custom target; an auto-build
 # edge (add_dependencies on the IMPORTED target, propagated to its linkers)
 # makes every consumer order the mediator before linking.
+# The R3 LIB kind is the exception to that shape: an rlib is not linkable by
+# any system linker, so its handle is an INTERFACE IMPORTED target carrying
+# the artifact path in POLYORCH_RUST_LIB (ordering + path, never a link input).
 # The legacy <TARGET>-cargo name survives as a compatibility shim target.
 # Build inputs (profile, features, flags, env) live in POLYORCH_RUST_*
 # properties of the mediator and expand in the rule at generate time; the
@@ -87,7 +90,7 @@ include("${CMAKE_CURRENT_LIST_DIR}/PolyOrchFindRust.cmake")
 # ------------------------------------------------------------------- build ---
 
 # Internal: argv builder for `cargo build` (pure, no side effects).
-# _polyorch_rust_cargo_args(PACKAGE <p> [KIND <bin|static|shared>] [CRATE <c>]
+# _polyorch_rust_cargo_args(PACKAGE <p> [KIND <bin|static|shared|example|lib>] [CRATE <c>]
 #                           [PROFILE <debug|release|custom>] [FEATURES a;b]
 #                           [LOCKED] [FROZEN] [MANIFEST <path>] ARGO_OUT <var>)
 # ARGO_OUT (keyword spelling frozen with the contract) receives:
@@ -109,9 +112,9 @@ function(_polyorch_rust_cargo_args)
         message(FATAL_ERROR
             "_polyorch_rust_cargo_args: LOCKED and FROZEN are mutually exclusive")
     endif()
-    if(C_KIND AND NOT C_KIND MATCHES "^(bin|static|shared|example)$")
+    if(C_KIND AND NOT C_KIND MATCHES "^(bin|static|shared|example|lib)$")
         message(FATAL_ERROR
-            "polyorch_rust: KIND must be bin|static|shared|example, got '${C_KIND}'")
+            "polyorch_rust: KIND must be bin|static|shared|example|lib, got '${C_KIND}'")
     endif()
     if(C_KIND MATCHES "^(bin|example)$" AND NOT C_CRATE)
         message(FATAL_ERROR
@@ -135,6 +138,12 @@ function(_polyorch_rust_cargo_args)
         list(APPEND _argv --bin "${C_CRATE}")
     elseif(C_KIND STREQUAL "example")
         list(APPEND _argv --example "${C_CRATE}")
+    elseif(C_KIND STREQUAL "lib")
+        # R3: --lib restricts the build to the package's LIB target even when
+        # the crate also carries bins -- the whole point of the kind (proved
+        # in t-rust-lib: the fixture's bin stays unbuilt). cargo spells the flag
+        # --lib, a bare selector (the lib target is picked by the package).
+        list(APPEND _argv --lib)
     endif()
     if(C_LOCKED)
         list(APPEND _argv --locked)
@@ -220,7 +229,7 @@ function(_polyorch_rust_apply_target_prefix out name)
 endfunction()
 
 function(polyorch_rust_build)
-    set(_opts BINARY STATIC SHARED EXAMPLE LOCKED FROZEN NO_SOURCES)
+    set(_opts BINARY STATIC SHARED EXAMPLE LIB LOCKED FROZEN NO_SOURCES)
     set(_one TARGET PACKAGE CRATE PROFILE MANIFEST BASE_DIR FOLDER PREBUILD)
     set(_multi FEATURES DEPENDS)
     cmake_parse_arguments(PARSE_ARGV 0 B "${_opts}" "${_one}" "${_multi}")
@@ -239,11 +248,11 @@ function(polyorch_rust_build)
         _polyorch_rust_must(B_TARGET B_PACKAGE B_CRATE B_MANIFEST)
     endif()
     set(_kind "")
-    foreach(_k BINARY STATIC SHARED EXAMPLE)
+    foreach(_k BINARY STATIC SHARED EXAMPLE LIB)
         if(B_${_k})
             if(_kind)
                 message(FATAL_ERROR
-                    "polyorch_rust_build: BINARY, STATIC, SHARED and EXAMPLE are mutually exclusive")
+                    "polyorch_rust_build: BINARY, STATIC, SHARED, EXAMPLE and LIB are mutually exclusive")
             endif()
             set(_kind "")
             if(_k STREQUAL "BINARY")
@@ -270,7 +279,7 @@ function(polyorch_rust_build)
         if(DEFINED PolyOrch_RUST_DEFAULT_KINDS AND
            PolyOrch_RUST_DEFAULT_KINDS STREQUAL "")
             message(FATAL_ERROR
-                "polyorch_rust_build: pick exactly one of BINARY, STATIC, SHARED, EXAMPLE")
+                "polyorch_rust_build: pick exactly one of BINARY, STATIC, SHARED, EXAMPLE, LIB")
         endif()
         set(_dk "${PolyOrch_RUST_DEFAULT_KINDS}")
         if(NOT _dk)
@@ -698,36 +707,59 @@ function(polyorch_rust_build)
 
     if(_kind STREQUAL "bin" OR _kind STREQUAL "example")
         add_executable("${B_TARGET}" IMPORTED GLOBAL)
+    elseif(_kind STREQUAL "lib")
+        # R3 handle stance (ledgered at decisions.md D42): an rlib is NOT
+        # linkable by any system linker -- the handle's job is ORDERING (the
+        # auto-build edge below propagates to every linker of every consumer)
+        # and PATH (the POLYORCH_RUST_LIB property, read for fingerprinting
+        # or by cargo-side consumers). An UNKNOWN IMPORTED would invite a
+        # real linker to choke on .rlib bytes; an INTERFACE library links to
+        # nothing, so a mistaken link never corrupts a link line. The path
+        # is NOT carried in IMPORTED_LOCATION (invalid on INTERFACE): it
+        # rides the custom property, genex-intact under multi-config.
+        add_library("${B_TARGET}" INTERFACE IMPORTED GLOBAL)
     else()
         add_library("${B_TARGET}" UNKNOWN IMPORTED GLOBAL)
     endif()
     # Eager locations: the in-place cargo paths. The deferred finalize
     # registered at the end of this function REWRITES them from the late
     # property read -- but polyorch_rust_install() reads these at
-    # configure time, so eager values must exist.
-    set_target_properties("${B_TARGET}" PROPERTIES IMPORTED_LOCATION "${_artifact}")
-    if(_implib)
-        set_target_properties("${B_TARGET}" PROPERTIES IMPORTED_IMPLIB "${_implib_path}")
+    # configure time, so eager values must exist. The LIB kind opts out of
+    # the whole location cluster (IMPORTED_LOCATION(_<CFG>) / IMPLIB are not
+    # INTERFACE properties) -- its artifact path rides POLYORCH_RUST_LIB on
+    # the handle AND the mediator, so both name spaces can read it.
+    if(_kind STREQUAL "lib")
+        set_target_properties("${B_TARGET}" PROPERTIES POLYORCH_RUST_LIB "${_artifact}")
+        set_target_properties("${_med}" PROPERTIES POLYORCH_RUST_LIB "${_artifact}")
+    else()
+        set_target_properties("${B_TARGET}" PROPERTIES IMPORTED_LOCATION "${_artifact}")
+        if(_implib)
+            set_target_properties("${B_TARGET}" PROPERTIES IMPORTED_IMPLIB "${_implib_path}")
+        endif()
     endif()
     # Cachevar leg (port of corr:2313-2321 _corrosion_initialize_properties):
     # an IMPORTED target never consults CMAKE_*_OUTPUT_DIRECTORY on its own
     # (measured 4.4.3) and the finalize reads PROPERTIES, so mirror the
     # variables (and per-config ones) onto the handle at creation.
     # PDB_OUTPUT_DIRECTORY is not ported: the v0 rust face emits no pdb.
-    foreach(_ov RUNTIME ARCHIVE LIBRARY)
-        if(DEFINED CMAKE_${_ov}_OUTPUT_DIRECTORY)
-            set_property(TARGET "${B_TARGET}" PROPERTY
-                "${_ov}_OUTPUT_DIRECTORY" "${CMAKE_${_ov}_OUTPUT_DIRECTORY}")
-        endif()
-        foreach(_cfg ${CMAKE_CONFIGURATION_TYPES})
-            string(TOUPPER "${_cfg}" _cfgu)
-            if(DEFINED CMAKE_${_ov}_OUTPUT_DIRECTORY_${_cfgu})
+    # LIB skips the whole mirror: those are not INTERFACE-imported properties
+    # and the finalize that would read them never runs for the kind.
+    if(NOT _kind STREQUAL "lib")
+        foreach(_ov RUNTIME ARCHIVE LIBRARY)
+            if(DEFINED CMAKE_${_ov}_OUTPUT_DIRECTORY)
                 set_property(TARGET "${B_TARGET}" PROPERTY
-                    "${_ov}_OUTPUT_DIRECTORY_${_cfgu}"
-                    "${CMAKE_${_ov}_OUTPUT_DIRECTORY_${_cfgu}}")
+                    "${_ov}_OUTPUT_DIRECTORY" "${CMAKE_${_ov}_OUTPUT_DIRECTORY}")
             endif()
+            foreach(_cfg ${CMAKE_CONFIGURATION_TYPES})
+                string(TOUPPER "${_cfg}" _cfgu)
+                if(DEFINED CMAKE_${_ov}_OUTPUT_DIRECTORY_${_cfgu})
+                    set_property(TARGET "${B_TARGET}" PROPERTY
+                        "${_ov}_OUTPUT_DIRECTORY_${_cfgu}"
+                        "${CMAKE_${_ov}_OUTPUT_DIRECTORY_${_cfgu}}")
+                endif()
+            endforeach()
         endforeach()
-    endforeach()
+    endif()
     # Registry marker on the consumer-facing handle (mirrors what
     # polyorch_rust_import already set there), so polyorch_rust_install
     # validates handles from both registration paths the same way.
@@ -816,9 +848,14 @@ function(polyorch_rust_build)
     # WP4 deferred finalize: late-read the output-directory properties and
     # re-shape the IMPORTED locations (per-CFG on multi-config), staging a
     # POST_BUILD copy into any expressed output dir. Reference shape
-    # corr:251-262; see _polyorch_rust_finalize.
-    _polyorch_rust_finalize("${B_TARGET}" "${POLYORCH_RUST_HOST_TARGET}"
-        "${_xtup}" "${_kind}" "${B_CRATE}" "${_td}" "${_pdir}" "${_mc}")
+    # corr:251-262; see _polyorch_rust_finalize. The LIB kind never registers:
+    # an rlib ships nowhere (no staging, no per-CFG locations) and the
+    # INTERFACE handle carries no location property to rewrite -- the
+    # POLYORCH_RUST_LIB path literal (genex under MC) is the full surface.
+    if(NOT _kind STREQUAL "lib")
+        _polyorch_rust_finalize("${B_TARGET}" "${POLYORCH_RUST_HOST_TARGET}"
+            "${_xtup}" "${_kind}" "${B_CRATE}" "${_td}" "${_pdir}" "${_mc}")
+    endif()
 endfunction()
 
 # ---------------------------------------------------------------------------
@@ -1934,6 +1971,18 @@ function(polyorch_rust_run)
             "polyorch_rust_run: no such target '${R_TARGET}' "
             "(register it with polyorch_rust_build first)")
     endif()
+    # R3: a LIB handle is an rlib -- there is nothing to execute. The
+    # $<TARGET_FILE> the run rule carries would expand empty on an INTERFACE
+    # target and die at generate time with a far worse message; fail here.
+    if(TARGET "${R_TARGET}-build")
+        get_target_property(_rkind "${R_TARGET}-build" POLYORCH_RUST_KIND)
+        if(_rkind STREQUAL "lib")
+            message(FATAL_ERROR
+                "polyorch_rust_run: '${R_TARGET}' is an rlib (LIB) handle -- "
+                "libraries do not run; consumers order the '${R_TARGET}-build' "
+                "mediator and read its POLYORCH_RUST_LIB property")
+        endif()
+    endif()
     # WP5b: a cross-routed binary cannot execute natively; prefix the
     # emulator (CMake's own CROSSCOMPILING_EMULATOR convention, the run()
     # counterpart of the CARGO_TARGET_<TUP>_RUNNER the build rule carries).
@@ -2247,6 +2296,15 @@ function(polyorch_rust_install)
             message(FATAL_ERROR
                 "polyorch_rust_install: target '${_h}' is not a PolyOrch rust "
                 "import (no POLYORCH_RUST_PACKAGE property)")
+        endif()
+        # R3: rlibs ship nowhere -- fail loudly rather than let the planner
+        # emit a nonsense ARCHIVE row for a non-linkable artifact.
+        get_target_property(_ikind "${_med}" POLYORCH_RUST_KIND)
+        if(_ikind STREQUAL "lib")
+            message(FATAL_ERROR
+                "polyorch_rust_install: '${_h}' is an rlib (LIB) handle -- "
+                "nothing ships; consumers order the mediator and read "
+                "POLYORCH_RUST_LIB")
         endif()
     endforeach()
     if(NOT POLYORCH_RUST_HOST_TARGET)

@@ -150,7 +150,7 @@ function(_polyorch_rust_triple_env_form TRIPLE OUT)
     set(${OUT} "${_u}" PARENT_SCOPE)
 endfunction()
 
-# _polyorch_rust_artifact_names(TRIPLE <t> KIND <bin|static|shared> CRATE <name>
+# _polyorch_rust_artifact_names(TRIPLE <t> KIND <bin|static|shared|example|lib> CRATE <name>
 #                               FILE_OUT <var> [DIR_OUT <var>] [IMPLIB_OUT <var>]
 #                               [PROFILE <debug|release|custom>]
 #                               [BASE_DIR <path>] [OUT_BASE_DIR <var>]
@@ -177,9 +177,9 @@ function(_polyorch_rust_artifact_names)
             "_polyorch_rust_artifact_names unknown args: ${A_UNPARSED_ARGUMENTS}")
     endif()
     _polyorch_rust_must(A_TRIPLE A_KIND A_CRATE A_FILE_OUT)
-    if(NOT A_KIND MATCHES "^(bin|static|shared|example)$")
+    if(NOT A_KIND MATCHES "^(bin|static|shared|example|lib)$")
         message(FATAL_ERROR
-            "polyorch_rust: KIND must be bin|static|shared|example, got '${A_KIND}'")
+            "polyorch_rust: KIND must be bin|static|shared|example|lib, got '${A_KIND}'")
     endif()
     _polyorch_rust_triple_family("${A_TRIPLE}" _family)
 
@@ -204,6 +204,18 @@ function(_polyorch_rust_artifact_names)
         else()
             set(_file "${_lib}.a")
         endif()
+    elseif(A_KIND STREQUAL "lib")
+        # R3 LIB kind (rlib): naming is platform-INVARIANT. An rlib is rustc's
+        # own metadata-container format, not a COFF/PE or ELF artifact, so the
+        # msvc no-`lib`-prefix rule (the _lib variable above) does not apply:
+        # the MSVC sysroot itself ships libstd-<hash>.rlib / libcore-<hash>.rlib
+        # (source: rustc compiler/rustc_session/src/output.rs filename_for_input
+        # at tag 1.98.1, commit 48a229ceaefd4985c50990b14116b6d856af0985, lines
+        # 95-105 -- the Rlib arm hardcodes lib<name>.rlib and never consults
+        # the target spec; unlike the static/cdylib arms, no is_like_msvc
+        # branch exists on the rlib path). CRATE carries the lib TARGET name
+        # (cargo normalizes dashes to underscores there).
+        set(_file "lib${A_CRATE}.rlib")
     else() # shared
         if(_family STREQUAL "msvc")
             set(_file "${A_CRATE}.dll")

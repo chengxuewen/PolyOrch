@@ -1,0 +1,18 @@
+[package]
+name = "lib-demo"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+name = "demo_core"
+path = "src/lib.rs"
+
+[[bin]]
+name = "never_built"
+path = "src/bin/never_built.rs"
+
+[dependencies]
+
+# Standalone workspace root: without it cargo walks up and can pick an
+# enclosing workspace that does not list this package.
+[workspace]
