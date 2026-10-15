@@ -548,3 +548,10 @@
   Anchor against the source root or use unique filenames. Same-shape latent spot noted
   for the node face (`ck(NOT _demo MATCHES "node_modules")` -- harmless unless an ancestor
   is itself named node_modules; leave until it bites).
+
+## PIT-65: COMMAND built via set()+re-expansion splits ';' scripts -- inline quoting at the call boundary is load-bearing (2026-10-15, found by the feature's first consumer)
+- **Symptom**: polyorch_example_run's GUI button died with sh `Syntax error: end of file unexpected (expecting "then")` (rc=2); the probe script reached `sh -c` split into six argv fragments at every semicolon.
+- **Root cause**: `set(_cmd ... "${_probe_script}" ...)` -- quotes do not survive list storage; `COMMAND ${_cmd}` re-expansion splits at ';' again. The working contrast (rust face, RustHelpers:1953) writes the COMMAND inline where `"${probe}"` stays one argument.
+- **Solution**: inline the COMMAND at the call site (R1c fix aec-class); keep the probe string out of any set()-then-reexpand path.
+- **Verification**: the t-example-run live leg EXECUTES the built button under cleared display vars and pins rc!=2 -- it goes RED on the two-step shape (negative proof in the fix commit). Text-marker greps are proven-blind here: every fragment keeps its markers (C0 again).
+- **Forbidden**: `set(cmd ...)` + `COMMAND ${cmd}` for any value containing ';'; accepting argv-shape marker tests as command-execution proof. (Related filed hazard: FindRust:1377/1379 quoted-PATH-into-_cmd, Windows-separator theory only -- unfixed, watch item.)
