@@ -77,7 +77,7 @@ polyorch_rust_build(
 # (a static lib that compiles the generated .cpp) and expose the REGEN
 # target for the docs' touch-rerun story.
 if(PolyOrch_RUST_TARGET_PREFIX)
-    set(_regen "${PolyOrch_RUST_TARGET_PREFIX}-rust-bindings-cxx-regen")
+    set(_regen "${PolyOrch_RUST_TARGET_PREFIX}-cxx-regen")
 else()
     set(_regen "rust-bindings-cxx-regen")
 endif()
@@ -89,7 +89,7 @@ polyorch_rust_cxxbridge(TARGET spine-static
 # rust staticlib, includes the generated bridge header, and implements the
 # C++-side bridge function (host_scale).
 if(PolyOrch_RUST_TARGET_PREFIX)
-    set(_app "${PolyOrch_RUST_TARGET_PREFIX}-rust-bindings-app")
+    set(_app "${PolyOrch_RUST_TARGET_PREFIX}-app")
 else()
     set(_app "rust-bindings-app")
 endif()
@@ -144,7 +144,7 @@ polyorch_rust_install(TARGETS spine-static spine-run-bin
     PUBLIC_HEADER "$<TARGET_PROPERTY:${_h},INTERFACE_INCLUDE_DIRECTORIES>/spine.h"
     ARCHIVE_DESTINATION lib/spine)
 if(PolyOrch_RUST_TARGET_PREFIX)
-    polyorch_rust_clean(NAME "${PolyOrch_RUST_TARGET_PREFIX}-rust-bindings-clean")
+    polyorch_rust_clean(NAME "${PolyOrch_RUST_TARGET_PREFIX}-clean")
 else()
     polyorch_rust_clean(NAME rust-bindings-clean)
 endif()
@@ -162,7 +162,7 @@ file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/polyorch-fixture-artifacts.txt" "${_af}\
 # links the installed static lib -- the installed-binding story.
 set(_stage "${CMAKE_CURRENT_BINARY_DIR}/stage")
 if(PolyOrch_RUST_TARGET_PREFIX)
-    set(_consumer "${PolyOrch_RUST_TARGET_PREFIX}-rust-bindings-consumer")
+    set(_consumer "${PolyOrch_RUST_TARGET_PREFIX}-consumer")
 else()
     set(_consumer "rust-bindings-consumer")
 endif()
