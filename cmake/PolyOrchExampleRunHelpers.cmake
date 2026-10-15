@@ -1,13 +1,28 @@
 # PolyOrchExampleRunHelpers.cmake -- the native-example run surface.
 #
 # polyorch_example_run(TARGET <existing-executable-target>
-#                      [ARGS "a;b"] [GUI] [FOLDER <ide>])
+#                      [ARGS "a;b"] [GUI] [FOLDER <ide>]
+#                      [WORKING_DIRECTORY <dir>])
 #
 # Emits `<TARGET>-run`: one button that executes an ALREADY-REGISTERED
 # native (non-cargo) executable target -- the counterpart of
 # polyorch_rust_run on the rust face, for the plain add_executable lanes.
 # The GUI flavor wraps the exec in the display-probe chain (see below);
 # the non-GUI flavor is a bare exec.
+#
+# WORKING_DIRECTORY runs the button in <dir> through the native
+# add_custom_target kwarg -- the house idiom of every run face here
+# (python :241, node, rust buttons all carry it; the lone -E chdir wrap
+# on the rust wasm-serve target exists for its own documented reason:
+# that target CREATES the dir as its first command, which WORKING-
+# DIRECTORY cannot know). The generator emits "cd <dir> && ..." for
+# both Makefiles and Ninja, chdir outermost ahead of the GUI env wrap.
+# Unset = the generator's build-directory default, command byte-unchanged.
+#
+# Deliberate NON-CHOICE: the button carries NO add_dependencies --
+# whether running implies building is per-site (the host re-adds its
+# own edges at its call sites); do not "helpfully" wire a build edge
+# in here.
 #
 # GUI fallback chain (the VSCode-SSH-remote case is the norm, not the
 # exception):
@@ -54,7 +69,7 @@ function(_polyorch_gui_probe_script OUT)
 endfunction()
 
 function(polyorch_example_run)
-    set(_one TARGET FOLDER)
+    set(_one TARGET FOLDER WORKING_DIRECTORY)
     set(_opt GUI)
     set(_multi ARGS)
     cmake_parse_arguments(PARSE_ARGV 0 ER "${_opt}" "${_one}" "${_multi}")
@@ -71,6 +86,13 @@ function(polyorch_example_run)
             "(register the executable first)")
     endif()
 
+    # guard the kwarg through: unset must leave both add_custom_target
+    # calls byte-identical to the pre-WORKING_DIRECTORY shape (leg C).
+    set(_wdir "")
+    if(ER_WORKING_DIRECTORY)
+        set(_wdir WORKING_DIRECTORY "${ER_WORKING_DIRECTORY}")
+    endif()
+
     if(ER_GUI)
         _polyorch_gui_probe_script(_probe_script)
         set(_cmd
@@ -78,12 +100,15 @@ function(polyorch_example_run)
             $<TARGET_FILE:${ER_TARGET}> ${ER_ARGS})
         add_custom_target("${ER_TARGET}-run"
             COMMAND ${_cmd}
+            ${_wdir}
             USES_TERMINAL
             VERBATIM
             COMMENT "run ${ER_TARGET} (GUI display-probe chain)")
     else()
         add_custom_target("${ER_TARGET}-run"
             COMMAND $<TARGET_FILE:${ER_TARGET}> ${ER_ARGS}
+            ${_wdir}
+            USES_TERMINAL
             VERBATIM
             COMMENT "run ${ER_TARGET}")
     endif()

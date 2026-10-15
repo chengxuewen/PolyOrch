@@ -27,7 +27,7 @@ the winning copy) with the `PolyOrch_BUILD_*` options. Target
 naming on the fused surface follows the D27/D28 grammar: kebab real targets under the
 `polyorch-<dir>-` namespace, `::` for exported/imported names only.
 
-## Public functions (46)
+## Public functions (48)
 
 ### `PolyOrchFindRust.cmake` -- rust toolchain discovery
 
@@ -84,6 +84,16 @@ Covered by: `t-rust-node`, `t-rust-noderun`, `t-rust-nodebadargs`, `t-rust-nodek
 
 Covered by: `t-python-run`, `t-python-setup-missing`, `t-python-knobs`,
 `t-python-vscode`, `t-python-vsdbg` (+ the gated `t-python-dap`), `t-python-sources`, `t-rust-fusion`.
+
+### `PolyOrchExampleRunHelpers.cmake` -- native-lane run button (v0.2.1)
+
+| Function | Signature (source comment) |
+|---|---|
+| `polyorch_example_run` | `polyorch_example_run(TARGET <existing-executable-target> [ARGS "a;b"] [GUI] [FOLDER <ide>] [WORKING_DIRECTORY <dir>])` |
+
+Covered by: `t-example-run`. WORKING_DIRECTORY rides the native
+`add_custom_target` kwarg (house idiom of the run faces); the button
+carries deliberately NO `add_dependencies` (per-site build edges).
 
 ### `PolyOrchPixiHelpers.cmake` -- pixi environments
 
