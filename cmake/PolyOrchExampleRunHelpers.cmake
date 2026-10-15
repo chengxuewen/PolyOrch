@@ -38,6 +38,11 @@
 #   The probe rides the COMMAND at exec time; the binary forwards via
 #   ARGV (sh -c '... exec "$0" "$@"' <file> <args...>), never string
 #   interpolation into the script body.
+# The probe must reach sh -c as ONE argument: the list re-expansion
+# shape set(_cmd ... "${probe}") + COMMAND ${_cmd} splits it at every
+# ';' -- inline quoting at the call site is load-bearing (bug found
+# by the first host consumer via the live E801 test; text-marker
+# tests missed it because every fragment keeps its markers).
 #
 # CI/ctest never pass through the GUI wrapper (headless verification is
 # the ctest example_* lane with its own argv).
@@ -95,11 +100,9 @@ function(polyorch_example_run)
 
     if(ER_GUI)
         _polyorch_gui_probe_script(_probe_script)
-        set(_cmd
-            ${CMAKE_COMMAND} -E env sh -c "${_probe_script}"
-            $<TARGET_FILE:${ER_TARGET}> ${ER_ARGS})
         add_custom_target("${ER_TARGET}-run"
-            COMMAND ${_cmd}
+            COMMAND ${CMAKE_COMMAND} -E env sh -c "${_probe_script}"
+                    $<TARGET_FILE:${ER_TARGET}> ${ER_ARGS}
             ${_wdir}
             USES_TERMINAL
             VERBATIM

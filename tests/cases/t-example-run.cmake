@@ -6,6 +6,10 @@
 # cd prefix (both forms, chdir outermost ahead of the GUI env wrap), and
 # USES_TERMINAL on ALL four edges (pool = console -- the knob has no
 # Makefiles text, measured; the ninja child leg follows t-rust-knobs).
+# Pin 7 is the LIVE leg: the GUI buttons are actually EXECUTED (the text-
+#marker pins passed on the shipped defect -- every fragment of the ';'-
+#split probe keeps its markers; only running the command catches the
+#split: rc=2 shell syntax error, host E801 live catch).
 cmake_policy(SET CMP0219 NEW)
 include("${CMAKE_CURRENT_LIST_DIR}/_inc.cmake")
 include("${CMAKE_CURRENT_LIST_DIR}/_requires.cmake")
@@ -193,4 +197,47 @@ if(NOT _q1 LESS _q2)
     message(FATAL_ERROR "GUI+WDIR ninja edge: cd must precede -E env (${_q1}/${_q2}) [line ${CMAKE_CURRENT_LIST_LINE}]")
 endif()
 
-message(STATUS "t-example-run: button table + GUI probe chain + WORKING_DIRECTORY cd (native kwarg, both trees) + USES_TERMINAL pool on all four edges PASS")
+# pin 7: LIVE EXECUTION of the real button recipe (the anti-decoration
+# leg, C0). The configure scratch ${_b} (default generator) is built and
+# the -run target RUNS: the probe must reach sh -c as ONE argument. The
+# shipped set(_cmd ... "${probe}") + COMMAND ${_cmd} two-step split it at
+# every ';' -- sh executed only the first fragment and died rc=2
+# "Syntax error" while every marker pin above stayed green (host E801
+# live catch). DISPLAY/WAYLAND vars are forced EMPTY through
+# execute_process ENVIRONMENT (empty == unset for the probe's -z tests),
+# so on a host WITH an X socket the fallback branch is the one taken and
+# its stderr announcement is the proof the whole script parsed and ran;
+# a host WITHOUT sockets keeps the rc=0 assertion (the split is
+# generator-independent) and says so out loud instead of silently
+# passing the sub-assert.
+# the wdir recipe cds into ${_wd}: the dir must exist for the build
+# to run the command at all (no marker pin ever executed it).
+file(MAKE_DIRECTORY "${_wd}")
+if(EXISTS "/bin/echo")
+    foreach(tg app_gui-run app_wgui-run)
+        execute_process(COMMAND ${CMAKE_COMMAND} --build "${_b}" --target "${tg}"
+            # ENVIRONMENT trap (measured): ONE quoted "A=;B=" string is
+            # consumed as a single NAME=VALUE pair -- DISPLAY literally
+            # became ";B=" and the probe took the display-present branch.
+            # One quoted entry per variable, as here.
+            ENVIRONMENT "DISPLAY=" "WAYLAND_DISPLAY=" "WAYLAND_SOCKET="
+            RESULT_VARIABLE _lrc OUTPUT_VARIABLE _lo ERROR_VARIABLE _le
+            TIMEOUT 10)
+        if(NOT _lrc EQUAL 0)
+            message(FATAL_ERROR "live GUI leg ${tg}: button rc=${_lrc} -- the probe reached sh split at ';' (syntax error). output:\n${_lo}${_le} [line ${CMAKE_CURRENT_LIST_LINE}]")
+        endif()
+        file(GLOB _xs "/tmp/.X11-unix/X*")
+        if(_xs)
+            string(FIND "${_lo}${_le}" "falling back to DISPLAY=:0" _ap)
+            if(_ap LESS 0)
+                message(FATAL_ERROR "live GUI leg ${tg}: X sockets on host but no fallback announcement -- probe did not run whole [line ${CMAKE_CURRENT_LIST_LINE}]")
+            endif()
+        else()
+            message(STATUS "live GUI leg ${tg}: no /tmp/.X11-unix sockets on host; fallback-announcement sub-assert skipped (rc=0 exec leg enforced)")
+        endif()
+    endforeach()
+else()
+    message(STATUS "t-example-run: no /bin/echo on host -- live GUI legs not executed (rc=0 leg needs the trivial payload)")
+endif()
+
+message(STATUS "t-example-run: button table + GUI probe chain + WORKING_DIRECTORY cd (native kwarg, both trees) + USES_TERMINAL pool on all four edges + LIVE exec (probe one-argument, fallback announcement) PASS")
