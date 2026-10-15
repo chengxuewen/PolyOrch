@@ -43,7 +43,7 @@ Covered by: `t-rust-findrust`, `t-rust-setup-*`, `t-rust-rustc-version`, `t-rust
 
 | Function | Signature (source comment) |
 |---|---|
-| `polyorch_rust_build` | `polyorch_rust_build(TARGET <n> [PACKAGE p] [CRATE c] [BINARY\|STATIC\|SHARED] [PROFILE p] [MANIFEST path] [LOCKED\|FROZEN] [NO_SOURCES] [PREBUILD t] [DEPENDS t...] [FEATURES a;b] [BASE_DIR d] [FOLDER f])` |
+| `polyorch_rust_build` | `polyorch_rust_build(TARGET <n> [PACKAGE p] [CRATE c] [BINARY\|STATIC\|SHARED\|EXAMPLE\|LIB] [PROFILE p] [MANIFEST path] [LOCKED\|FROZEN] [NO_SOURCES] [PREBUILD t] [DEPENDS t...] [FEATURES a;b] [BASE_DIR d] [FOLDER f]) -- LIB (R3, v0.3.0): cargo `--lib` rlib lane, INTERFACE handle + POLYORCH_RUST_LIB path, never staged/installed/run; opt-in for the default-kinds dispatch |
 | `polyorch_rust_import` | `polyorch_rust_import(MANIFEST <path> [CRATES a;b] [LOCKED\|FROZEN]` |
 | `polyorch_rust_package_version` | `polyorch_rust_package_version(PACKAGE <p> [MANIFEST <path>] OUT_VAR <out>)` |
 | `polyorch_rust_set_features` | `polyorch_rust_set_features(TARGET <n> [FEATURES a;b] [ALL_FEATURES]` |
