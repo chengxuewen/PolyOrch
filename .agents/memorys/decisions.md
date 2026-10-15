@@ -755,7 +755,7 @@ Three coupled API decisions, all user-ruled:
 2. **octk_option ported FULLY** (272 lines: DEPENDS/EMIT_IF/OR_CONDITION/
    SET/SET_NEGATE/VERIFY + the expression evaluator + INPUT_ overrides).
    The recommendation was the six-line sugar with the extraction roadmap;
-   the user overruled ("强烈要求全量移植") -- the thin port had produced
+   the user overruled (user words: "strongly demands the full port") -- the thin port had produced
    the display/effect divergence (OR_CONDITION without the cache FORCE),
    proving half-semantics are worse than none. VERIFY, listed in octk's
    doc comment but never consumed there, is made real here: declaration-
