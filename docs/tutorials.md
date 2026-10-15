@@ -95,7 +95,7 @@ polyorch_rust_build(
 ```
 
 ```bash
-cmake -S . -B build && cmake --build build --target greet
+cmake -S . -B build && cmake --build build --target greet-build
 ```
 
 Key facts:
@@ -164,8 +164,8 @@ Direction 2: a Rust binary links a C staticlib through
 
 ```bash
 cmake -S examples/rust-bindings -B build
-cmake --build build --target polyorch-rust-bindings-app       # C++ calls Rust, Rust calls back
-cmake --build build --target polyorch-rust-bindings-consumer  # install(EXPORT) → find_package consumer
+cmake --build build --target rust-bindings-app       # C++ calls Rust, Rust calls back
+cmake --build build --target rust-bindings-consumer  # install(EXPORT) → find_package consumer
 ```
 
 One crate, two foreign surfaces:

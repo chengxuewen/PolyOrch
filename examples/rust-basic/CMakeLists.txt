@@ -7,7 +7,7 @@
 #
 #   # standalone:
 #   cmake -S examples/rust-basic -B build
-#   cmake --build build --target greet-cargo     # cargo build  -> .../greet-cli
+#   cmake --build build --target greet-build     # cargo build  -> .../greet-cli
 #   cmake --build build --target greet-run       # execute the artifact
 #   cmake --build build --target greet-test      # cargo test (fused hosts: polyorch-rust-basic-greet-test)
 #
@@ -73,12 +73,12 @@ polyorch_rust_setup(REQUIRED)
 #         built binary's file base name is `greet-cli` (the [[bin]] name).
 #         They are kept DISTINCT on purpose: an IMPORTED target whose name
 #         equals its artifact base name makes the Makefile generator silently
-#         drop the rule that produces the binary (PIT-13). `cargo-build-greet`
+#         drop the rule that produces the binary (PIT-13). `greet-build`
 #         (the mediator) is what you build; `greet` is what you link/inspect.
 #
 #         EMBEDDED MODE = GRAPH FUSION (2026-09-23 pilot): when included by
 #         the examples umbrella with the opt-in ON and the tool reachable,
-#         these calls run RIGHT HERE -- cargo-build-greet / greet-test /
+#         these calls run RIGHT HERE -- greet-build / greet-test /
 #         greet-run become real targets in the HOST build graph (clickable
 #         individually, DEPENDS-able from host targets).
 polyorch_rust_build(

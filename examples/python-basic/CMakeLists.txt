@@ -10,7 +10,7 @@
 #   # F5 in VSCode afterwards: "PolyOrch: greet" stops on breakpoints
 #
 #   # embedded in a fused host (examples loop):
-#   cmake ... -DPolyOrch_BUILD_RUST_EXAMPLES=ON   # button polyorch-python-basic-run-greet
+#   cmake ... -DPolyOrch_BUILD_RUST_EXAMPLES=ON   # button polyorch-python-basic-greet-run
 cmake_minimum_required(VERSION 3.22)
 
 # --- opt-in gate (rust-basic shape: standalone proceeds, fused hosts opt in)

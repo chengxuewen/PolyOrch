@@ -7,10 +7,13 @@
 #
 #   FUSED  -- system-route rust examples join the HOST build graph. Each
 #             subtree registers its own verb targets; no button exists.
-#             Naming grammar (WP13, literal directory names):
-#               handle family:  <directory>-<handle>-<verb>
-#               aggregate:      <directory>-all
-#             Example: rust-link-c-cli-user-tool-build / rust-link-c-all.
+#             Naming grammar (D28, literal directory names):
+#               standalone: bare names as the example writes them
+#                           (greet-build / rust-bindings-app)
+#               fused:      polyorch-<directory>-<handle>-<verb>,
+#                           aggregate polyorch-<directory>-all
+#             Example: polyorch-rust-link-c-cli-user-tool-build /
+#                      polyorch-rust-link-c-all.
 #
 #   REMOTE -- a single pixi-*/<example-dir> button target that runs the example in its
 #             OWN build dir (standalone/<name>), never inside the host
