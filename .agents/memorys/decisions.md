@@ -774,3 +774,40 @@ is the native face's home; OptionHelpers is self-carried by the faces
 (standalone test legs include single modules -- cross-module functions must
 ride their consumers). Suite 78/0/26 (t-option 10, t-native-debug 5,
 t-vscode-knobs 6).
+
+## D42: LIB kind in the rust face (2026-10-15, ticket R3, user-adjudicated)
+
+- **Decision**: `polyorch_rust_build` gained a fifth artifact kind, `LIB` -- the cargo
+  library crate (rlib). argv `cargo build -p <pkg> --lib` (bare selector; CRATE names the
+  lib TARGET for the naming table, never argv); artifact `lib<crate>.rlib` in the profile
+  root, platform-INVARIANT naming: rlibs are rustc's own container, so the msvc
+  no-`lib`-prefix strip (a PE/COFF rule) does not apply -- the MSVC sysroot itself ships
+  `libstd-<hash>.rlib` (source: rustc compiler/rustc_session/src/output.rs
+  filename_for_input, tag 1.98.1 commit 48a229ceaefd, lines 95-105 -- the Rlib arm
+  hardcodes lib<name>.rlib, no target-spec branch; the profile-root no-hash artifact
+  measured on cargo 1.98 host). Mediator, FOLDER first-writer,
+  aggregate membership, collision guard (PIT-13), cross `--target` nesting and the PIT-14
+  command wrapper are consumed unchanged -- LIB rides the same spine, adds no state.
+- **Handle stance**: an rlib is not linkable by any system linker. The handle is an
+  INTERFACE IMPORTED GLOBAL target -- its purpose is ORDERING (the auto-build edge
+  propagates to every consumer's linker) + PATH (custom property `POLYORCH_RUST_LIB`
+  stamped on handle AND mediator; the genex survives it under multi-config). UNKNOWN
+  IMPORTED was rejected: it invites a real linker to choke on .rlib bytes. The kind opts
+  out of the whole location cluster (no IMPORTED_LOCATION(_<CFG>), no IMPLIB, no
+  output-dir mirror, no deferred finalize, no staging, no install row, no export stub --
+  rlibs ship nowhere) and `polyorch_rust_run` / `polyorch_rust_install` FATAL on it.
+- **Default dispatch unchanged**: `PolyOrch_RUST_DEFAULT_KINDS` keeps its bin|static|shared
+  accepted set; LIB is opt-in-only (t-rust-defaultkinds dk-lib leg).
+- **Rationale**: any cargo-workspace host with rlib lanes must otherwise hand-roll
+  add_custom_target + cargo argv + PATH/env wrapping -- the exact machinery (wrapper env
+  isolation, mediator naming, profile dirs) the supplier already owns; the hand-roll leaks
+  RUSTFLAGS/CFLAGS by construction (PIT-14 class). rlib lanes are the universal shape the
+  first host exposed (9 rlib crates hand-rolled behind an 84-LOC loop).
+- **Reference**: offline pin t-rust-libplan (naming table incl. the msvc invariance rows,
+  argv, child-harness INTERFACE/property/rule-text legs -- --lib + --unset=RUSTFLAGS strip
+  proven in generated build.make -- the guard cluster run/install/collision/clash/
+  exclusion); e2e t-rust-lib behind `# requires: system-rust` (mediator build + the
+  `--lib` restriction proved physically -- the package's bin stays unbuilt -- aggregate
+  edge by fresh-dir liball build, reconfigure idempotence; MC cells excluded per the
+  configure-time-literal fixture contract). No upstream anchor (new feature, D40 pattern);
+  version 0.2.2 -> 0.3.0.
