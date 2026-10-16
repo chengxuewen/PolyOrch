@@ -169,7 +169,9 @@ function(_polyorch_rust_artifact_names)
     # cross triple) sets an EMPTY var instead of unsetting it -- the
     # documented pre-CMP0174 contract every caller and downstream
     # if(A_TARGET) check was written against.
-    cmake_policy(SET CMP0174 NEW)
+    if(POLICY CMP0174)
+      cmake_policy(SET CMP0174 NEW)
+    endif()
     set(_one TRIPLE KIND CRATE FILE_OUT DIR_OUT IMPLIB_OUT PROFILE BASE_DIR OUT_BASE_DIR TARGET)
     cmake_parse_arguments(PARSE_ARGV 0 A "" "${_one}" "")
     if(A_UNPARSED_ARGUMENTS)
@@ -323,7 +325,9 @@ function(_polyorch_rust_copy_plan)
     # cross triple) sets an EMPTY var instead of unsetting it -- the
     # documented pre-CMP0174 contract every caller and downstream
     # if(A_TARGET) check was written against.
-    cmake_policy(SET CMP0174 NEW)
+    if(POLICY CMP0174)
+      cmake_policy(SET CMP0174 NEW)
+    endif()
     set(_one TRIPLE KIND CRATE SRC_DIR DEST_DIR OUT TARGET PROFILE)
     cmake_parse_arguments(PARSE_ARGV 0 A "" "${_one}" "")
     if(A_UNPARSED_ARGUMENTS)
@@ -700,7 +704,9 @@ function(_polyorch_rust_forward_env)
     # suppression mechanism (tests + callers pass SYSROOT "" to veto the
     # ambient default); the old policy would UNSET the var and warn.
     cmake_policy(PUSH)
-    cmake_policy(SET CMP0174 NEW)
+    if(POLICY CMP0174)
+      cmake_policy(SET CMP0174 NEW)
+    endif()
     cmake_parse_arguments(PARSE_ARGV 0 F "" "${_one}" "")
     cmake_policy(POP)
     if(F_UNPARSED_ARGUMENTS)
@@ -798,7 +804,9 @@ function(_polyorch_rust_linker_plan)
     # Scoped CMP0174 NEW: ""-keyword values are the explicit-suppression
     # input of the offline tables (same contract as _forward_env).
     cmake_policy(PUSH)
-    cmake_policy(SET CMP0174 NEW)
+    if(POLICY CMP0174)
+      cmake_policy(SET CMP0174 NEW)
+    endif()
     cmake_parse_arguments(PARSE_ARGV 0 L "" "${_one}" "${_multi}")
     cmake_policy(POP)
     if(L_UNPARSED_ARGUMENTS)
@@ -1489,7 +1497,9 @@ endfunction()
 function(polyorch_rust_tool_bootstrap)
     # CMP0174 NEW: callers omit VERSION entirely on the no-pin path; an
     # empty value would otherwise unset the variable and warn.
-    cmake_policy(SET CMP0174 NEW)
+    if(POLICY CMP0174)
+      cmake_policy(SET CMP0174 NEW)
+    endif()
     cmake_parse_arguments(PARSE_ARGV 0 TB "ALLOW_INSTALL;LOCKED;QUIET"
         "TOOL;BINARY;VERSION;PREFIX;OUT_VAR;OUT_TARGET" "")
     if(TB_UNPARSED_ARGUMENTS)
