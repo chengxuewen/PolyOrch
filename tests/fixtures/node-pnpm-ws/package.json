@@ -1,0 +1,8 @@
+{
+  "name": "pnpm-ws-root",
+  "private": true,
+  "packageManager": "pnpm@10.0.0",
+  "scripts": {
+    "build": "echo root-stub"
+  }
+}

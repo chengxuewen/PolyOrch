@@ -1,0 +1,11 @@
+{
+  "name": "@acme/web",
+  "version": "0.0.0",
+  "private": true,
+  "scripts": {
+    "build": "echo web-stub"
+  },
+  "dependencies": {
+    "@acme/lib": "workspace:*"
+  }
+}

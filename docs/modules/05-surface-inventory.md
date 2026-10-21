@@ -66,8 +66,8 @@ Covered by: the `t-rust-*` family (`build`/`import`/`setters`/`linkplan`/`crossp
 
 | Function | Signature (source comment) |
 |---|---|
-| `polyorch_node_setup` | `polyorch_node_setup([REQUIRED])` |
-| `polyorch_node_import` | `polyorch_node_import(ROOT <root-package.json>)` |
+| `polyorch_node_setup` | `polyorch_node_setup([REQUIRED])` -- SR1/D43: the root manifest's `packageManager` field selects `npm|pnpm` (knobs `PolyOrchNodePackageJson`, `PolyOrchNodePnpm`; dispatch tiers mirror per PM) |
+| `polyorch_node_import` | `polyorch_node_import(ROOT <root-package.json>)` -- D43: under a pnpm PM a `pnpm-workspace.yaml` plain `packages:` list is accepted when the root json has no `workspaces` field; every other shape keeps the historic hard error |
 | `polyorch_node_build` | `polyorch_node_build(TARGET <handle> MANIFEST <package.json> [OUTPUT_DIR <dir>])` |
 | `polyorch_node_test` | `polyorch_node_test(TARGET <handle>)` |
 | `polyorch_node_run` | `polyorch_node_run(TARGET <handle> SCRIPT <name> [ARGS ...])` |

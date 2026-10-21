@@ -104,3 +104,13 @@ pinned by t-rust-exampleplan; version 0.1.1 -> 0.2.0. The host consumed it the s
 examples plane migrated to rs-<E#> handles; its cmake-smoke drives a stale-sentinel floor
 negative leg against the 0.2.0 marker). Upstream push pending (gitee auth expired on this
 host): 457234e unpublished -- hosts' fresh clones cannot resolve their gitlink until it lands.
+## 2026-10-15 -- D43 SR1: pnpm workspaces in the node face (v0.4.0)
+
+packageManager probe selects npm|pnpm (per-PM dispatch tiers; the PM_NAME
+workspace-flag template became reachable for the first time -- the loop was
+shipped, the probe was the missing half); import accepts pnpm-workspace.yaml
+`packages:` under a pnpm PM, hard error kept otherwise. Offline case
+t-node-pnpmws (probe + enumeration + polarity legs, stub knobs deterministic);
+suite 78 pass / 2 env-classified fails / 29 skip; sentinel version pin 0.4.0.
+Host driving the request: MediaServo (polyorch-adoption S5), consumed via the
+same-round gitlink bump; push to gitee pending host-side credentials.

@@ -811,3 +811,30 @@ t-vscode-knobs 6).
   edge by fresh-dir liball build, reconfigure idempotence; MC cells excluded per the
   configure-time-literal fixture contract). No upstream anchor (new feature, D40 pattern);
   version 0.2.2 -> 0.3.0.
+
+## D43: pnpm workspaces in the node face -- packageManager probe + pnpm-workspace.yaml enumeration (2026-10-15, SR1 round, host-driven)
+
+- **Decision**: (1) `polyorch_node_setup` now reads the OPTIONAL root-manifest
+  `packageManager` field (the corepack-standard declaration) to SELECT the PM name
+  (`npm` default, `pnpm` recognized); dispatch tiers mirror per-PM (corepack proxy →
+  explicit knob `PolyOrchNodePnpm` → PATH `pnpm`), the bare-npm tail override guarded to
+  `_pm STREQUAL "npm"` (a pnpm surface must never be hijacked by a discovered npm binary).
+  (2) `polyorch_node_import` accepts a `pnpm-workspace.yaml` plain `packages:` string-list
+  as the member source WHEN the located PM is pnpm and the root package.json has no
+  `workspaces` field; the historic hard error stands for every other shape (no silent
+  softening). Knob `PolyOrchNodePackageJson` points the probe. (3) The existing
+  `PolyOrchNode_PM_NAME` "npm|pnpm" contract (workspace-flag template) becomes reachable
+  for the first time -- the template leg (`--filter` vs `-w`) was shipped since the
+  adjudication-1 round with no probe feeding it; this closes that open loop rather than
+  inventing a new mechanism.
+- **Rationale**: a consumer fleet that standardizes on pnpm (packageManager pins are the
+  ecosystem direction) cannot keep a per-consumer mirror of the member list inside
+  package.json -- two books of one truth. The field that declares the PM is the canonical
+  signal; reading it is completing our own documented design (the PM_NAME cache string
+  already promised "npm|pnpm").
+- **Impact**: offline case `t-node-pnpmws` (fixture `node-pnpm-ws` + `pnpm` tool-stub;
+  ON legs = probe + yaml enumeration inside the fixture's own FATAL guards; OFF leg =
+  hard-error polarity with stub knobs keeping FOUND-true deterministic). Hosts may now
+  drive pnpm roots through import; build execution still needs a real pnpm at build time
+  (corepack prepares the pinned version on first use). No public verb signature changed;
+  version floor for hosts consuming this: 0.3.x -> 0.4.0 minor (surface additive).

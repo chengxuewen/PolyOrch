@@ -1,0 +1,6 @@
+#!/bin/sh
+# tool-stub: pnpm. Configure-only cases never execute the PM (the -build
+# mediators register but are not built); this exists so the bare-PM knob
+# tier resolves deterministically on pnpm-less hosts. Mirrors the
+# cbindgen/cxxbridge stubs' shape.
+echo "pnpm-stub $*"

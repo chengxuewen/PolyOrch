@@ -123,10 +123,23 @@ function(polyorch_node_setup)
         set(_found FALSE)
     endif()
 
-    # PM discovery (adjudication 1): corepack proxies; without it, bare npm.
+    # PM discovery (adjudication 1 + SR1): corepack proxies; without it, bare npm/pnpm.
     # We never pin versions -- the project's packageManager field decides
-    # through corepack itself.
+    # through corepack itself. SR1: the field also SELECTS the PM name
+    # (npm|pnpm); knob -DPolyOrchNodePackageJson=<path> points the probe
+    # (default: <project>/package.json when present).
     set(_pm "npm")
+    set(_pkgjson "${PolyOrchNodePackageJson}")
+    if(NOT _pkgjson AND EXISTS "${CMAKE_SOURCE_DIR}/package.json")
+        set(_pkgjson "${CMAKE_SOURCE_DIR}/package.json")
+    endif()
+    if(_pkgjson AND EXISTS "${_pkgjson}")
+        file(READ "${_pkgjson}" _pmjson)
+        string(JSON _pmfield ERROR_VARIABLE _pmf_err GET "${_pmjson}" packageManager)
+        if(NOT _pmf_err AND _pmfield MATCHES "^pnpm([@ ]|$)")
+            set(_pm "pnpm")
+        endif()
+    endif()
     set(_pm_argv)                     # dispatch prefix, may stay empty
     # tier-a for the PM too (the case passes the stub through PASSTHROUGH):
     # PolyOrchNodeCorepack=<path> wins, then PATH corepack, then bare npm.
@@ -141,9 +154,19 @@ function(polyorch_node_setup)
         set(_pm_argv "${PolyOrchNode_COREPACK}" "${_pm}")
     endif()
     if(NOT _pm_argv)
-        # bare-npm tier: the explicit knob first (same contract as the
-        # corepack one), then PATH
-        if(PolyOrchNodeNpm)
+        # bare-PM tier: the explicit knob first (same contract as the
+        # corepack one), then PATH (SR1: pnpm mirrors the npm shape)
+        if(_pm STREQUAL "pnpm")
+            if(PolyOrchNodePnpm)
+                set(_pm_argv "${PolyOrchNodePnpm}")
+            else()
+                find_program(PolyOrchNode_PNPM NAMES pnpm
+                    HINTS ${_roots} NO_CACHE)
+                if(PolyOrchNode_PNPM)
+                    set(_pm_argv "${PolyOrchNode_PNPM}")
+                endif()
+            endif()
+        elseif(PolyOrchNodeNpm)
             set(_pm_argv "${PolyOrchNodeNpm}")
         else()
             # HINTS ~/.pixi/bin: a pixi-global nodejs exposes npm beside
@@ -163,7 +186,7 @@ function(polyorch_node_setup)
         # missing -- "node not found" was a misleading report.
         set(_pm_missing TRUE)
         set(_found FALSE)
-    elseif(PolyOrchNode_NPM)
+    elseif(_pm STREQUAL "npm" AND PolyOrchNode_NPM)
         set(_pm_argv "${PolyOrchNode_NPM}")
     endif()
     set(PolyOrchNode_EXECUTABLE "${PolyOrchNode_EXECUTABLE}" CACHE FILEPATH
@@ -382,28 +405,65 @@ function(polyorch_node_import)
     get_filename_component(_root_dir "${I_ROOT}" DIRECTORY)
     file(READ "${I_ROOT}" _root_json)
     string(JSON _ws_type ERROR_VARIABLE _jerr TYPE "${_root_json}" workspaces)
+    set(_globs "")
     if(_jerr)
-        message(FATAL_ERROR
-            "polyorch_node_import: ${I_ROOT} has no workspaces field")
-    endif()
-    # workspaces: array of globs (npm/pnpm shape). The object-with-packages
-    # shape (yarn) is NOT v0.1.
-    if(NOT _ws_type STREQUAL "ARRAY")
-        message(FATAL_ERROR
-            "polyorch_node_import: workspaces must be an array of globs "
-            "(the yarn object form is not supported in v0.1)")
-    endif()
-    string(JSON _n LENGTH "${_root_json}" workspaces)
-    if(_n EQUAL 0)
-        message(FATAL_ERROR "polyorch_node_import: empty workspaces array")
+        # SR1: pnpm keeps the member list in pnpm-workspace.yaml (a plain
+        # `packages:` string-list). Honored only under a pnpm PM (the file IS
+        # a pnpm artifact); otherwise the historic hard error stands.
+        if(PolyOrchNode_PM_NAME STREQUAL "pnpm"
+                AND EXISTS "${_root_dir}/pnpm-workspace.yaml")
+            file(READ "${_root_dir}/pnpm-workspace.yaml" _wsyml)
+            string(REPLACE "\r" "" _wsyml "${_wsyml}")
+            string(REPLACE "\n" ";" _ws_lines "${_wsyml}")
+            set(_in_pkgs FALSE)
+            foreach(_yl IN LISTS _ws_lines)
+                if(_yl MATCHES "^[ ]*packages:")
+                    set(_in_pkgs TRUE)
+                    continue()
+                endif()
+                if(_in_pkgs)
+                    if(_yl MATCHES "^[ ]*-[ ]*['\"]?([^'\" ]+)['\"]?[ ]*$")
+                        list(APPEND _globs "${CMAKE_MATCH_1}")
+                        continue()
+                    endif()
+                    if(NOT _yl MATCHES "^[ ]*($|#)")
+                        set(_in_pkgs FALSE)   # next top-level key closes the block
+                    endif()
+                endif()
+            endforeach()
+            if(NOT _globs)
+                message(FATAL_ERROR
+                    "polyorch_node_import: ${_root_dir}/pnpm-workspace.yaml has no entries "
+                    "under `packages:` (only the plain string-list shape is v0.1)")
+            endif()
+        else()
+            message(FATAL_ERROR
+                "polyorch_node_import: ${I_ROOT} has no workspaces field (and no "
+                "pnpm-workspace.yaml resolvable under a pnpm PM -- SR1)")
+        endif()
+    else()
+        # workspaces: array of globs (npm shape). The object-with-packages
+        # shape (yarn) is NOT v0.1.
+        if(NOT _ws_type STREQUAL "ARRAY")
+            message(FATAL_ERROR
+                "polyorch_node_import: workspaces must be an array of globs "
+                "(the yarn object form is not supported in v0.1)")
+        endif()
+        string(JSON _n LENGTH "${_root_json}" workspaces)
+        if(_n EQUAL 0)
+            message(FATAL_ERROR "polyorch_node_import: empty workspaces array")
+        endif()
+        math(EXPR _last "${_n} - 1")
+        foreach(_i RANGE ${_last})
+            # GET with the array index as the path tail (MEMBER is for OBJECT
+            # key iteration; arrays go through GET <doc> workspaces <i>)
+            string(JSON _glob GET "${_root_json}" workspaces ${_i})
+            list(APPEND _globs "${_glob}")
+        endforeach()
     endif()
 
     set(_handles "")
-    math(EXPR _last "${_n} - 1")
-    foreach(_i RANGE ${_last})
-        # GET with the array index as the path tail (MEMBER is for OBJECT
-        # key iteration; arrays go through GET <doc> workspaces <i>)
-        string(JSON _glob GET "${_root_json}" workspaces ${_i})
+    foreach(_glob IN LISTS _globs)
         file(GLOB _member_dirs "${_root_dir}/${_glob}")
         foreach(_mdir ${_member_dirs})
             if(NOT IS_DIRECTORY "${_mdir}")
