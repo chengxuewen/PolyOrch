@@ -54,7 +54,7 @@ Covered by: `t-rust-findrust`, `t-rust-setup-*`, `t-rust-rustc-version`, `t-rust
 | `polyorch_rust_link_libraries` | `polyorch_rust_link_libraries(TARGET <n> <library\|target\|abs-path>...)` |
 | `polyorch_rust_test` | `polyorch_rust_test(PACKAGE <p> [NAME <t>] [MANIFEST <path>] [ALL] [ARGS ...]` |
 | `polyorch_rust_run` | `polyorch_rust_run(TARGET <imported> [FOLDER <ide>])` |
-| `polyorch_rust_clean` | `polyorch_rust_clean([NAME <t>] [BASE_DIR <td>] [FOLDER <ide>])` |
+| `polyorch_rust_clean` | `polyorch_rust_clean([NAME <t>] [BASE_DIR <td>] [FOLDER <ide>] [PACKAGE <crate> MANIFEST <path>])` -- D44: the PACKAGE form runs `cargo clean -p` through the sanctioned wrapper (needs the detected cargo, WORKING_DIRECTORY = manifest parent); without PACKAGE the whole-face directory removal stays the toolchain-free form |
 | `polyorch_rust_install` | `polyorch_rust_install(TARGETS <handle>...` |
 | `polyorch_rust_cxxbridge` | `polyorch_rust_cxxbridge(TARGET <rust-handle> FILES <file.rs>...` |
 | `polyorch_rust_cbindgen` | `polyorch_rust_cbindgen(TARGET <rust-handle> HEADER_NAME <h.h>` |

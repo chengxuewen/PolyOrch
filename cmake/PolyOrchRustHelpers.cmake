@@ -35,8 +35,11 @@
 # user-owned target to run before cargo.
 #
 # All cargo invocations share one isolated target directory,
-# ${CMAKE_BINARY_DIR}/.cargo-target, so polyorch_rust_clean() is a plain
-# directory removal and never needs a working cargo.
+# ${CMAKE_BINARY_DIR}/.cargo-target: polyorch_rust_clean()'s whole-face form
+# is a plain directory removal that never needs a working cargo, while its
+# PACKAGE form is a per-crate `cargo clean -p` (needs the detected cargo,
+# rides the same wrapper as the build/test buttons) -- see the function block
+# for the split.
 #
 # Result variables of polyorch_rust_setup are the POLYORCH_RUST_* set
 # (documented exception to the brand-casing rule, see decisions.md D11);
@@ -2035,24 +2038,58 @@ function(polyorch_rust_run)
     set_target_properties("${R_TARGET}-run" PROPERTIES FOLDER "${_fold}")
 endfunction()
 
-# polyorch_rust_clean([NAME <t>] [BASE_DIR <td>] [FOLDER <ide>])
-# Registers a never-automatic target that deletes the isolated cargo
-# target-dir. The isolation is the whole point: wiping that directory IS a
-# full cargo clean, with no toolchain present and no cargo.toml walked.
+# polyorch_rust_clean([NAME <t>] [BASE_DIR <td>] [FOLDER <ide>]
+#                     [PACKAGE <crate> MANIFEST <path/Cargo.toml>])
+# Two forms, both never-automatic (rule 0: `make all` must never wipe).
+# Whole face (no PACKAGE): deletes the isolated cargo target-dir. The
+# isolation is the whole point: wiping that directory IS a full cargo clean,
+# with no toolchain present and no cargo.toml walked.
+# PACKAGE form: `cargo clean --package <crate>` scoped to one crate, run
+# through the sanctioned wrapper (_polyorch_rust_command: the same six-var
+# strip + route PATH prefix as the build/test buttons -- no env duplication,
+# no PATH guessing; `cargo clean` compiles nothing so no ENV forwarding).
+# WORKING_DIRECTORY is the manifest's parent so cargo's up-walk finds the
+# workspace .cargo/config.toml block (corr: cargo-clean_<target> buttons,
+# Corrosion.cmake -- lib+bin buttons of one package deliberately run the
+# SAME -p command; `cargo clean -p` covers rlib+exe alike). Requires the
+# detected cargo; the isolation story only covers the whole-face form.
 function(polyorch_rust_clean)
-    set(_one NAME BASE_DIR FOLDER)
+    set(_one NAME BASE_DIR FOLDER PACKAGE MANIFEST)
     cmake_parse_arguments(PARSE_ARGV 0 C "" "${_one}" "")
     if(C_UNPARSED_ARGUMENTS)
         message(FATAL_ERROR "polyorch_rust_clean: unknown args: ${C_UNPARSED_ARGUMENTS}")
+    endif()
+    # N3 + symmetric guard: a lone keyword of the pair is always a mistake
+    # (name-only cannot locate the member; manifest-only would be silently
+    # ignored by the whole-face form).
+    if(C_PACKAGE AND NOT C_MANIFEST)
+        message(FATAL_ERROR "polyorch_rust_clean: PACKAGE requires MANIFEST (a workspace member cannot be cleaned by name alone; a cwd fallback would duplicate the build/test manifest logic)")
+    endif()
+    if(C_MANIFEST AND NOT C_PACKAGE)
+        message(FATAL_ERROR "polyorch_rust_clean: MANIFEST without PACKAGE is inert (the whole-face form never reads a manifest)")
     endif()
     set(_name "${C_NAME}")
     if(NOT _name)
         set(_name rust-clean)
     endif()
     _polyorch_rust_target_dir(_td "${C_BASE_DIR}")
-    add_custom_target("${_name}"
-        COMMAND ${CMAKE_COMMAND} -E rm -rf "${_td}"
-        COMMENT "removing cargo target directory ${_td}")
+    if(C_PACKAGE)
+        get_filename_component(_mdir "${C_MANIFEST}" DIRECTORY)
+        set(_argv clean --package "${C_PACKAGE}"
+            --manifest-path "${C_MANIFEST}" --target-dir "${_td}")
+        _polyorch_rust_command(_cmd SUBCOMMAND ${_argv})
+        _polyorch_rust_uterm(_uterm)
+        add_custom_target("${_name}"
+            COMMAND ${_cmd}
+            WORKING_DIRECTORY "${_mdir}"
+            COMMENT "cargo clean -p ${C_PACKAGE} (${_td})"
+            ${_uterm}
+            VERBATIM)
+    else()
+        add_custom_target("${_name}"
+            COMMAND ${CMAKE_COMMAND} -E rm -rf "${_td}"
+            COMMENT "removing cargo target directory ${_td}")
+    endif()
     set(_fold "${C_FOLDER}")
     if(NOT _fold)
         set(_fold "${PolyOrch_RUST_FOLDER_ROOT}")

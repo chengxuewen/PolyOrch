@@ -114,3 +114,17 @@ t-node-pnpmws (probe + enumeration + polarity legs, stub knobs deterministic);
 suite 78 pass / 2 env-classified fails / 29 skip; sentinel version pin 0.4.0.
 Host driving the request: MediaServo (polyorch-adoption S5), consumed via the
 same-round gitlink bump; push to gitee pending host-side credentials.
+
+## 2026-10-22 -- D44 SR2: PACKAGE-scoped clean (v0.5.0)
+
+polyorch_rust_clean gained PACKAGE/MANIFEST (per-crate `cargo clean -p` via the
+sanctioned wrapper, manifest-parent WORKING_DIRECTORY, corr per-target button
+shape); the whole-face rm -rf stays byte-stable when the keyword is absent.
+New cases: t-rust-clean (offline, build.make-level pins; first draft's
+POLYORCH_CHILD2 spawn-before-guard recursion hung the driver -- guards now
+precede spawns, commented) + t-rust-clean-e2e (real cargo, sibling survival +
+rebuild, ran GREEN on the host box). Suite live: 79 pass / 2 env-classified
+fails (fusion/bindings, unchanged from S0 baseline) / 30 skip (e2e leg run
+separately). Companion: t-embed-sentinel version pin 0.4.0 -> 0.5.0.
+Host driving the request: MediaServo (polyorch-sr2-clean-scope); push to gitee
+pending host-side credentials.

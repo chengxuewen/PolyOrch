@@ -838,3 +838,23 @@ t-vscode-knobs 6).
   drive pnpm roots through import; build execution still needs a real pnpm at build time
   (corepack prepares the pinned version on first use). No public verb signature changed;
   version floor for hosts consuming this: 0.3.x -> 0.4.0 minor (surface additive).
+
+## D44: PACKAGE/MANIFEST scoping for polyorch_rust_clean (2026-10-22, SR2 round, host-driven)
+
+The host's shared-target presets ban the whole-face clean (rm -rf of a shared
+cargo target/ annihilates the bare-cargo gate cache) yet needed per-crate clean
+buttons. Added `PACKAGE <crate>` + `MANIFEST <path>`: registers
+`cargo clean --package P --manifest-path M --target-dir TD` through the
+SANCTIONED wrapper (_polyorch_rust_command -- same six-var strip + route PATH
+prefix as the build/test buttons, zero env duplication), WORKING_DIRECTORY =
+manifest parent (cargo discovers the workspace .cargo/config.toml by walking up
+from CWD; corr: cargo-clean_<target> makes the same choice and runs lib+bin
+buttons off ONE -p command), VERBATIM + _polyorch_rust_uterm, never automatic.
+The no-PACKAGE path stays the byte-stable rm -rf (zero-toolchain claim belongs
+to that form only); a one-sided keyword pair is FATAL (name-only cannot locate
+a member; manifest-only would be silently inert). Additive keyword = minor:
+0.4.0 -> 0.5.0 with the t-embed-sentinel companion pin same stroke. Pins:
+t-rust-clean (offline; asserts ride the Makefiles build.make recipe -- the
+COMMAND property is NOT readable on non-IMPORTED targets, measured 4.4.4),
+t-rust-clean-e2e (real cargo: sibling survives, cleaned rebuilds). Host
+consumer: MediaServo polyorch-sr2-clean-scope, same-round gitlink + floor bump.
