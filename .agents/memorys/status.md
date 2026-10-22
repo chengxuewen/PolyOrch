@@ -168,3 +168,14 @@ t-rust-install-export reran green against the rewritten executor. Suite live:
 84 pass / 2 env-classified fails (fusion/bindings, unchanged baseline) / 32
 skip. Sentinel companion 0.6.0->0.7.0. Host: MediaServo SR5/SR4 -- SR4 opens
 on this surface. Push to gitee pending host-side credentials.
+
+## 2026-10-22 -- D46 follow-up: policy-neutral keep-test (v0.7.1)
+
+Consumer (MediaServo SR4 L3) caught P6's generated install script using `IN_LIST`:
+policy CMP0057 of the SCRIPT context is NEW, the project's cmake_minimum_required is
+not consulted for install-time scripts -- the sweep leg died with "Unknown arguments"
+at real install time in a low-policy parent tree. Fix: list(FIND)+LESS, same shape,
+policy-free. The combined e2e passed before because its child project set the policy;
+measurement lesson: an install-script leg must run under the CONSUMER's policy floor,
+not the fixture's convenience. Version 0.7.0 -> 0.7.1 (fix) + sentinel companion;
+stage case pins the new text.

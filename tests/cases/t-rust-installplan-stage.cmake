@@ -101,7 +101,11 @@ ck(${_swcount} EQUAL 2)
 ck_has_all("${_inst}" "set(_polyorch_keep \"libkb.so\")")
 ck_has_all("${_inst}" "set(_polyorch_keep \"a.h\")")
 ck_has_all("${_inst}" "\${_polyorch_base}/*.old")
-ck_has_all("${_inst}" "if(NOT _polyorch_hit IN_LIST _polyorch_keep)")
+# policy-safe keep-test (0.7.1 fix: IN_LIST in a generated install script
+# honors CMP0057 of the SCRIPT context, not the project -- blew up at install
+# time under the consumer tree; list(FIND) is policy-neutral)
+ck_has_all("${_inst}" "list(FIND _polyorch_keep")
+ck_has_all("${_inst}" "if(_polyorch_idx LESS 0)")
 
 # P7: STRIP emits the flag-gated leg after the copy row (tool resolved at
 # configure time -- assert only if a strip binary is discoverable, the same
