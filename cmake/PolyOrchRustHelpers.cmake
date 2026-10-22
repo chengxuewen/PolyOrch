@@ -31,6 +31,12 @@
 # overrides, permission/component/configuration gating, PUBLIC_HEADER
 # sidecars) and, with EXPORT, emits a <name>-rust.cmake replay stub plus
 # a <name>Config.cmake find_package wrapper for second-stage consumers;
+# SR5 grew the install face to install(TARGETS) parity for the foreign
+# cargo files: SOVERSION/VERSION link chains, NAMESPACE + handle=alias +
+# COMPONENTS export partitioning, ConfigVersion emission (SUITE_VERSION/
+# COMPATIBILITY), recursive HEADERS_DIRECTORY, GLOB_HEADERS expansion,
+# STALE_GLOB destination sweeps and the STRIP install-time legs (the
+# --strip flag provably does not reach install(FILES) rows -- measured);
 # [PREBUILD <t>] keyword on polyorch_rust_build names an explicit
 # user-owned target to run before cargo.
 #
@@ -2163,11 +2169,15 @@ endfunction()
 # receives one row per staged file in emission order (main artifact,
 # import library, headers):
 #
-#   <file-expr>|<destination>|<perms>|<component>|<configs>|<stub>
+#   <file-expr>|<destination>|<perms>|<component>|<configs>|<stub>[|<tag>]
 #
 # Fields are |-joined; multi-value fields are SPACE-joined, so a row may
 # never contain ';' or '|' (a path with either is unsupported -- same
-# encoding contract as the copy plan). The stub field carries the '%'-
+# encoding contract as the copy plan). The optional 7th field is an
+# install-shape tag the executor dispatches on (SR5): RENAME=<name> |
+# LINKCODE=<script> | CODE=<script> | DIR. A tag-free row stays exactly
+# 6 fields and today's install(FILES) shape -- the table lock keeps
+# every legacy row byte-identical. The stub field carries the '%'-
 # joined lines the EXPORT replay file gains for this row ('' for header
 # rows); ${_POLYORCH_RUST_ROOT} and $<TARGET_FILE_NAME:...> ride through
 # as literal text, resolved later by file(GENERATE) / include. Kind
@@ -2187,7 +2197,8 @@ function(_polyorch_rust_install_plan)
       cmake_policy(SET CMP0174 NEW)
     endif()
     set(_one TRIPLE KIND HANDLE PREFIX RUNTIME_DESTINATION ARCHIVE_DESTINATION
-        LIBRARY_DESTINATION DEST_INCLUDE COMPONENT IMPLIB_FILE OUT_ROWS)
+        LIBRARY_DESTINATION DEST_INCLUDE COMPONENT IMPLIB_FILE OUT_ROWS
+        SOVERSION VERSION STUB_NAME CRATE STRIP_TOOL)
     set(_multi EXEC_PERMS FILE_PERMS PERMISSIONS CONFIGURATIONS HEADERS)
     cmake_parse_arguments(PARSE_ARGV 0 A "" "${_one}" "${_multi}")
     if(A_UNPARSED_ARGUMENTS)
@@ -2239,15 +2250,22 @@ function(_polyorch_rust_install_plan)
     set(_comp "${A_COMPONENT}")
     set(_pre "${A_PREFIX}")
     set(_h "${A_HANDLE}")
+    # SR5 P2: STUB_NAME is the name the replay stub registers (NAMESPACE /
+    # alias shape). It defaults to the handle, which keeps every legacy
+    # stub line byte-identical (hard-negative pin: t-rust-install-export).
+    set(_sn "${A_HANDLE}")
+    if(A_STUB_NAME)
+        set(_sn "${A_STUB_NAME}")
+    endif()
 
     if(A_KIND STREQUAL "bin" OR A_KIND STREQUAL "example")
         set(_d "${_dr}")
         set(_perm "${_pe}")
-        set(_add "add_executable(${_h} IMPORTED GLOBAL)")
+        set(_add "add_executable(${_sn} IMPORTED GLOBAL)")
     elseif(A_KIND STREQUAL "static")
         set(_d "${_da}")
         set(_perm "${_pf}")
-        set(_add "add_library(${_h} STATIC IMPORTED GLOBAL)")
+        set(_add "add_library(${_sn} STATIC IMPORTED GLOBAL)")
     else()
         if(_fam MATCHES "^(msvc|gnu)$")
             set(_d "${_dr}")      # the dll is the RUNTIME artifact
@@ -2255,15 +2273,114 @@ function(_polyorch_rust_install_plan)
             set(_d "${_dl}")      # .so / .dylib
         endif()
         set(_perm "${_pe}")
-        set(_add "add_library(${_h} SHARED IMPORTED GLOBAL)")
+        set(_add "add_library(${_sn} SHARED IMPORTED GLOBAL)")
     endif()
     set(_fd "${_pre}${_d}")
-    set(_stub "${_add}%set_target_properties(${_h} PROPERTIES IMPORTED_LOCATION     \"\${_POLYORCH_RUST_ROOT}/${_fd}/$<TARGET_FILE_NAME:${_h}>\")")
-    if(A_HEADERS AND NOT A_KIND MATCHES "^(bin|example)$")
-        string(APPEND _stub "%set_target_properties(${_h} PROPERTIES INTERFACE_INCLUDE_DIRECTORIES \"\${_POLYORCH_RUST_ROOT}/${_pre}${_di}\")")
+
+    # --- SR5 P1: install(TARGETS)-equivalent version triple ------------------
+    # cmake's documented semantics (VERSION property help): a missing
+    # VERSION/SOVERSION side takes the other's value; the real file is
+    # <name>.<VERSION>, an intermediate <name>.<SOVERSION> link exists when
+    # the two differ, the dev link <name> always. Names are literal (the
+    # frozen artifact-name table via CRATE), so RENAME/link/strip legs need
+    # no genex gymnastics. msvc|gnu|wasm families: FATAL (no soname chain
+    # to version). ponytail: macOS emits cmake's file/symlink SHAPES only --
+    # the dylib's embedded install_name / compat-current version fields are
+    # NOT rewritten (mac consumers stay the documented P2 backlog).
+    set(_vreal "")
+    if(NOT "${A_SOVERSION}" STREQUAL "" OR NOT "${A_VERSION}" STREQUAL "")
+        if(NOT A_KIND STREQUAL "shared")
+            message(FATAL_ERROR
+                "polyorch_rust: install-plan SOVERSION/VERSION requires KIND shared, got '${A_KIND}'")
+        endif()
+        if(NOT _fam MATCHES "^(elf|macho)$")
+            message(FATAL_ERROR
+                "polyorch_rust: install-plan SOVERSION/VERSION supports elf|macho only (family '${_fam}' has no soname chain)")
+        endif()
+        foreach(_vv A_SOVERSION A_VERSION)
+            if(NOT "${${_vv}}" STREQUAL "" AND NOT "${${_vv}}" MATCHES "^[0-9]+(\\.[0-9]+)*$")
+                message(FATAL_ERROR
+                    "polyorch_rust: install-plan version '${${_vv}}' is not digits-and-dots")
+            endif()
+        endforeach()
+        if(NOT A_CRATE)
+            message(FATAL_ERROR
+                "polyorch_rust: install-plan SOVERSION/VERSION needs CRATE (the literal artifact name the chain is spelled from)")
+        endif()
+        _polyorch_rust_artifact_names(TRIPLE "${A_TRIPLE}" KIND shared
+            CRATE "${A_CRATE}" FILE_OUT _fname)
+        set(_vm "${A_SOVERSION}")
+        set(_vp "${A_VERSION}")
+        if(_vm STREQUAL "")
+            set(_vm "${_vp}")
+        endif()
+        if(_vp STREQUAL "")
+            set(_vp "${_vm}")
+        endif()
+        if(_fam STREQUAL "macho")
+            get_filename_component(_vstem "${_fname}" NAME_WE)
+            get_filename_component(_vext "${_fname}" LAST_EXT)
+            set(_vreal "${_vstem}.${_vp}${_vext}")
+            set(_vmid "${_vstem}.${_vm}${_vext}")
+        else()
+            set(_vreal "${_fname}.${_vp}")
+            set(_vmid "${_fname}.${_vm}")
+        endif()
     endif()
-    string(JOIN "|" _row "$<TARGET_FILE:${_h}>" "${_fd}" "${_perm}" "${_comp}" "${_cfgs}" "${_stub}")
+
+    set(_vloc "$<TARGET_FILE_NAME:${_h}>")
+    if(_vreal)
+        set(_vloc "${_vreal}")
+    endif()
+    set(_stub "${_add}%set_target_properties(${_sn} PROPERTIES IMPORTED_LOCATION     \"\${_POLYORCH_RUST_ROOT}/${_fd}/${_vloc}\")")
+    if(A_HEADERS AND NOT A_KIND MATCHES "^(bin|example)$")
+        string(APPEND _stub "%set_target_properties(${_sn} PROPERTIES INTERFACE_INCLUDE_DIRECTORIES \"\${_POLYORCH_RUST_ROOT}/${_pre}${_di}\")")
+    endif()
+    if(_vreal)
+        string(JOIN "|" _row "$<TARGET_FILE:${_h}>" "${_fd}" "${_perm}" "${_comp}" "${_cfgs}" "${_stub}" "RENAME=${_vreal}")
+    else()
+        string(JOIN "|" _row "$<TARGET_FILE:${_h}>" "${_fd}" "${_perm}" "${_comp}" "${_cfgs}" "${_stub}")
+    endif()
     set(_rows "${_row}")
+
+    # SR5 P7: --strip does NOT reach install(FILES) rows (measured on cmake
+    # 3.31.8 and 4.4.4: debug sections survive a --strip install), so a
+    # STRIP_TOOL given by the caller emits an install(CODE) leg after the
+    # shared copy row, honoring CMAKE_INSTALL_DO_STRIP at install time.
+    # Windows families get no legs (the tool caller documents the posture).
+    if(A_STRIP_TOOL AND A_KIND STREQUAL "shared")
+        if(_fam STREQUAL "macho")
+            set(_sflags "-x")
+        else()
+            set(_sflags "--strip-unneeded")
+        endif()
+        string(JOIN "|" _srow "" "${_fd}" "${_perm}" "${_comp}" "${_cfgs}" "" "CODE=if(CMAKE_INSTALL_DO_STRIP)
+get_filename_component(_polyorch_strip_dir \"\$ENV{DESTDIR}\${CMAKE_INSTALL_PREFIX}/${_fd}\" ABSOLUTE)
+execute_process(COMMAND \"${A_STRIP_TOOL}\" ${_sflags} \"\${_polyorch_strip_dir}/${_vloc}\")
+endif()")
+        list(APPEND _rows "${_srow}")
+    endif()
+
+    # SR5 P1 symlinks: install(FILES) has NO SYMLINK keyword (measured
+    # against the cmake 3.31.8 and 4.4.4 install-command help; the plan
+    # sketch assumed it), so each name-link is an install-time
+    # file(REMOVE)+file(CREATE_LINK SYMBOLIC) leg -- REMOVE first keeps a
+    # re-install idempotent across version bumps.
+    if(_vreal)
+        if(NOT _vm STREQUAL _vp)
+            string(JOIN "|" _lrow "${_vmid}" "${_fd}" "${_perm}" "${_comp}" "${_cfgs}" "" "LINKCODE=get_filename_component(_polyorch_link_dir \"\$ENV{DESTDIR}\${CMAKE_INSTALL_PREFIX}/${_fd}\" ABSOLUTE)
+file(REMOVE \"\${_polyorch_link_dir}/${_vmid}\")
+file(CREATE_LINK \"${_vreal}\" \"\${_polyorch_link_dir}/${_vmid}\" SYMBOLIC)")
+            list(APPEND _rows "${_lrow}")
+            set(_vdevt "${_vmid}")
+        else()
+            set(_vdevt "${_vreal}")
+        endif()
+        string(JOIN "|" _lrow "${_fname}" "${_fd}" "${_perm}" "${_comp}" "${_cfgs}" "" "LINKCODE=get_filename_component(_polyorch_link_dir \"\$ENV{DESTDIR}\${CMAKE_INSTALL_PREFIX}/${_fd}\" ABSOLUTE)
+file(REMOVE \"\${_polyorch_link_dir}/${_fname}\")
+file(CREATE_LINK \"${_vdevt}\" \"\${_polyorch_link_dir}/${_fname}\" SYMBOLIC)")
+        list(APPEND _rows "${_lrow}")
+    endif()
 
     if(A_KIND STREQUAL "shared" AND A_IMPLIB_FILE)
         # The implib path is a configure-time literal written by
@@ -2271,7 +2388,7 @@ function(_polyorch_rust_install_plan)
         # genex parse (the pre-WP8 function did the same).
         get_filename_component(_ibn "${A_IMPLIB_FILE}" NAME)
         set(_ifd "${_pre}${_da}")
-        string(JOIN "|" _irow "${A_IMPLIB_FILE}" "${_ifd}" "${_pf}" "${_comp}" "${_cfgs}" "set_target_properties(${_h} PROPERTIES IMPORTED_IMPLIB     \"\${_POLYORCH_RUST_ROOT}/${_ifd}/${_ibn}\")")
+        string(JOIN "|" _irow "${A_IMPLIB_FILE}" "${_ifd}" "${_pf}" "${_comp}" "${_cfgs}" "set_target_properties(${_sn} PROPERTIES IMPORTED_IMPLIB     \"\${_POLYORCH_RUST_ROOT}/${_ifd}/${_ibn}\")")
         list(APPEND _rows "${_irow}")
     endif()
 
@@ -2282,11 +2399,16 @@ function(_polyorch_rust_install_plan)
 
     set(${A_OUT_ROWS} "${_rows}" PARENT_SCOPE)
 endfunction()
-# polyorch_rust_install(TARGETS <handle>...
-#   [EXPORT <name>] [PREFIX <dir>]
+# polyorch_rust_install(TARGETS <handle[=alias]>...
+#   [EXPORT <name> [NAMESPACE <ns::>] [SUITE_VERSION <v>] [COMPATIBILITY <mode>]
+#     [COMPONENTS "name=h1 h2"...]]
+#   [PREFIX <dir>]
 #   [RUNTIME_DESTINATION <dir>] [ARCHIVE_DESTINATION <dir>] [LIBRARY_DESTINATION <dir>]
 #   [PERMISSIONS <perm>...] [COMPONENT <name>] [CONFIGURATIONS <cfg>...]
-#   [PUBLIC_HEADER <file>...])
+#   [PUBLIC_HEADER <file>...] [GLOB_HEADERS <dir> [PATTERN <glob>]]
+#   [HEADERS_DIRECTORY <dir> [DESTINATION <rel>]]
+#   [SOVERSION <major>] [VERSION <major.minor.patch>] [STRIP]
+#   [STALE_GLOB <pattern>]
 # Installs the cargo artifacts behind previously-registered rust handles
 # (binaries to <dir>bin/, archives and unix shared libs to <dir>lib/; a
 # Windows-family dll stages to <dir>bin/ as its RUNTIME part with its
@@ -2357,21 +2479,147 @@ endfunction()
 # reference's own install(EXPORT ...) leg is a FATAL at
 # corr:1673-1674); the replay stub remains the single export mechanism
 # (port plan G1 ruling).
+#
+# SR5 install-face primitives (all additive; a call without any of them
+# emits byte-identical rules and stub text -- pinned by t-rust-installplan
+# row locks and the t-rust-installplan-export snapshot):
+#
+# P1 SOVERSION/VERSION (shared handles only -- any other kind in TARGETS
+#   is FATAL; msvc|gnu|wasm families FATAL): install(TARGETS)-equivalent
+#   version triple for the foreign cargo file. cmake semantics: the
+#   missing side takes the other's value; the real file lands as
+#   <artifact>.<VERSION> (RENAME row), an intermediate <artifact>.<SOVERSION>
+#   link when the two differ, and the dev link <artifact> always. Links are
+#   install-time file(CREATE_LINK SYMBOLIC) legs -- install(FILES) has no
+#   SYMLINK keyword (measured against cmake 3.31.8 + 4.4.4 help). macOS
+#   emits cmake's dylib file/symlink SHAPES (libfoo.<V>.dylib + links) but
+#   does NOT rewrite the embedded install_name (P2 backlog, same clause as
+#   the note above).
+# P2 EXPORT extended: NAMESPACE prefixes the imported names registered by
+#   the stub; TARGETS entries accept handle=alias pairs (split at the FIRST
+#   '='; the handle side keeps the *_POLYORCH_TARGET_PREFIX rules, the
+#   alias is domain-free by ruling N1 -- the stub registers ns+alias).
+#   COMPONENTS <"name=h1 h2">... partitions the exported handles into
+#   per-component replay stubs (<export>-rust-<name>.cmake); the Config
+#   dispatches on <export>_FIND_COMPONENTS and sets <export>_<c>_FOUND;
+#   plain find_package keeps the single full stub (byte-stable). Every
+#   listed handle must be in TARGETS (FATAL), one component per handle
+#   (FATAL on duplicates); COMPONENTS/NAMESPACE without EXPORT are FATAL.
+#   The singular COMPONENT kw above is untouched (it stamps destinations).
+# P3 ConfigVersion: EXPORT additionally requires SUITE_VERSION <v> AND
+#   COMPATIBILITY <mode> (both FATAL-mandatory; versions pass IN -- the
+#   supplier never reads Cargo.toml). Emitted via the standard
+#   CMakePackageConfigHelpers write_basic_package_version_file and
+#   installed beside the stub pair.
+# P4 HEADERS_DIRECTORY <dir> [DESTINATION <rel>]: one install(DIRECTORY)
+#   leg preserving the tree (recursive; default <dir>include). DESTINATION
+#   without HEADERS_DIRECTORY is FATAL. Files copied by the tree leg are
+#   invisible to P6 sweeps (documented interaction).
+# P5 GLOB_HEADERS <dir> [PATTERN <glob=*.h*>]: configure-time file(GLOB)
+#   (non-recursive) expanded into the PUBLIC_HEADER row shape. New files
+#   need a reconfigure (same staleness posture as the lane buttons).
+# P6 STALE_GLOB <pattern> (opt-in, ruling N3): before the copy rows of the
+#   call, one install(CODE) sweep leg per destination touched by file-shape
+#   rows: removes pattern-matching files NOT staged by THIS invocation
+#   (the keep-manifest is this call's landed names, embedded at configure
+#   time -- co-located installs sharing a swept destination must not rely
+#   on each other). The leg carries the call's COMPONENT stamp, so it runs
+#   exactly when that component installs.
+# P7 STRIP: cmake --install --strip demonstrably does not touch
+#   install(FILES) rows (measured 3.31.8 + 4.4.4: debug sections survive),
+#   and every rust row is a FILES-shape row -- so STRIP emits an
+#   install(CODE) leg per shared artifact honoring CMAKE_INSTALL_DO_STRIP
+#   at install time. Tool resolution: CMAKE_STRIP if defined, else
+#   find_program(strip); neither -> one WARNING per call, no legs (loud,
+#   never silent). WINDOWS NOTE: msvc|gnu families ship UNSTRIPPED -- the
+#   legs do not exist there (a PE has no --strip-unneeded); given STRIP on
+#   a windows-family host triple warns. Cross installs strip with the HOST
+#   tool (same host-triple simplification the destination layout already
+#   makes).
 function(polyorch_rust_install)
     set(_one EXPORT PREFIX RUNTIME_DESTINATION ARCHIVE_DESTINATION
-        LIBRARY_DESTINATION COMPONENT LANGUAGE_PRODUCT)
-    set(_multi TARGETS PERMISSIONS CONFIGURATIONS PUBLIC_HEADER)
-    cmake_parse_arguments(PARSE_ARGV 0 A "" "${_one}" "${_multi}")
+        LIBRARY_DESTINATION COMPONENT LANGUAGE_PRODUCT
+        SOVERSION VERSION NAMESPACE SUITE_VERSION COMPATIBILITY
+        HEADERS_DIRECTORY DESTINATION GLOB_HEADERS PATTERN STALE_GLOB)
+    set(_multi TARGETS PERMISSIONS CONFIGURATIONS PUBLIC_HEADER COMPONENTS)
+    cmake_parse_arguments(PARSE_ARGV 0 A "STRIP" "${_one}" "${_multi}")
     if(A_UNPARSED_ARGUMENTS)
         message(FATAL_ERROR
             "polyorch_rust_install: unknown args: ${A_UNPARSED_ARGUMENTS}")
     endif()
     _polyorch_rust_must(A_TARGETS)
 
+    # ---- SR5 argument guards (before the target walk; script-mode
+    #      testable, keeps the t-rust-install-args error identities first) --
+    foreach(_kw NAMESPACE COMPONENTS SUITE_VERSION COMPATIBILITY)
+        if(A_${_kw} AND NOT A_EXPORT)
+            message(FATAL_ERROR
+                "polyorch_rust_install: ${_kw} requires EXPORT")
+        endif()
+    endforeach()
+    if(A_DESTINATION AND NOT A_HEADERS_DIRECTORY)
+        message(FATAL_ERROR
+            "polyorch_rust_install: DESTINATION is only meaningful with HEADERS_DIRECTORY")
+    endif()
+    if(A_PATTERN AND NOT A_GLOB_HEADERS)
+        message(FATAL_ERROR
+            "polyorch_rust_install: PATTERN is only meaningful with GLOB_HEADERS")
+    endif()
+    if(A_STALE_GLOB AND A_STALE_GLOB MATCHES "[;|\"]")
+        message(FATAL_ERROR
+            "polyorch_rust_install: STALE_GLOB pattern must not contain ';', '|' or '\"'")
+    endif()
+    if(A_HEADERS_DIRECTORY AND NOT IS_DIRECTORY "${A_HEADERS_DIRECTORY}")
+        message(FATAL_ERROR
+            "polyorch_rust_install: HEADERS_DIRECTORY '${A_HEADERS_DIRECTORY}' does not exist")
+    endif()
+    if(A_GLOB_HEADERS)
+        if(NOT IS_DIRECTORY "${A_GLOB_HEADERS}")
+            message(FATAL_ERROR
+                "polyorch_rust_install: GLOB_HEADERS '${A_GLOB_HEADERS}' does not exist")
+        endif()
+        set(_gpat "*.h*")
+        if(A_PATTERN)
+            set(_gpat "${A_PATTERN}")
+        endif()
+        file(GLOB _ghfound "${A_GLOB_HEADERS}/${_gpat}")
+        if(NOT _ghfound)
+            message(WARNING
+                "polyorch_rust_install: GLOB_HEADERS '${A_GLOB_HEADERS}' pattern "
+                "'${_gpat}' matched no files (headers must be reconfigured into the glob)")
+        endif()
+    endif()
+
+    # ---- pass 0: TARGETS entry split (SR5 P2 handle=alias pairs) ----------
+    # Aliases ride indexed variables, not a parallel list: a list of empty
+    # strings collapses to LENGTH 0 in cmake (measured), which would make
+    # the pass-2 GET read an empty list.
+    set(_hs "")
+    foreach(_e IN LISTS A_TARGETS)
+        string(FIND "${_e}" "=" _eq)
+        list(LENGTH _hs _hi0)
+        if(_eq EQUAL -1)
+            list(APPEND _hs "${_e}")
+            set(_polyorch_alias_${_hi0} "")
+        else()
+            string(SUBSTRING "${_e}" 0 "${_eq}" _hd)
+            math(EXPR _alx "${_eq} + 1")
+            string(SUBSTRING "${_e}" "${_alx}" -1 _al)
+            if(_hd STREQUAL "" OR _al STREQUAL "")
+                message(FATAL_ERROR
+                    "polyorch_rust_install: TARGETS entry '${_e}' splits into an empty handle or alias")
+            endif()
+            list(APPEND _hs "${_hd}")
+            set(_polyorch_alias_${_hi0} "${_al}")
+        endif()
+    endforeach()
+
     # Pass 1: validate every handle exists + is ours BEFORE install()
     # rules or the triple guard are touched, so a typo'd list never
     # half-registers and the actionable error wins over the setup guard.
-    foreach(_h IN LISTS A_TARGETS)
+    set(_hsn "")
+    set(_kinds "")
+    foreach(_h IN LISTS _hs)
         _polyorch_rust_mediator("polyorch_rust_install" "${_h}" _med)
         # PIT-29: the mediator gate resolved the (possibly prefixed) name;
         # mirror it onto the loop var so every later read in the pass and
@@ -2392,11 +2640,72 @@ function(polyorch_rust_install)
                 "nothing ships; consumers order the mediator and read "
                 "POLYORCH_RUST_LIB")
         endif()
+        if((NOT "${A_SOVERSION}" STREQUAL "" OR NOT "${A_VERSION}" STREQUAL "")
+           AND NOT _ikind STREQUAL "shared")
+            message(FATAL_ERROR
+                "polyorch_rust_install: SOVERSION/VERSION applies to shared "
+                "handles only -- '${_h}' is kind '${_ikind}'")
+        endif()
+        list(APPEND _hsn "${_h}")
+        list(APPEND _kinds "${_ikind}")
     endforeach()
     if(NOT POLYORCH_RUST_HOST_TARGET)
         message(FATAL_ERROR
             "polyorch_rust_install: call polyorch_rust_setup first "
             "(no host triple to classify the artifact layout by)")
+    endif()
+    if(A_EXPORT)
+        # SR5 P3: the version pair is FATAL-mandatory with EXPORT (ruling
+        # MINOR-4: an optional pair would be a silent-skip polarity trap).
+        _polyorch_rust_must(A_SUITE_VERSION A_COMPATIBILITY)
+    endif()
+
+    # ---- COMPONENTS grammar (SR5 P2): "name=h1 h2" per element -----------
+    # ';' is cmake's list separator, so a multi-handle component must arrive
+    # as ONE quoted entry with SPACE-separated handles (ruling SR5-M2).
+    set(_cg_names "")
+    set(_cg_handles "")
+    if(A_COMPONENTS)
+        set(_cg_all "")
+        foreach(_ce IN LISTS A_COMPONENTS)
+            string(FIND "${_ce}" "=" _ceq)
+            if(_ceq EQUAL -1)
+                message(FATAL_ERROR
+                    "polyorch_rust_install: COMPONENTS entry '${_ce}' must be name=handle1 handle2")
+            endif()
+            string(SUBSTRING "${_ce}" 0 "${_ceq}" _cn)
+            math(EXPR _cmx "${_ceq} + 1")
+            string(SUBSTRING "${_ce}" "${_cmx}" -1 _cm)
+            if(NOT _cn MATCHES "^[A-Za-z0-9_.+-]+$")
+                message(FATAL_ERROR
+                    "polyorch_rust_install: component name '${_cn}' must be [A-Za-z0-9_.+-]+ (it seeds a stub file name)")
+            endif()
+            string(REGEX REPLACE " +" ";" _cml "${_cm}")
+            set(_cmembers "")
+            foreach(_m IN LISTS _cml)
+                if(_m STREQUAL "")
+                    continue()
+                endif()
+                _polyorch_rust_apply_target_prefix(_m "${_m}")
+                if(NOT _m IN_LIST _hsn)
+                    message(FATAL_ERROR
+                        "polyorch_rust_install: COMPONENTS '${_cn}' lists handle '${_m}' that is not in TARGETS")
+                endif()
+                if(_m IN_LIST _cg_all)
+                    message(FATAL_ERROR
+                        "polyorch_rust_install: handle '${_m}' listed in two COMPONENTS (one component per handle)")
+                endif()
+                list(APPEND _cmembers "${_m}")
+                list(APPEND _cg_all "${_m}")
+            endforeach()
+            if(_cmembers STREQUAL "")
+                message(FATAL_ERROR
+                    "polyorch_rust_install: COMPONENTS '${_cn}' lists no handles")
+            endif()
+            list(APPEND _cg_names "${_cn}")
+            string(REPLACE ";" "," _cjoined "${_cmembers}")
+            list(APPEND _cg_handles "${_cjoined}")
+        endforeach()
     endif()
 
     set(_p "${A_PREFIX}")
@@ -2407,6 +2716,28 @@ function(polyorch_rust_install)
     set(_exec_perms OWNER_READ OWNER_WRITE GROUP_READ WORLD_READ
                     OWNER_EXECUTE GROUP_EXECUTE WORLD_EXECUTE)
     set(_file_perms OWNER_READ OWNER_WRITE GROUP_READ WORLD_READ)
+
+    # SR5 P7: resolve the strip tool once per call (configure-time).
+    set(_strip "")
+    _polyorch_rust_triple_family("${POLYORCH_RUST_HOST_TARGET}" _xfam)
+    if(A_STRIP)
+        if(_xfam MATCHES "^(msvc|gnu)$")
+            message(WARNING
+                "polyorch_rust_install: STRIP given but family '${_xfam}' ships "
+                "unstripped (no CODE legs -- a PE has no --strip-unneeded)")
+        elseif(DEFINED CMAKE_STRIP AND NOT "${CMAKE_STRIP}" STREQUAL "")
+            set(_strip "${CMAKE_STRIP}")
+        else()
+            find_program(_polyorch_install_strip NAMES strip)
+            if(_polyorch_install_strip)
+                set(_strip "${_polyorch_install_strip}")
+            else()
+                message(WARNING
+                    "polyorch_rust_install: STRIP given but no strip tool found "
+                    "(CMAKE_STRIP unset, strip not on PATH) -- installing unstripped")
+            endif()
+        endif()
+    endif()
 
     # Per-call planner pass-through (IMPLIB_FILE joins it per handle).
     set(_extra "")
@@ -2420,15 +2751,21 @@ function(polyorch_rust_install)
             list(APPEND _extra ${_kw} ${A_${_kw}})
         endif()
     endforeach()
-    if(A_PUBLIC_HEADER)
-        list(APPEND _extra HEADERS ${A_PUBLIC_HEADER})
+    set(_hdrs "${A_PUBLIC_HEADER}")
+    if(A_GLOB_HEADERS)
+        list(APPEND _hdrs ${_ghfound})
     endif()
+    if(_hdrs)
+        list(APPEND _extra HEADERS ${_hdrs})
+    endif()
+    string(JOIN " " _cfgjoin ${A_CONFIGURATIONS})
 
     set(_stub "")
+    set(_pre "")
     if(A_EXPORT)
         # Append, never set-with-list: a multi-argument set() would join
         # the lines with ';' and the stub would not parse (measured).
-        string(APPEND _stub
+        string(APPEND _pre
             "# Generated by polyorch_rust_install() -- DO NOT EDIT.\n"
             "# Consume with include(<install-prefix>/${_p}lib/cmake/${A_EXPORT}/${A_EXPORT}-rust.cmake)\n"
             "# or with find_package(${A_EXPORT} CONFIG) via the sibling Config file.\n"
@@ -2436,18 +2773,52 @@ function(polyorch_rust_install)
             "    \"\${CMAKE_CURRENT_LIST_DIR}/../../..\" ABSOLUTE)\n")
     endif()
 
-    # Pass 2: plan + stage + serialize. Every handle was validated in the
-    # pre-pass, so only the kind lookup and the implib literal remain.
-    foreach(_h IN LISTS A_TARGETS)
-        _polyorch_rust_apply_target_prefix(_h "${_h}")   # PIT-29: registered spelling
+    # Pass 2: plan + stage the rows (emission is deferred so a STALE_GLOB
+    # sweep leg can precede every copy row). Every handle was validated in
+    # the pre-pass, so only the kind lookup and the implib literal remain.
+    list(LENGTH _hsn _hcount)
+    math(EXPR _hlast "${_hcount} - 1")
+    set(_all_rows "")
+    foreach(_hi RANGE 0 ${_hlast})
+        list(GET _hsn ${_hi} _h)
+        list(GET _kinds ${_hi} _kind)
+        set(_al "${_polyorch_alias_${_hi}}")
         set(_med "${_h}-build")
-        get_target_property(_kind "${_med}" POLYORCH_RUST_KIND)
         set(_plext ${_extra})
         if(_kind STREQUAL "shared")
             get_target_property(_implib "${_h}" IMPORTED_IMPLIB)
             if(_implib)
                 list(APPEND _plext IMPLIB_FILE "${_implib}")
             endif()
+            if(NOT "${A_SOVERSION}" STREQUAL "" OR NOT "${A_VERSION}" STREQUAL "")
+                get_target_property(_crate "${_med}" POLYORCH_RUST_CRATE)
+                if(NOT _crate)
+                    message(FATAL_ERROR
+                        "polyorch_rust_install: versioned staging needs the handle's "
+                        "POLYORCH_RUST_CRATE stamp (target '${_h}' carries none)")
+                endif()
+                list(APPEND _plext CRATE "${_crate}")
+                if(NOT "${A_SOVERSION}" STREQUAL "")
+                    list(APPEND _plext SOVERSION "${A_SOVERSION}")
+                endif()
+                if(NOT "${A_VERSION}" STREQUAL "")
+                    list(APPEND _plext VERSION "${A_VERSION}")
+                endif()
+            endif()
+        endif()
+        if(_strip)
+            list(APPEND _plext STRIP_TOOL "${_strip}")
+        endif()
+        # SR5 P2: the stub registers ns+alias (alias absent -> handle).
+        set(_reg "${_h}")
+        if(NOT _al STREQUAL "")
+            set(_reg "${_al}")
+        endif()
+        if(A_NAMESPACE)
+            set(_reg "${A_NAMESPACE}${_reg}")
+        endif()
+        if(NOT _reg STREQUAL _h)
+            list(APPEND _plext STUB_NAME "${_reg}")
         endif()
         _polyorch_rust_install_plan(TRIPLE "${POLYORCH_RUST_HOST_TARGET}"
             KIND "${_kind}" HANDLE "${_h}" PREFIX "${_p}"
@@ -2481,29 +2852,17 @@ function(polyorch_rust_install)
             set(_rows "${_rows2}")
         endif()
 
+        # SR5: the stub text is collected per handle first (a chunk), so a
+        # COMPONENTS grouping can route the same chunk into a second file.
+        # Without COMPONENTS the concatenation order is exactly today's.
+        set(_chunk "")
         set(_ri 0)
         foreach(_row IN LISTS _rows)
             string(REPLACE "|" ";" _f "${_row}")
-            list(GET _f 0 _art)
-            list(GET _f 1 _dest)
-            list(GET _f 2 _perms)
-            list(GET _f 3 _comp)
-            list(GET _f 4 _cfgs)
             list(GET _f 5 _sb)
-            string(REPLACE " " ";" _perms "${_perms}")
-            string(REPLACE " " ";" _cfgs "${_cfgs}")
-            set(_iargs "")
-            if(_comp)
-                list(APPEND _iargs COMPONENT "${_comp}")
-            endif()
-            if(_cfgs)
-                list(APPEND _iargs CONFIGURATIONS ${_cfgs})
-            endif()
-            install(FILES "${_art}" DESTINATION "${_dest}"
-                PERMISSIONS ${_perms} ${_iargs})
             if(A_EXPORT AND NOT _sb STREQUAL "")
                 string(REPLACE "%" "\n" _sb "${_sb}")
-                string(APPEND _stub "${_sb}\n")
+                string(APPEND _chunk "${_sb}\n")
                 # Verbatim copy of the probe-attached interface (literal
                 # lists by contract), right after the static main entry.
                 # A genex the user grafted onto the handle is replayed as
@@ -2513,35 +2872,215 @@ function(polyorch_rust_install)
                     get_target_property(_ifl "${_h}" INTERFACE_LINK_LIBRARIES)
                     get_target_property(_ifd "${_h}" INTERFACE_LINK_DIRECTORIES)
                     if(_ifl)
-                        string(APPEND _stub
-                            "set_target_properties(${_h} PROPERTIES INTERFACE_LINK_LIBRARIES \"${_ifl}\")\n")
+                        string(APPEND _chunk
+                            "set_target_properties(${_reg} PROPERTIES INTERFACE_LINK_LIBRARIES \"${_ifl}\")\n")
                     endif()
                     if(_ifd)
-                        string(APPEND _stub
-                            "set_target_properties(${_h} PROPERTIES INTERFACE_LINK_DIRECTORIES \"${_ifd}\")\n")
+                        string(APPEND _chunk
+                            "set_target_properties(${_reg} PROPERTIES INTERFACE_LINK_DIRECTORIES \"${_ifd}\")\n")
                     endif()
                 endif()
             endif()
             math(EXPR _ri "${_ri} + 1")
         endforeach()
+        string(APPEND _stub "${_chunk}")
+        if(_cg_names AND NOT _chunk STREQUAL "")
+            set(_gi -1)
+            set(_ci 0)
+            foreach(_ch IN LISTS _cg_handles)
+                string(REPLACE "," ";" _chl "${_ch}")
+                if(_h IN_LIST _chl)
+                    set(_gi "${_ci}")
+                    break()
+                endif()
+                math(EXPR _ci "${_ci} + 1")
+            endforeach()
+            if(_gi GREATER -1)
+                # Indexed variables, not a positional list: cmake collapses
+                # an empty leading element into "" and list(GET) would then
+                # read an empty list (measured).
+                set(_cgtext_${_gi} "${_cgtext_${_gi}}${_chunk}")
+            endif()
+        endif()
+        list(APPEND _all_rows ${_rows})
+    endforeach()
+
+    # ---- emission list: sweeps, then the optional DIRECTORY leg, then
+    #      the per-handle rows in plan order (legacy order preserved) ----
+    set(_emit "")
+    if(A_STALE_GLOB)
+        # Keep-manifest: every landed name THIS call stages into a
+        # destination (RENAME value / link name / TARGET_FILE_NAME genex /
+        # literal basename). CODE-strip and DIR legs carry no name.
+        set(_odests "")
+        set(_pairs "")
+        foreach(_row IN LISTS _all_rows)
+            string(REPLACE "|" ";" _f "${_row}")
+            list(GET _f 0 _art)
+            list(GET _f 1 _dest)
+            set(_tag "")
+            list(LENGTH _f _fn)
+            if(_fn GREATER 6)
+                list(GET _f 6 _tag)
+            endif()
+            set(_tok "")
+            if(_tag MATCHES "^RENAME=")
+                string(SUBSTRING "${_tag}" 7 -1 _tok)
+            elseif(_tag MATCHES "^LINKCODE=")
+                set(_tok "${_art}")
+            elseif(_tag MATCHES "^CODE=" OR _tag STREQUAL "DIR")
+                continue()
+            elseif(_art MATCHES "^\\$<TARGET_FILE:")
+                string(REGEX REPLACE "^\\$<TARGET_FILE:(.*)>$" "$<TARGET_FILE_NAME:\\1>" _tok "${_art}")
+            else()
+                get_filename_component(_tok "${_art}" NAME)
+            endif()
+            if(NOT _dest IN_LIST _odests)
+                list(APPEND _odests "${_dest}")
+            endif()
+            list(APPEND _pairs "${_dest}|${_tok}")
+        endforeach()
+        foreach(_sd IN LISTS _odests)
+            set(_toks "")
+            foreach(_pair IN LISTS _pairs)
+                string(REPLACE "|" ";" _pp "${_pair}")
+                list(GET _pp 0 _pd)
+                if(_pd STREQUAL _sd)
+                    list(GET _pp 1 _pt)
+                    string(APPEND _toks " \"${_pt}\"")
+                endif()
+            endforeach()
+            string(JOIN "|" _swrow "" "${_sd}" "" "${A_COMPONENT}" "${_cfgjoin}" "" "CODE=set(_polyorch_base \"\$ENV{DESTDIR}\${CMAKE_INSTALL_PREFIX}/${_sd}\")
+get_filename_component(_polyorch_base \"\${_polyorch_base}\" ABSOLUTE)
+set(_polyorch_keep${_toks})
+file(GLOB _polyorch_hits LIST_DIRECTORIES false RELATIVE \"\${_polyorch_base}\" \"\${_polyorch_base}/${A_STALE_GLOB}\")
+foreach(_polyorch_hit IN LISTS _polyorch_hits)
+    if(NOT _polyorch_hit IN_LIST _polyorch_keep)
+        file(REMOVE \"\${_polyorch_base}/\${_polyorch_hit}\")
+    endif()
+endforeach()")
+            list(APPEND _emit "${_swrow}")
+        endforeach()
+    endif()
+    if(A_HEADERS_DIRECTORY)
+        set(_hrel "include")
+        if(A_DESTINATION)
+            set(_hrel "${A_DESTINATION}")
+        endif()
+        string(JOIN "|" _hdrow "${A_HEADERS_DIRECTORY}" "${_p}${_hrel}" "" "${A_COMPONENT}" "${_cfgjoin}" "" "DIR")
+        list(APPEND _emit "${_hdrow}")
+    endif()
+    list(APPEND _emit ${_all_rows})
+
+    foreach(_row IN LISTS _emit)
+        string(REPLACE "|" ";" _f "${_row}")
+        list(GET _f 0 _art)
+        list(GET _f 1 _dest)
+        list(GET _f 2 _perms)
+        list(GET _f 3 _comp)
+        list(GET _f 4 _cfgs)
+        set(_tag "")
+        list(LENGTH _f _fn)
+        if(_fn GREATER 6)
+            list(GET _f 6 _tag)
+        endif()
+        string(REPLACE " " ";" _perms "${_perms}")
+        string(REPLACE " " ";" _cfgs "${_cfgs}")
+        set(_iargs "")
+        if(_comp)
+            list(APPEND _iargs COMPONENT "${_comp}")
+        endif()
+        if(_cfgs)
+            list(APPEND _iargs CONFIGURATIONS ${_cfgs})
+        endif()
+        if(_tag STREQUAL "")
+            install(FILES "${_art}" DESTINATION "${_dest}"
+                PERMISSIONS ${_perms} ${_iargs})
+        elseif(_tag MATCHES "^RENAME=")
+            string(SUBSTRING "${_tag}" 7 -1 _rn)
+            install(FILES "${_art}" DESTINATION "${_dest}" RENAME "${_rn}"
+                PERMISSIONS ${_perms} ${_iargs})
+        elseif(_tag MATCHES "^LINKCODE=")
+            string(SUBSTRING "${_tag}" 9 -1 _cs)
+            install(CODE "${_cs}" ${_iargs})
+        elseif(_tag MATCHES "^CODE=")
+            string(SUBSTRING "${_tag}" 5 -1 _cs)
+            install(CODE "${_cs}" ${_iargs})
+        elseif(_tag STREQUAL "DIR")
+            # Trailing slash: install(DIRECTORY) without it copies the
+            # directory ITSELF into <dest>; the P4 contract is the tree
+            # UNDER the destination (contents form).
+            install(DIRECTORY "${_art}/" DESTINATION "${_dest}" ${_iargs})
+        else()
+            message(FATAL_ERROR
+                "polyorch_rust_install: internal row tag '${_tag}' (planner/executor drift)")
+        endif()
     endforeach()
 
     if(A_EXPORT)
         set(_stubfile "${CMAKE_CURRENT_BINARY_DIR}/${A_EXPORT}-rust.cmake")
-        file(GENERATE OUTPUT "${_stubfile}" CONTENT "${_stub}")
+        file(GENERATE OUTPUT "${_stubfile}" CONTENT "${_pre}${_stub}")
         install(FILES "${_stubfile}" DESTINATION "${_p}lib/cmake/${A_EXPORT}")
+        if(_cg_names)
+            list(LENGTH _cg_names _cgn)
+            math(EXPR _cglast "${_cgn} - 1")
+            foreach(_ci RANGE 0 ${_cglast})
+                list(GET _cg_names ${_ci} _cn)
+                set(_ct "${_cgtext_${_ci}}")
+                set(_cf "${CMAKE_CURRENT_BINARY_DIR}/${A_EXPORT}-rust-${_cn}.cmake")
+                file(GENERATE OUTPUT "${_cf}" CONTENT "${_pre}${_ct}")
+                install(FILES "${_cf}" DESTINATION "${_p}lib/cmake/${A_EXPORT}")
+            endforeach()
+        endif()
+        include(CMakePackageConfigHelpers)
+        write_basic_package_version_file(
+            "${CMAKE_CURRENT_BINARY_DIR}/${A_EXPORT}ConfigVersion.cmake"
+            VERSION "${A_SUITE_VERSION}" COMPATIBILITY "${A_COMPATIBILITY}")
+        install(FILES "${CMAKE_CURRENT_BINARY_DIR}/${A_EXPORT}ConfigVersion.cmake"
+            DESTINATION "${_p}lib/cmake/${A_EXPORT}")
         # The find_package entry point of the pair (the corr:1536
         # PACKAGE_PREFIX_DIR convention, emitted rather than user-written
         # -- deviation registered in the port ledger). Component and
-        # configuration gating do not reach these two files: they install
-        # unconditionally with CMake's default rules.
+        # configuration gating do not reach these config files: they
+        # install unconditionally with CMake's default rules.
         set(_cfgfile "${CMAKE_CURRENT_BINARY_DIR}/${A_EXPORT}Config.cmake")
-        file(WRITE "${_cfgfile}"
-            "# Generated by polyorch_rust_install() -- DO NOT EDIT.\n"
-            "# find_package(${A_EXPORT} CONFIG REQUIRED) entry point.\n"
-            "get_filename_component(PACKAGE_PREFIX_DIR\n"
-            "    \"\${CMAKE_CURRENT_LIST_DIR}/../../..\" ABSOLUTE)\n"
-            "include(\"\${CMAKE_CURRENT_LIST_DIR}/${A_EXPORT}-rust.cmake\")\n")
+        if(_cg_names)
+            # SR5 P2 dispatch: requested components load their own replay
+            # stub and report <export>_<c>_FOUND; unknown components
+            # report FALSE (find_package(REQUIRED) turns that into cmake's
+            # standard missing-component error). No COMPONENTS requested:
+            # the full stub, exactly the legacy behavior.
+            set(_kl "")
+            foreach(_cn IN LISTS _cg_names)
+                string(APPEND _kl " \"${_cn}\"")
+            endforeach()
+            file(WRITE "${_cfgfile}"
+                "# Generated by polyorch_rust_install() -- DO NOT EDIT.\n"
+                "# find_package(${A_EXPORT} CONFIG REQUIRED) entry point.\n"
+                "get_filename_component(PACKAGE_PREFIX_DIR\n"
+                "    \"\${CMAKE_CURRENT_LIST_DIR}/../../..\" ABSOLUTE)\n"
+                "set(_polyorch_known_components${_kl})\n"
+                "if(NOT ${A_EXPORT}_FIND_COMPONENTS)\n"
+                "    include(\"\${CMAKE_CURRENT_LIST_DIR}/${A_EXPORT}-rust.cmake\")\n"
+                "else()\n"
+                "    foreach(_polyorch_c IN LISTS ${A_EXPORT}_FIND_COMPONENTS)\n"
+                "        if(_polyorch_c IN_LIST _polyorch_known_components)\n"
+                "            include(\"\${CMAKE_CURRENT_LIST_DIR}/${A_EXPORT}-rust-\${_polyorch_c}.cmake\")\n"
+                "            set(${A_EXPORT}_\${_polyorch_c}_FOUND TRUE)\n"
+                "        else()\n"
+                "            set(${A_EXPORT}_\${_polyorch_c}_FOUND FALSE)\n"
+                "            message(FATAL_ERROR \"${A_EXPORT}: component '\${_polyorch_c}' is not installed (known: \${_polyorch_known_components})\")\n"
+                "        endif()\n"
+                "    endforeach()\n"
+                "endif()\n")
+        else()
+            file(WRITE "${_cfgfile}"
+                "# Generated by polyorch_rust_install() -- DO NOT EDIT.\n"
+                "# find_package(${A_EXPORT} CONFIG REQUIRED) entry point.\n"
+                "get_filename_component(PACKAGE_PREFIX_DIR\n"
+                "    \"\${CMAKE_CURRENT_LIST_DIR}/../../..\" ABSOLUTE)\n"
+                "include(\"\${CMAKE_CURRENT_LIST_DIR}/${A_EXPORT}-rust.cmake\")\n")
+        endif()
         install(FILES "${_cfgfile}" DESTINATION "${_p}lib/cmake/${A_EXPORT}")
     endif()
 endfunction()

@@ -15,5 +15,6 @@ polyorch_rust_build(
     MANIFEST "${CMAKE_CURRENT_LIST_DIR}/rs/Cargo.toml")
 
 polyorch_rust_install(TARGETS mathkit EXPORT mathkit-demo
-    PUBLIC_HEADER "${CMAKE_CURRENT_LIST_DIR}/mathkit.h")
+    PUBLIC_HEADER "${CMAKE_CURRENT_LIST_DIR}/mathkit.h"
+    SUITE_VERSION 0.1.0 COMPATIBILITY SameMajorVersion)
 message(STATUS "mathkit staged: install later with 'cmake --install . --prefix <dir>'")

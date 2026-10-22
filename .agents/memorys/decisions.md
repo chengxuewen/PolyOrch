@@ -876,3 +876,51 @@ lands as a literal test argument -- measured); values are quoted at the call so 
 list-valued LABELS stays one argument. node_test additionally gains the UNPARSED_ARGUMENTS
 FATAL it never had. Additive keywords: 0.5.0 -> 0.6.0, sentinel companion same stroke.
 Host consumer: MediaServo retires BOTH sanctioned-internal reads onto this surface.
+
+## D46: foreign-artifact install(TARGETS) parity -- P1..P7 on polyorch_rust_install (2026-10-22, SR5 round, host-driven)
+
+The consumer-side ruling (delivery tree described by CMake, python retreats to
+invoke+brand+language-native packaging) needed the install face to reach
+install(TARGETS) capability for FOREIGN cargo files. Row schema grew an optional
+7th TAG field (RENAME= / LINKCODE= / CODE= / DIR): tag-free rows keep the exact
+6-field legacy shape, so the untouched full-row table locks in t-rust-installplan
+stay green (the byte-stability hard negative, plus a legacy stub/Config snapshot
+in t-rust-installplan-export). P1: cmake's documented semantics -- a missing
+VERSION/SOVERSION side takes the other's value, real file <name>.<V>, intermediate
+<name>.<M> when they differ, dev link always; names literal from the frozen
+artifact table (CRATE passes in, supplier never reads Cargo.toml). install(FILES)
+has NO SYMLINK keyword (measured against cmake 3.31.8 + 4.4.4 help -- the plan
+sketch assumed it), so links are install(CODE) file(REMOVE)+file(CREATE_LINK
+SYMBOLIC) legs with ABSOLUTE-normalized base (a relative --prefix silently yields
+empty file(GLOB RELATIVE ...) results -- measured trap). msvc|gnu|wasm versioning
+FATAL (no soname chain); macOS emits cmake's file/symlink SHAPES only, the
+install_name rewrite stays the documented P2 backlog. P2: NAMESPACE prefixes the
+stub's registered name, TARGETS accept handle=alias pairs (split at FIRST '=';
+alias domain-free per ruling N1), COMPONENTS "name=h1 h2" partitions replay stubs
+per component with a dispatching Config; no-COMPONENTS callers keep the full stub
+byte-identically. P3: EXPORT now MANDATES SUITE_VERSION+COMPATIBILITY (silent-skip
+polarity trap ruled out) and emits <export>ConfigVersion.cmake through the
+standard CMakePackageConfigHelpers -- the one in-repo BREAKING: four callers
+(2 fixtures, 2 examples) updated same stroke. P4/P5: HEADERS_DIRECTORY copies the
+tree CONTENTS (trailing-slash form measured) into <rel> (default include);
+GLOB_HEADERS expands a non-recursive configure-time glob into the existing
+PUBLIC_HEADER row shape (staleness posture = lanes buttons). P6: STALE_GLOB is
+opt-in (ruling N3) -- install(CODE) sweep BEFORE the copy legs per destination,
+keep-manifest = the landed names THIS call stages (co-located installs must not
+share a swept destination). P7: --strip provably does not reach install(FILES)
+rows (measured 3.31.8 + 4.4.4, debug sections survive), so STRIP emits a
+CMAKE_INSTALL_DO_STRIP-gated execute_process leg per shared artifact; tool via
+CMAKE_STRIP else find_program, missing tool warns once and ships unstripped
+(windows families documented unstripped -- a PE has no --strip-unneeded).
+Config-mode component checks must be raised BY the Config file (cmake inspects
+only <pn>_FOUND -- measured: an unknown component sails through otherwise).
+Additive surface + one EXPORT-mandatory pair: 0.6.0 -> 0.7.0, sentinel companion
+same stroke. Pins: t-rust-installplan-versions (planner table + 6 guard legs incl.
+the SOVERSION-0 truthiness trap), t-rust-installplan-export (2 byte snapshots +
+11 install-text pins + 17 guard legs, forged-handle configure children),
+t-rust-installplan-stage (sweep ordering + keep-manifest + strip posture + plain
+negative), t-rust-install-versioned-e2e (real cdylib: chain resolves, size
+witness both ways for --strip, component find_package builds AND runs, unknown
+component bites, stale corpse swept while unrelated files survive). Host
+consumer: MediaServo SR4 opens on this surface (per-leg migration, e2e
+byte-equivalence judges).

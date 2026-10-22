@@ -139,3 +139,32 @@ child-guard-before-spawn shape inherited from SR2) + t-node-ctest (workspace fix
 PM stubbed, loud-skip posture leg) + t-rust-ctest-e2e (real cargo: `ctest -R` passes the
 crate suite through the registered entry -- ran GREEN). Sentinel companion 0.5.0->0.6.0.
 Host: MediaServo SR3b retires both sanctioned-internal reads.
+
+## 2026-10-22 -- D46 SR5: install-face primitives P1..P7 (v0.7.0)
+
+polyorch_rust_install reached install(TARGETS) parity for the foreign cargo
+files. Row encoding grew an optional 7th tag field (RENAME/LINKCODE/CODE/DIR);
+tag-free rows keep the exact legacy 6-field shape, so the t-rust-installplan
+table locks stayed byte-untouched (the byte-stability negative). P1 version
+chain per cmake semantics (missing side = the other's value) with
+file(CREATE_LINK SYMBOLIC) legs -- the plan's install(FILES SYMLINK) sketch
+is invalid (the keyword does not exist, measured 3.31.8+4.4.4); P2 NAMESPACE +
+handle=alias + COMPONENTS partitioned replay stubs with a dispatching Config;
+P3 EXPORT now MANDATES SUITE_VERSION+COMPATIBILITY (ConfigVersion via the
+standard module) -- four in-repo callers updated same stroke; P4 tree copy
+(contents form), P5 non-recursive glob into the PUBLIC_HEADER row shape,
+P6 opt-in STALE_GLOB sweeps before the copy legs (keep-manifest = this call's
+landed names), P7 STRIP legs gated on CMAKE_INSTALL_DO_STRIP (--strip provably
+skips install(FILES) rows; windows documented unstripped). Measured traps now
+pinned: keyword truthiness swallows SOVERSION 0; empty elements collapse
+parallel cmake lists (aliases + component texts ride indexed vars); relative
+--prefix makes file(GLOB RELATIVE) silently empty (every install-time leg
+absolutizes its base); Config-mode must raise unknown-component errors itself.
+New cases: t-rust-installplan-versions, t-rust-installplan-export,
+t-rust-installplan-stage, t-rust-install-versioned-e2e (fixture
+install-versioned; ran GREEN: chain + size witness both directions + consumer
+run + unknown-component bite + stale sweep). Existing t-rust-install-e2e and
+t-rust-install-export reran green against the rewritten executor. Suite live:
+84 pass / 2 env-classified fails (fusion/bindings, unchanged baseline) / 32
+skip. Sentinel companion 0.6.0->0.7.0. Host: MediaServo SR5/SR4 -- SR4 opens
+on this surface. Push to gitee pending host-side credentials.

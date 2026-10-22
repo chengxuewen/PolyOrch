@@ -142,7 +142,8 @@ polyorch_rust_cbindgen(TARGET spine-static HEADER_NAME spine.h)
 polyorch_rust_install(TARGETS spine-static spine-run-bin
     EXPORT spine-demo
     PUBLIC_HEADER "$<TARGET_PROPERTY:${_h},INTERFACE_INCLUDE_DIRECTORIES>/spine.h"
-    ARCHIVE_DESTINATION lib/spine)
+    ARCHIVE_DESTINATION lib/spine
+    SUITE_VERSION 0.1.0 COMPATIBILITY SameMajorVersion)
 if(PolyOrch_RUST_TARGET_PREFIX)
     polyorch_rust_clean(NAME "${PolyOrch_RUST_TARGET_PREFIX}-clean")
 else()

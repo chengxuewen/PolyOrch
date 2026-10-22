@@ -46,7 +46,8 @@ file(WRITE "${CMAKE_BINARY_DIR}/imported.txt" "${_imps}")
 polyorch_rust_build(TARGET hook-lib PACKAGE hookme CRATE hookme STATIC
     MANIFEST "${_cws}/Cargo.toml" PREBUILD prebuild-stamp)
 
-polyorch_rust_install(TARGETS dash_ed say-hi-exe EXPORT demo)
+polyorch_rust_install(TARGETS dash_ed say-hi-exe EXPORT demo
+    SUITE_VERSION 0.1.0 COMPATIBILITY SameMajorVersion)
 
 # Staged-name evidence from the resolved genexes (the case derives the staged
 # paths from these, never re-spelling file names).

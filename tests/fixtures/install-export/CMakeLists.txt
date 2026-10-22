@@ -39,7 +39,8 @@ file(WRITE "${CMAKE_BINARY_DIR}/imported.txt" "${_imps}")
 # the stub hands the directory to the consumer compile line.
 polyorch_rust_install(TARGETS demo say-exe EXPORT polyorch-demo
     RUNTIME_DESTINATION appbin COMPONENT demo
-    PUBLIC_HEADER "${CMAKE_CURRENT_LIST_DIR}/include/demo.h")
+    PUBLIC_HEADER "${CMAKE_CURRENT_LIST_DIR}/include/demo.h"
+    SUITE_VERSION 0.1.0 COMPATIBILITY SameMajorVersion)
 
 # Staged-name evidence from the resolved genexes (the case derives the
 # staged paths from these, never re-spelling file names).
