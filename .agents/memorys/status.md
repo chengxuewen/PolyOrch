@@ -128,3 +128,14 @@ fails (fusion/bindings, unchanged from S0 baseline) / 30 skip (e2e leg run
 separately). Companion: t-embed-sentinel version pin 0.4.0 -> 0.5.0.
 Host driving the request: MediaServo (polyorch-sr2-clean-scope); push to gitee
 pending host-side credentials.
+
+## 2026-10-22 -- D45 SR3: CTEST keywords on rust+node test verbs (v0.6.0)
+
+polyorch_rust_test/polyorch_node_test gained `CTEST` + four prefixed keyword args; the
+entry shares the button's command vector by construction (single assembly). node_test
+finally gets its UNPARSED FATAL. Pins: t-rust-ctest (offline: single-source argv
+equality across CTestTestfile/build.make, defaults, explicit legs, negative leg,
+child-guard-before-spawn shape inherited from SR2) + t-node-ctest (workspace fixture,
+PM stubbed, loud-skip posture leg) + t-rust-ctest-e2e (real cargo: `ctest -R` passes the
+crate suite through the registered entry -- ran GREEN). Sentinel companion 0.5.0->0.6.0.
+Host: MediaServo SR3b retires both sanctioned-internal reads.

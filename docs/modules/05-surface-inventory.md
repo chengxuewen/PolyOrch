@@ -52,7 +52,7 @@ Covered by: `t-rust-findrust`, `t-rust-setup-*`, `t-rust-rustc-version`, `t-rust
 | `polyorch_rust_add_rustflags` | `polyorch_rust_add_rustflags(TARGET <n> [FLAGS <flag>...])` |
 | `polyorch_rust_set_hostbuild` | `polyorch_rust_set_hostbuild(TARGET <n>)` |
 | `polyorch_rust_link_libraries` | `polyorch_rust_link_libraries(TARGET <n> <library\|target\|abs-path>...)` |
-| `polyorch_rust_test` | `polyorch_rust_test(PACKAGE <p> [NAME <t>] [MANIFEST <path>] [ALL] [ARGS ...]` |
+| `polyorch_rust_test` | `polyorch_rust_test(PACKAGE <p> [NAME <t>] [MANIFEST <path>] [ALL] [ARGS ...] [BASE_DIR <td>] [FOLDER <ide>] [TARGET <h>])` -- D45: `CTEST` (with `CTEST_NAME/CTEST_LABELS/CTEST_WORKING_DIRECTORY/CTEST_SKIP_RETURN_CODE`, prefixed kws by ruling) adds a ctest entry consuming the SAME command vector as the button; defaults `<p>-test`/`rust`/manifest parent |
 | `polyorch_rust_run` | `polyorch_rust_run(TARGET <imported> [FOLDER <ide>])` |
 | `polyorch_rust_clean` | `polyorch_rust_clean([NAME <t>] [BASE_DIR <td>] [FOLDER <ide>] [PACKAGE <crate> MANIFEST <path>])` -- D44: the PACKAGE form runs `cargo clean -p` through the sanctioned wrapper (needs the detected cargo, WORKING_DIRECTORY = manifest parent); without PACKAGE the whole-face directory removal stays the toolchain-free form |
 | `polyorch_rust_install` | `polyorch_rust_install(TARGETS <handle>...` |
@@ -69,7 +69,7 @@ Covered by: the `t-rust-*` family (`build`/`import`/`setters`/`linkplan`/`crossp
 | `polyorch_node_setup` | `polyorch_node_setup([REQUIRED])` -- SR1/D43: the root manifest's `packageManager` field selects `npm|pnpm` (knobs `PolyOrchNodePackageJson`, `PolyOrchNodePnpm`; dispatch tiers mirror per PM) |
 | `polyorch_node_import` | `polyorch_node_import(ROOT <root-package.json>)` -- D43: under a pnpm PM a `pnpm-workspace.yaml` plain `packages:` list is accepted when the root json has no `workspaces` field; every other shape keeps the historic hard error |
 | `polyorch_node_build` | `polyorch_node_build(TARGET <handle> MANIFEST <package.json> [OUTPUT_DIR <dir>])` |
-| `polyorch_node_test` | `polyorch_node_test(TARGET <handle>)` |
+| `polyorch_node_test` | `polyorch_node_test(TARGET <handle> [CTEST [CTEST_NAME <n>] [CTEST_LABELS <l>] [CTEST_WORKING_DIRECTORY <d>]])` -- D45 same single-source attach, defaults `<handle>-test`/`node`/mediator root; unknown args now FATAL (was silently accepting) |
 | `polyorch_node_run` | `polyorch_node_run(TARGET <handle> SCRIPT <name> [ARGS ...])` |
 | `polyorch_node_debug` | `polyorch_node_debug(TARGET <handle> [NAME <label>] [ARGS <a>...] [ENVS <K=V>...] [OUTFILES <glob,...>])` |
 

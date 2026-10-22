@@ -682,9 +682,20 @@ endfunction()
 #
 # Registers <handle>-test ONLY when the member's package.json declares
 # scripts.test (loud STATUS skip otherwise -- never silent).
+# polyorch_node_test(TARGET <handle> [CTEST [CTEST_NAME <n>] [CTEST_LABELS <l>]
+#                          [CTEST_WORKING_DIRECTORY <d>]])
+# Button: `<handle>-test` running the PM's test script. CTEST adds a ctest
+# entry consuming the SAME command vector (single source; SR3/D45 rust shape).
+# Defaults: CTEST_NAME `<handle>-test`, CTEST_LABELS `node`, CTEST_WORKING_DIRECTORY
+# = the mediator's own package root. No scripts.test => no button AND no ctest
+# entry (the loud-skip posture covers both surfaces identically).
 function(polyorch_node_test)
-    set(_one TARGET)
-    cmake_parse_arguments(PARSE_ARGV 0 T "" "${_one}" "")
+    set(_opts CTEST)
+    set(_one TARGET CTEST_NAME CTEST_LABELS CTEST_WORKING_DIRECTORY)
+    cmake_parse_arguments(PARSE_ARGV 0 T "${_opts}" "${_one}" "")
+    if(T_UNPARSED_ARGUMENTS)
+        message(FATAL_ERROR "polyorch_node_test: unknown args: ${T_UNPARSED_ARGUMENTS}")
+    endif()
     _polyorch_node_apply_prefix(_th "${T_TARGET}")
     get_property(_mf GLOBAL PROPERTY "POLYORCH_NODE_MANIFEST_${_th}")
     if(NOT _mf)
@@ -702,9 +713,10 @@ function(polyorch_node_test)
     get_property(_pkg GLOBAL PROPERTY "POLYORCH_NODE_PKG_${_th}")
     _polyorch_node_ws_args(_wsargs "${_pkg}")
     _polyorch_node_rule_path(_tstenv)
+    set(_tcmd ${CMAKE_COMMAND} -E env "${_tstenv}"
+        ${PolyOrchNode_PM_EXECUTABLE} run test ${_wsargs})
     add_custom_target("${_th}-test"
-        COMMAND ${CMAKE_COMMAND} -E env "${_tstenv}"
-            ${PolyOrchNode_PM_EXECUTABLE} run test ${_wsargs}
+        COMMAND ${_tcmd}
         WORKING_DIRECTORY "${_root}"
         USES_TERMINAL
         COMMENT "node: test ${_pkg} (${_th})")
@@ -715,6 +727,24 @@ function(polyorch_node_test)
     # IDE parity: the test node mounts the same display files as the
     # build mediator (SOFT -- verb-node reuse of the stamped dir).
     _polyorch_node_mount_verb_targets("${_th}" "${_th}-test")
+
+    if(T_CTEST)
+        set(_tn "${T_CTEST_NAME}")
+        if(NOT _tn)
+            set(_tn "${_th}-test")
+        endif()
+        set(_cwd "${T_CTEST_WORKING_DIRECTORY}")
+        if(NOT _cwd)
+            set(_cwd "${_root}")
+        endif()
+        set(_labs "${T_CTEST_LABELS}")
+        if(NOT _labs)
+            set(_labs "node")
+        endif()
+        add_test(NAME "${_tn}" COMMAND ${_tcmd})
+        set_tests_properties("${_tn}" PROPERTIES
+            WORKING_DIRECTORY "${_cwd}" LABELS "${_labs}")
+    endif()
 endfunction()
 
 # polyorch_node_run(TARGET <handle> SCRIPT <name> [ARGS ...])

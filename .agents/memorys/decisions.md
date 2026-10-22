@@ -858,3 +858,21 @@ t-rust-clean (offline; asserts ride the Makefiles build.make recipe -- the
 COMMAND property is NOT readable on non-IMPORTED targets, measured 4.4.4),
 t-rust-clean-e2e (real cargo: sibling survives, cleaned rebuilds). Host
 consumer: MediaServo polyorch-sr2-clean-scope, same-round gitlink + floor bump.
+
+## D45: CTEST registration keywords on the rust + node test verbs (2026-10-22, SR3 round, host-driven)
+
+Consumers hand-bridged cargo/node tests into ctest by reading the two sanctioned supplier
+internals (`_polyorch_rust_command` / `_polyorch_rust_forward_env`) -- the ONLY existence
+reason for that exception (three independent re-implementations, one re-spelling the PATH
+recipe outright). Now both test verbs accept `CTEST` + prefixed keyword args
+(CTEST_NAME/CTEST_LABELS/CTEST_WORKING_DIRECTORY/CTEST_SKIP_RETURN_CODE; bare NAME was
+rejected -- same-call keyword collision silently renames the BUTTON, a measured review
+finding). The ctest entry consumes the SAME built command vector as the button: divergence
+is unimplementable by construction (single assembly site; pinned by test, not prose).
+Defaults: name `<pkg>-test`, LABELS `rust`/`node`, WORKING_DIRECTORY = manifest parent
+(cargo config up-walk, corr posture), SKIP_RETURN_CODE ONLY when passed (77-on-missing-tool
+is a consumer lane posture, not cargo truth). add_test has no VERBATIM form (the keyword
+lands as a literal test argument -- measured); values are quoted at the call so a
+list-valued LABELS stays one argument. node_test additionally gains the UNPARSED_ARGUMENTS
+FATAL it never had. Additive keywords: 0.5.0 -> 0.6.0, sentinel companion same stroke.
+Host consumer: MediaServo retires BOTH sanctioned-internal reads onto this surface.

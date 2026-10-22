@@ -1862,15 +1862,30 @@ function(_polyorch_rust_target_dir OUT BASE_OVERRIDE)
 endfunction()
 
 # polyorch_rust_test(PACKAGE <p> [NAME <t>] [MANIFEST <path>] [ALL] [ARGS ...]
-#                    [BASE_DIR <td>] [FOLDER <ide>])
+#                    [BASE_DIR <td>] [FOLDER <ide>]
+#                    [CTEST [CTEST_NAME <n>] [CTEST_LABELS <l>]
+#                         [CTEST_WORKING_DIRECTORY <d>] [CTEST_SKIP_RETURN_CODE <c>]])
 # Registers a custom target running `cargo test --package P`. NAME defaults to
 # `<p>-rusttest`. ALL adds it to the default target set. ARGS are appended
-# verbatim (cargo treats them as filter / harness arguments). Like build, the
+# verbatim (cargo treats them as filter / harness arguments). CTEST also adds a
+# ctest entry consuming the SAME built command vector as the button (single
+# source -- the divergence this kw exists to prevent is unimplementable by
+# construction). Prefixed keywords only: bare NAME would collide with the
+# button-name kw in the same cmake_parse_arguments call (overwrite = silent
+# button rename, measured review finding). Defaults: CTEST_NAME `<p>-test`,
+# CTEST_LABELS `rust`, CTEST_WORKING_DIRECTORY = manifest parent (cargo's
+# .cargo/config.toml up-walk from CWD, corr's contract; caller overrides --
+# the MediaServo lanes pass their workspace root), CTEST_SKIP_RETURN_CODE only
+# when passed (77-on-missing-tool is a consumer posture, not cargo truth).
+# add_test has NO VERBATIM form (the keyword lands as a literal test argument,
+# measured cmake 4.4.4) -- the raw shared list is the right shape.
+# Like build, the
 # rule is not written as ALL by default and the target only tests at build
 # time, never at configure time.
 function(polyorch_rust_test)
-    set(_opts ALL)
-    set(_one PACKAGE NAME MANIFEST BASE_DIR FOLDER TARGET)
+    set(_opts ALL CTEST)
+    set(_one PACKAGE NAME MANIFEST BASE_DIR FOLDER TARGET
+        CTEST_NAME CTEST_LABELS CTEST_WORKING_DIRECTORY CTEST_SKIP_RETURN_CODE)
     set(_multi ARGS)
     cmake_parse_arguments(PARSE_ARGV 0 T "${_opts}" "${_one}" "${_multi}")
     if(T_UNPARSED_ARGUMENTS)
@@ -1951,6 +1966,38 @@ function(polyorch_rust_test)
             BASE_DIRECTORY "${CMAKE_SOURCE_DIR}" OUTPUT_VARIABLE _fold)
     endif()
     set_target_properties("${_name}" PROPERTIES FOLDER "${_fold}")
+
+    if(T_CTEST)
+        set(_tn "${T_CTEST_NAME}")
+        if(NOT _tn)
+            set(_tn "${T_PACKAGE}-test")
+        endif()
+        set(_cwd "${T_CTEST_WORKING_DIRECTORY}")
+        if(NOT _cwd)
+            if(T_MANIFEST)
+                get_filename_component(_cwd "${T_MANIFEST}" DIRECTORY)
+            else()
+                set(_cwd "${CMAKE_CURRENT_SOURCE_DIR}")
+            endif()
+        endif()
+        set(_labs "${T_CTEST_LABELS}")
+        if(NOT _labs)
+            set(_labs "rust")
+        endif()
+        # The vector ${_cmd} IS the button's command -- no second assembly.
+        add_test(NAME "${_tn}" COMMAND ${_cmd})
+        # values QUOTED at the call itself: a list-valued LABELS ("a;b") must
+        # stay one argument (flattened via an unquoted variable it breaks the
+        # property-pair count -- measured).
+        if(DEFINED T_CTEST_SKIP_RETURN_CODE)
+            set_tests_properties("${_tn}" PROPERTIES
+                WORKING_DIRECTORY "${_cwd}" LABELS "${_labs}"
+                SKIP_RETURN_CODE "${T_CTEST_SKIP_RETURN_CODE}")
+        else()
+            set_tests_properties("${_tn}" PROPERTIES
+                WORKING_DIRECTORY "${_cwd}" LABELS "${_labs}")
+        endif()
+    endif()
 endfunction()
 
 # polyorch_rust_run(TARGET <imported> [FOLDER <ide>])
