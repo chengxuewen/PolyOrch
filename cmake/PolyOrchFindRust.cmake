@@ -1386,15 +1386,36 @@ function(_polyorch_rust_command CMD_OUT)
         --unset=CXXFLAGS
         --unset=CC
         --unset=CXX)
-    if(POLYORCH_RUST_ROUTE STREQUAL "pixi")
+    # Execution-logic predicate (D49): the toolchain's sibling binaries
+    # (rustc, rust-lld, bindgen...) must be reachable by any cargo CHILD
+    # process, which resolves them via PATH -- not via cmake's search rules.
+    # The discovery-route string records HOW cargo was found (accounting),
+    # not whether the sibling dir needs to ride PATH (execution): a cargo
+    # discovered in the pixi env bin via the cmake binary's own-dir search
+    # lands here with ROUTE=system, and the bare-cargo else-branch starved
+    # the child of rustc (measured 2026-10-26: configure green via the
+    # sibling hit, build dead on `could not execute process rustc -vV`).
+    # The honest condition is BIN_DIR being non-empty: whenever we know the
+    # bin dir, prepend it; IDE and CLI faces become environment-independent
+    # in the same stroke (the Corrosion property: discovery results are
+    # pinned into the build rules, not re-derived from ambient PATH).
+    if(POLYORCH_RUST_BIN_DIR)
         if(WIN32)
             set(_sep ";")
         else()
             set(_sep ":")
         endif()
-        set(_path "PATH=${POLYORCH_RUST_BIN_DIR}${_sep}$ENV{PATH}")
+set(_path "PATH=${POLYORCH_RUST_BIN_DIR}${_sep}$ENV{PATH}")
         string(REPLACE ";" "\\;" _path "${_path}")
+        # bindgen's libclang probe has the same execution-logic shape as the
+        # rustc child: it must find libclang without relying on ambient PATH/
+        # ldconfig. When the toolchain env carries one (pixi envs do), pin it;
+        # when not, leave the var unset (system libclang keeps working).
+        if(EXISTS "${POLYORCH_RUST_BIN_DIR}/../lib/libclang.so")
+            set(_cmd ${CMAKE_COMMAND} -E env ${_strip} "${_path}" "LIBCLANG_PATH=${POLYORCH_RUST_BIN_DIR}/../lib/libclang.so" ${R_ENV} "${POLYORCH_RUST_CARGO}" ${_tail})
+        else()
         set(_cmd ${CMAKE_COMMAND} -E env ${_strip} "${_path}" ${R_ENV} "${POLYORCH_RUST_CARGO}" ${_tail})
+        endif()
     else()
         set(_cmd ${CMAKE_COMMAND} -E env ${_strip} ${R_ENV} "${POLYORCH_RUST_CARGO}" ${_tail})
     endif()

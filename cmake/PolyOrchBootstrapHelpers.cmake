@@ -119,6 +119,37 @@ function(polyorch_bootstrap_hint)
         # at expansion and the separator lands in the written file (measured).
         set(_bh_rows "    ${_bh_row},\n")
         string(APPEND _bh_rows "    \"cmake.configureOnOpen\": true,\n")
+        # cmake.environment PATH prepend (D49 companion): configure-side
+        # find_program gets the sibling hit, but BUILD-stage cargo children
+        # (rustc, and bindgen's libclang probe) resolve via PATH/LIBCLANG_PATH
+        # -- the env block covers both faces from the IDE surface. The bin
+        # dir is derived from the already-computed relative candidate path
+        # (filename dropped), and LIBCLANG_PATH points at the env's lib/
+        # sibling of that bin dir (bindgen's probe target).
+        get_filename_component(_bh_bindir "${_bh_cand}" DIRECTORY)
+        file(RELATIVE_PATH _bh_bindir_rel "${CMAKE_SOURCE_DIR}" "${_bh_bindir}")
+        set(_bh_env_path "${_bh_bindir_rel}")
+        set(_bh_env_lib "${_bh_bindir_rel}/../lib")
+        if(_bh_bindir_rel MATCHES "^[.][.]")
+            # out-of-workspace candidate: absolute forms (workspaceFolder
+            # cannot express outside paths)
+            set(_bh_env_path "${_bh_bindir}")
+            set(_bh_env_lib "${_bh_bindir}/../lib")
+        endif()
+        set(_bh_dollar "$")
+        set(_bh_rows_all
+            "    \"cmake.environment\": {\n"
+            "        \"PATH\": \"\${workspaceFolder}/${_bh_env_path}:${_bh_dollar}{env:PATH}\",\n"
+            "        \"LIBCLANG_PATH\": \"\${workspaceFolder}/${_bh_env_lib}\"\n"
+            "    },\n")
+        if(_bh_bindir_rel MATCHES "^[.][.]")
+            set(_bh_rows_all
+                "    \"cmake.environment\": {\n"
+                "        \"PATH\": \"${_bh_env_path}:${_bh_dollar}{env:PATH}\",\n"
+                "        \"LIBCLANG_PATH\": \"${_bh_env_lib}\"\n"
+                "    },\n")
+        endif()
+        string(APPEND _bh_rows "${_bh_rows_all}")
         _polyorch_bootstrap_region_write("${_bh_file}"
             "${_bh_begin}" "${_bh_end}" "${_bh_rows}"
             "{\n%ROWS%\n}" _bh_st)

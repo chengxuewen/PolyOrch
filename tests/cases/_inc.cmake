@@ -87,13 +87,18 @@ macro(ck_child_fail rx)
     endif()
 endmacro()
 
-macro(ck_str a b)
-    string(COMPARE EQUAL "${a}" "${b}" _ck_ok)
-    if(NOT _ck_ok)
+function(ck_str a b)
+    # a FUNCTION (not macro): macro arguments are substituted TEXTUALLY at
+    # every use site, so content bearing a literal "\${...}" re-expands inside
+    # the body and explodes (measured: 'Invalid character in a variable
+    # name: env'). Function scope receives VALUES -- expansion-inert.
+    if(NOT a STREQUAL b)
+        string(SHA256 _a "${a}")
+        string(SHA256 _b "${b}")
         message(FATAL_ERROR
-            "check failed (line ${CMAKE_CURRENT_LIST_LINE}): [${a}] != [${b}]")
+            "check failed (line ${CMAKE_CURRENT_LIST_LINE}): digests ${_a} != ${_b}")
     endif()
-endmacro()
+endfunction()
 
 macro(ck_fail_rc v)
     if("${${v}}" EQUAL 0)
