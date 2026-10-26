@@ -949,3 +949,41 @@ run.sh registered by the t-*.cmake glob. Additive knob: 0.7.1 -> 0.7.2, sentinel
 companion same stroke. Consumer: MediaServo SR6/IDE-naming row sets the knob
 alongside its prefix (names 'mediaservo-web-admin-build' /
 'mediaservo-web-client-build').
+
+## D48: polyorch_bootstrap_hint -- failure-path IDE bootstrap (2026-10-26, consumer-driven)
+
+CMake Tools opens a workspace with the system cmake + desktop PATH while the dev
+toolchain lives in a pixi env; the first configure then dies in the rust probe,
+and no success-path generator can ever fix it -- the settings file that would fix
+the failure is an INPUT to the failing configure (the chicken-and-egg loop). New
+module PolyOrchBootstrapHelpers.cmake breaks the loop from the failure side:
+polyorch_bootstrap_hint(CANDIDATE_CMAKE <path> [SOURCE_HINT <text>]) runs on the
+configure-failure path, and when the candidate exists and differs from the
+running CMAKE_COMMAND it (a) synchronously writes the workspace
+.vscode/settings.json managed region -- cmake_language(DEFER) never executes on
+a FATAL path (measured), so the writer is a synchronous twin of the debug face's
+_polyorch_vscode_region_write (byte-equal body, renamed, self-contained module;
+the SHAPE is shared, the generator is not) -- with rows
+"cmake.cmakePath": "${workspaceFolder}/<relative-path>" (the LITERAL string,
+never an absolute path: the file can end up in a repo; out-of-workspace
+candidates fall back to the absolute form) + "cmake.configureOnOpen": true, and
+(b) prints a WARNING-grade two-step guidance block (settings file written ->
+run 'CMake: Delete Cache and Reconfigure' or reload the window, then
+reconfigure). Physics of the fix (lead A/B, B1): find_program searches the
+cmake binary's OWN bin/ directory, so the pixi cmake finds sibling cargo even
+under a stripped desktop PATH. Markerless pre-existing settings.json is parked
+beside as .polyorch-new (never rewritten); marked files update in place with
+user content above the BEGIN marker untouched; the self case (candidate ==
+cmake) and the absent-candidate case write NOTHING -- the absent branch prints
+the bootstrap-the-environment guidance and exits 0 (a hint never fails a
+configure). Trigger discipline: the hint only fires when the lane needs rust
+and the probe failed, so a workspace that configures fine on its current
+toolchain is never touched (the trigger itself is the wrong-line detector).
+Offline suite: t-bootstrap-hint (child-configure pixi-shape leg: ${workspaceFolder}
+literal + markers + configureOnOpen + guidance text; V2 update semantics), 
+t-bootstrap-system-shape (absent branch: exit 0, no write, init guidance; self
+case silence), t-bootstrap-park (markerless original byte-identical, .polyorch-new
+side document). Additive surface: 0.7.2 -> 0.7.3, sentinel companion same stroke
+(the D47 precedent: patch bump, consumer floors stay put). Consumer: MediaServo
+root CMakeLists hooks it at the shared lane gate (one call site, all
+lane-bearing presets reached).

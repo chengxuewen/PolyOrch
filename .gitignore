@@ -102,6 +102,7 @@ node_modules
 # Test and build artifacts
 test-results
 *.tsbuildinfo
+.scratch
 
 # Python bindings example artifacts
 

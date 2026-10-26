@@ -192,3 +192,22 @@ duplicate-handle FATAL preserved and pinned post-strip. OFF = byte-identical
 legacy behavior. New: fixture node-strip-scopes + t-node-strip-scopes (ON / OFF
 byte-identical / three scope spellings / collision FATAL). Version 0.7.1 -> 0.7.2
 (sentinel companion CMakeLists.txt only -- this face is property-carried).
+
+## 2026-10-26 -- D48: polyorch_bootstrap_hint failure-path bootstrap (v0.7.3)
+
+New PolyOrchBootstrapHelpers.cmake (D48 in decisions.md): synchronous settings.json
+writer + two-step guidance on the configure-failure path (CMake Tools first-open
+chicken-and-egg, consumer ide-bootstrap round). Sync twin of the debug region
+writer (DEFER never fires on FATAL -- measured); ${workspaceFolder} literal rows;
+polyorch-new park contract; absent branch exits 0 with the environment-bootstrap
+pointer. Three offline cases (t-bootstrap-hint / t-bootstrap-system-shape /
+t-bootstrap-park), guard-before-spawn discipline (first draft's private-switch
+FATAL guard recursed the driver into re-exec infinity -- the guard must check
+ck_child_fail's own POLYORCH_CHILD). Version 0.7.2 -> 0.7.3, sentinel companion
+pinned. Suite on this box: 77 pass / 8 fail / 37 skip -- the 8 = the S0-era
+host env class, stash-reproved byte-identical at HEAD (no ~/.cargo/bin on the
+tool PATH: example-run, bindings, cpplib, fusion, knobs, nodejs, pyext, wasm).
+Measured traps pinned in comments: set() two-arg builds a LIST (the ";"
+separator lands in the written file -- use string(APPEND)); ck() token-joins
+and mangles escapes (string(COMPARE EQUAL) for escape-sensitive pins); STATUS
+rides stdout under capture (judge the combined stream).
