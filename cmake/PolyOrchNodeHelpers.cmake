@@ -26,8 +26,12 @@
 # opts out in build(); PolyOrch_NODE_SOURCES_PLAIN is the escape hatch.
 # Naming: real targets are kebab-case; fused trees namespace them through
 # PolyOrch_NODE_TARGET_PREFIX (this module's own knob -- A2: the name says
-# NODE and means NODE; the rust knob stays the rust knob's). Fusion loop
-# wiring is in examples/CMakeLists.txt.
+# NODE and means NODE; the rust knob stays the rust knob's). Optionally
+# PolyOrch_NODE_STRIP_SCOPES (a LIST of npm scopes, "@org" / "org" / "org/"
+# forms all matching) removes a scope from the sanitized handle before the
+# prefix is applied -- '@org/pkg' becomes '<prefix>-pkg' instead of
+# '<prefix>-org-pkg' (D47; opt-in, default OFF = byte-identical legacy form).
+# Fusion loop wiring is in examples/CMakeLists.txt.
 #
 # Requires CMake >= 3.25 (PARSE_ARGV, string(JSON ...)).
 
@@ -260,9 +264,23 @@ endfunction()
 # the original A form kept the '@' and CMake said no. Collision between a
 # scoped package and a hypothetical bare 'org-pkg' remains guarded by the
 # duplicate-handle FATAL in import.
+#
+# D47: when PolyOrch_NODE_STRIP_SCOPES names the package's scope, it is
+# removed after sanitizing -- '@org/pkg' -> 'pkg'. Forms match modulo the
+# leading '@' and a trailing '/'. OFF by default: with the list empty the
+# output is byte-identical to the legacy form, so existing consumers (and
+# their collision expectations) never move.
 function(_polyorch_node_sanitize_name out name)
     string(REPLACE "/" "-" _san "${name}")
     string(REGEX REPLACE "^@" "" _san "${_san}")
+    foreach(_scope IN LISTS PolyOrch_NODE_STRIP_SCOPES)
+        string(REGEX REPLACE "^@" "" _scope "${_scope}")
+        string(REGEX REPLACE "/$" "" _scope "${_scope}")
+        if(_san MATCHES "^${_scope}-(.+)$")
+            set(_san "${CMAKE_MATCH_1}")
+            break()
+        endif()
+    endforeach()
     set(${out} "${_san}" PARENT_SCOPE)
 endfunction()
 

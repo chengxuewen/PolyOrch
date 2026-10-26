@@ -924,3 +924,28 @@ witness both ways for --strip, component find_package builds AND runs, unknown
 component bites, stale corpse swept while unrelated files survive). Host
 consumer: MediaServo SR4 opens on this surface (per-leg migration, e2e
 byte-equivalence judges).
+
+## D47: PolyOrch_NODE_STRIP_SCOPES -- opt-in scope strip on the node sanitize path (2026-10-26, consumer-driven)
+
+The MediaServo web lanes hit the double-name smell: '@mediaservo/admin' sanitizes
+to 'mediaservo-admin' and with PolyOrch_NODE_TARGET_PREFIX="mediaservo-web" the
+handle became 'mediaservo-web-mediaservo-admin-build' -- the scope word duplicated
+the ownership prefix at zero information. New knob PolyOrch_NODE_STRIP_SCOPES (a
+LIST of npm scopes; "@org" / "org" / "org/" spellings all match after normalizing
+the leading '@' and trailing '/'): when a member's sanitized handle starts with
+"<scope>-", the scope is removed BEFORE prefix application -- '@mediaservo/admin'
++ prefix 'mediaservo-web' yields 'mediaservo-web-admin-build'. Default OFF: an
+empty list leaves the output byte-identical to the legacy form, so existing
+consumers and their collision expectations never move. Implemented inside
+_polyorch_node_sanitize_name -- both import call sites (members ~line 484 and
+workspace deps ~line 551) and the debug-label site route through it, so members
+and dependency edges get identical treatment by construction; the duplicate-handle
+FATAL is untouched and still guards post-strip collisions (a scoped 'x/a' beside
+a bare 'a' FATALs with an ON list -- pinned). PolyOrch_node_build is unaffected
+(its TARGET argument is caller-sanitized, not an npm name). Suite: 4-leg offline
+t-node-strip-scopes (ON, OFF byte-identical, three scope spellings, collision
+FATAL) + fixture node-strip-scopes asserting the exact handle set per polarity;
+run.sh registered by the t-*.cmake glob. Additive knob: 0.7.1 -> 0.7.2, sentinel
+companion same stroke. Consumer: MediaServo SR6/IDE-naming row sets the knob
+alongside its prefix (names 'mediaservo-web-admin-build' /
+'mediaservo-web-client-build').

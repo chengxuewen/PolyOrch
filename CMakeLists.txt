@@ -7,7 +7,7 @@ cmake_minimum_required(VERSION 3.25)  # 2026-10-10 (user adjudication 5-B): the 
 # to add this directory -- BUT the PlatformSupport module needs a CXX compiler identity
 # from an ANCESTOR project() (or an equivalent injection such as
 # CMAKE_PROJECT_TOP_LEVEL_INCLUDES); without one its mkspec probe is a FATAL_ERROR.
-project(PolyOrch VERSION 0.7.1 LANGUAGES NONE)
+project(PolyOrch VERSION 0.7.2 LANGUAGES NONE)
 
 # Embed sentinel: a host detects "already added" via `if(NOT TARGET PolyOrch::PolyOrch)`.
 # Imported so the name may carry '::' (real targets cannot; measured in tests/CMakeLists.txt)

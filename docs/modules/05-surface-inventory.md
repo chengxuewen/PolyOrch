@@ -67,7 +67,7 @@ Covered by: the `t-rust-*` family (`build`/`import`/`setters`/`linkplan`/`crossp
 | Function | Signature (source comment) |
 |---|---|
 | `polyorch_node_setup` | `polyorch_node_setup([REQUIRED])` -- SR1/D43: the root manifest's `packageManager` field selects `npm|pnpm` (knobs `PolyOrchNodePackageJson`, `PolyOrchNodePnpm`; dispatch tiers mirror per PM) |
-| `polyorch_node_import` | `polyorch_node_import(ROOT <root-package.json>)` -- D43: under a pnpm PM a `pnpm-workspace.yaml` plain `packages:` list is accepted when the root json has no `workspaces` field; every other shape keeps the historic hard error |
+| `polyorch_node_import` | `polyorch_node_import(ROOT <root-package.json>)` -- D43: under a pnpm PM a `pnpm-workspace.yaml` plain `packages:` list is accepted when the root json has no `workspaces` field; every other shape keeps the historic hard error. D47: knob `PolyOrch_NODE_STRIP_SCOPES` (LIST of scopes, `@org`/`org`/`org/` forms equal) strips a member's scope from the sanitized handle before prefixing; default OFF = byte-identical legacy names, duplicate-handle FATAL still guards post-strip collisions |
 | `polyorch_node_build` | `polyorch_node_build(TARGET <handle> MANIFEST <package.json> [OUTPUT_DIR <dir>])` |
 | `polyorch_node_test` | `polyorch_node_test(TARGET <handle> [CTEST [CTEST_NAME <n>] [CTEST_LABELS <l>] [CTEST_WORKING_DIRECTORY <d>]])` -- D45 same single-source attach, defaults `<handle>-test`/`node`/mediator root; unknown args now FATAL (was silently accepting) |
 | `polyorch_node_run` | `polyorch_node_run(TARGET <handle> SCRIPT <name> [ARGS ...])` |

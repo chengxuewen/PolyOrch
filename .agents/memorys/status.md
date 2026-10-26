@@ -179,3 +179,16 @@ policy-free. The combined e2e passed before because its child project set the po
 measurement lesson: an install-script leg must run under the CONSUMER's policy floor,
 not the fixture's convenience. Version 0.7.0 -> 0.7.1 (fix) + sentinel companion;
 stage case pins the new text.
+
+## 2026-10-26 -- D47: PolyOrch_NODE_STRIP_SCOPES knob (v0.7.2)
+
+Node sanitize path grew the opt-in scope strip: PolyOrch_NODE_STRIP_SCOPES is a
+LIST of scopes ("@org"/"org"/"org/" forms equivalent) removed from a member's
+sanitized handle before the prefix is applied -- '@mediaservo/admin' + prefix
+'mediaservo-web' -> 'mediaservo-web-admin-build' (the consumer's double-name
+elimination). Single implementation point (_polyorch_node_sanitize_name) so
+members, workspace-dep edges, and debug labels stay identical by construction;
+duplicate-handle FATAL preserved and pinned post-strip. OFF = byte-identical
+legacy behavior. New: fixture node-strip-scopes + t-node-strip-scopes (ON / OFF
+byte-identical / three scope spellings / collision FATAL). Version 0.7.1 -> 0.7.2
+(sentinel companion CMakeLists.txt only -- this face is property-carried).
