@@ -230,3 +230,22 @@ rides stdout under capture (judge the combined stream).
 - Measured traps pinned in comments (four of them bit during bring-up): (1) cmake regexes have NO {n} quantifier -- [0-9a-f]{64} matches nothing, hash gates silently refused every real hash until LENGTH+class replaced it (_polyorch_tp_is_hex64); (2) string(JSON)'s ERROR_VARIABLE only catches PARSE errors, a missing member is a hard kill -- presence is probed on the raw text ("key"[ ]*:) before any read; (3) file(GLOB LIST_DIRECTORIES) trailing-slash behavior differs across cmake versions -- the flatten step must IS_DIRECTORY-test, a list(FILTER "/[^/]+$") excluded EVERYTHING; (4) ck() cannot take STREQUAL "" (the empty quoted arg evaporates in macro ARGN -- _inc's own documented rule) and cmake FATAL text folds across lines, so multi-word regexes over flattened child output accept [ ]+ runs.
 - Two design defects caught by the tests themselves, both fixed in the helper: the fetch stamp returned a dead path when the source tree had been deleted (stamp = inputs memo, never proof the outputs survived; re-extract on vanish), and the re-acquire sweep once deleted the whole payload root, taking the recipe face's install-<cfg> dirs with it (the sweep now touches only fetch's own outputs).
 - Version 0.7.3 -> 0.8.0 + t-embed-sentinel companion 0.7.3 -> 0.8.0. MediaServo floor 0.7.0 -> 0.8.0 same stroke (H5: floor and version move together; docs/modules/06-thirdparty-face.md is the new face page; inventory 48 -> 54).
+
+## 2026-11-03 -- D50 P2: package cache pack/unpack (v0.8.0 line, additive)
+
+- New verb polyorch_thirdparty_package + recipe PACKAGES_DIR/PACKAGE_FORMAT/
+  TRIPLET/PACKAGE_OUT. Verdict order: install-sidecar identity -> package
+  cache -> build. A hit unpacks into the install prefix and logs "zero
+  build"; a hit never recreates build-<cfg>/.
+- Sidecars: <pkg>.sha256 (bare hex) + <pkg>.manifest.json; both mandatory
+  before any unpack. Missing pair / sha mismatch / key mismatch / extracted
+  tree without manifest -> FATAL.
+- Relocate gate: absolute path tokens in *.cmake/*.pc/*.pri (system prefixes
+  allowed) -> FATAL "not relocatable"; the relativized twin packs. Both
+  directions pinned by t-thirdparty-package-relocate (no cxx needed).
+- Measured trap (new): CMake 4.4 dropped `--format` from `cmake -E tar`;
+  cf out.zip/out.7z silently write POSIX tar (file(1)-verified). FORMAT
+  tar.gz is the only writable value; zip/7zip FATAL as a declared seam.
+- Suite after P2: 91 pass / 8 fail / 37 skip (8 = the pinned env-class set).
+  Inventory 54 -> 55; docs/modules/06-thirdparty-face.md gained the package
+  cache section; provider seam text for prebuilt/system re-pointed at P3+.

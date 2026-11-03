@@ -50,6 +50,22 @@ function(_polyorch_tp_is_hex64 value out)
     endif()
 endfunction()
 
+# _polyorch_tp_package_name -- <name>-<version>-<triplet>-<profile>-
+# <buildtype>-<linkmode>-<key12>.<ext> (sr8 §2.4). Empty identity fields
+# become "none": a bare "--" run would let two different identities
+# collide in one file name.
+function(_polyorch_tp_package_name out name version triplet profile buildtype linkmode key12 ext)
+    foreach(_tp_v triplet profile linkmode)
+        if("${${_tp_v}}" STREQUAL "")
+            set(${_tp_v} "none")
+        endif()
+    endforeach()
+    if("${version}" STREQUAL "")
+        set(version "none")
+    endif()
+    set(${out} "${name}-${version}-${triplet}-${profile}-${buildtype}-${linkmode}-${key12}.${ext}" PARENT_SCOPE)
+endfunction()
+
 #-----------------------------------------------------------------------------------------------------------------------
 # polyorch_thirdparty_fingerprint -- full-field cache key.
 #
@@ -398,6 +414,157 @@ function(polyorch_thirdparty_manifest_write)
 endfunction()
 
 #-----------------------------------------------------------------------------------------------------------------------
+# _polyorch_tp_relocate_audit -- heuristic relocatability gate for the pack
+# face (F5=A criterion 10, both directions). Scans the textual config
+# surfaces (*.cmake / *.pc / *.pri) for absolute path literals that would
+# pin the artifact to the build host. System prefixes are allowed (they are
+# environment facts, not build-host leaks). The first offending file+token
+# is reported; the caller refuses to pack.
+#
+# Deliberately a heuristic (O-2 stays open for a heavier method): the
+# guarantee is behavioural -- the paired tests prove "absolute prefix
+# refused / relativized prefix accepted".
+function(_polyorch_tp_relocate_audit install_dir out_ok out_why)
+    file(GLOB_RECURSE _tp_cfg
+        "${install_dir}/*.cmake" "${install_dir}/*.pc" "${install_dir}/*.pri")
+    set(_tp_ok TRUE)
+    set(_tp_why "")
+    foreach(_tp_f IN LISTS _tp_cfg)
+        file(READ "${_tp_f}" _tp_txt)
+        # cmake regexes carry no {n} and no \s; "at least two segments"
+        # keeps ${_IMPORT_PREFIX}/lib-style tokens out (the character before
+        # the slash is "}", not in the lead class).
+        string(REGEX MATCHALL "(^|[ \t\"'(=:])(/[A-Za-z0-9_.+-]+(/[A-Za-z0-9_.+-]+)+)" _tp_hits "${_tp_txt}")
+        foreach(_tp_h IN LISTS _tp_hits)
+            string(REGEX REPLACE "^[ \t\"'(=:]" "" _tp_tok "${_tp_h}")
+            if(_tp_tok MATCHES "^(/usr|/lib|/lib64|/opt/homebrew|/System|/Library|/bin)(/|$)")
+                continue()
+            endif()
+            set(_tp_ok FALSE)
+            set(_tp_why "${_tp_f}: absolute path '${_tp_tok}'")
+            break()
+        endforeach()
+        if(NOT _tp_ok)
+            break()
+        endif()
+    endforeach()
+    set(${out_ok} ${_tp_ok} PARENT_SCOPE)
+    set(${out_why} "${_tp_why}" PARENT_SCOPE)
+endfunction()
+
+#-----------------------------------------------------------------------------------------------------------------------
+# polyorch_thirdparty_package -- pack an installed prefix into the shared
+# package cache (P2; an empty caller-side PACKAGES_DIR means this verb never
+# runs -- QExt "empty = no packing" semantics).
+#
+#   polyorch_thirdparty_package(NAME <n> INSTALL_DIR <d> PACKAGE_DIR <d>
+#     [MANIFEST <f>] [FORMAT tar.gz] [TRIPLET <t>] [REFRESH]
+#     [PACKAGE_OUT <var>])
+#
+# Name and sidecars (sr8 §2.4): <name>-<version>-<triplet>-<profile>-
+# <buildtype>-<linkmode>-<key12>.<ext>, beside it <pkg>.sha256 (bare hex,
+# oxmgr precedent) and <pkg>.manifest.json. The unpack verdict compares the
+# sidecar manifest key -- a present file is never the verdict.
+#
+# FORMAT seam: F5 declares tar.gz (default) with 7zip/zip optional. This
+# packer is `cmake -E tar`, and CMake 4.4 dropped --format there (measured:
+# zip/7zip extensions silently produce a POSIX tar). They are
+# declared-but-refused until a real packer lands -- loud, never wrong bytes.
+function(polyorch_thirdparty_package)
+    cmake_parse_arguments(arg "REFRESH"
+        "NAME;INSTALL_DIR;PACKAGE_DIR;MANIFEST;FORMAT;TRIPLET;PACKAGE_OUT" "" ${ARGN})
+    foreach(_tp_req IN ITEMS NAME INSTALL_DIR PACKAGE_DIR)
+        if(NOT arg_${_tp_req})
+            message(FATAL_ERROR "polyorch_thirdparty_package: ${_tp_req} is required")
+        endif()
+    endforeach()
+    if(NOT EXISTS "${arg_INSTALL_DIR}")
+        message(FATAL_ERROR "polyorch_thirdparty_package: INSTALL_DIR '${arg_INSTALL_DIR}' does not exist -- build first (H2)")
+    endif()
+    if(NOT arg_FORMAT)
+        set(arg_FORMAT "tar.gz")
+    endif()
+    if(NOT arg_FORMAT STREQUAL "tar.gz")
+        message(FATAL_ERROR "polyorch_thirdparty_package: FORMAT '${arg_FORMAT}' is declared (F5) but not writable by this packer: `cmake -E tar` on CMake 4.4 has no --format (measured), and a zip/7zip name over tar bytes would be a mis-labeled archive. Use tar.gz; a 7zip/zip packer is a seam, not silently wrong bytes.")
+    endif()
+    if(NOT arg_MANIFEST)
+        set(arg_MANIFEST "${arg_INSTALL_DIR}/polyorch-thirdparty-manifest.json")
+    endif()
+    if(NOT EXISTS "${arg_MANIFEST}")
+        message(FATAL_ERROR "polyorch_thirdparty_package: no manifest at '${arg_MANIFEST}' -- packing without identity is refused (the unpack verdict is manifest identity, not file existence)")
+    endif()
+    file(READ "${arg_MANIFEST}" _tp_m)
+    string(JSON _tp_key GET "${_tp_m}" key)
+    _polyorch_tp_is_hex64("${_tp_key}" _tp_key_ok)
+    if(NOT _tp_key_ok)
+        message(FATAL_ERROR "polyorch_thirdparty_package: manifest key is not 64 lowercase hex")
+    endif()
+    # Optional manifest members: probe the raw text first (string(JSON) GET
+    # on a missing member is a HARD error, measured in P1).
+    set(_tp_version "")
+    set(_tp_profile "")
+    set(_tp_buildtype "")
+    set(_tp_linkmode "")
+    set(_tp_triplet "${arg_TRIPLET}")
+    foreach(_tp_f IN ITEMS version profile buildtype linkmode triplet)
+        if("${_tp_m}" MATCHES "\"${_tp_f}\"[ ]*:")
+            string(JSON _tp_v GET "${_tp_m}" "${_tp_f}")
+            set(_tp_${_tp_f} "${_tp_v}")
+        endif()
+    endforeach()
+    string(SUBSTRING "${_tp_key}" 0 12 _tp_k12)
+    _polyorch_tp_package_name(_tp_pkgname "${arg_NAME}" "${_tp_version}" "${_tp_triplet}" "${_tp_profile}" "${_tp_buildtype}" "${_tp_linkmode}" "${_tp_k12}" "${arg_FORMAT}")
+    file(MAKE_DIRECTORY "${arg_PACKAGE_DIR}")
+    set(_tp_pkgfile "${arg_PACKAGE_DIR}/${_tp_pkgname}")
+    set(_tp_sha_file "${_tp_pkgfile}.sha256")
+    set(_tp_side_mf "${_tp_pkgfile}.manifest.json")
+
+    # Idempotency = sidecar identity, not existence: a byte-equal archive
+    # whose sidecar disagrees is repacked, never trusted.
+    if(EXISTS "${_tp_pkgfile}" AND EXISTS "${_tp_sha_file}" AND EXISTS "${_tp_side_mf}" AND NOT arg_REFRESH)
+        file(SHA256 "${_tp_pkgfile}" _tp_actual)
+        file(READ "${_tp_sha_file}" _tp_recorded)
+        string(STRIP "${_tp_recorded}" _tp_recorded)
+        file(READ "${_tp_side_mf}" _tp_sm)
+        set(_tp_skey "")
+        if("${_tp_sm}" MATCHES "\"key\"[ ]*:")
+            string(JSON _tp_skey GET "${_tp_sm}" key)
+        endif()
+        if(_tp_actual STREQUAL "${_tp_recorded}" AND _tp_skey STREQUAL "${_tp_key}")
+            message(STATUS "polyorch thirdparty: ${arg_NAME} package up to date (${_tp_pkgname})")
+            if(arg_PACKAGE_OUT)
+                set(${arg_PACKAGE_OUT} "${_tp_pkgfile}" PARENT_SCOPE)
+            endif()
+            return()
+        endif()
+        message(STATUS "polyorch thirdparty: ${arg_NAME} stale package artifacts present -- repacking")
+    endif()
+
+    # Relocate gate: refuse to write a build-host-pinned prefix into the
+    # shared cache (F5 criterion 10).
+    _polyorch_tp_relocate_audit("${arg_INSTALL_DIR}" _tp_reloc_ok _tp_reloc_why)
+    if(NOT _tp_reloc_ok)
+        message(FATAL_ERROR "polyorch_thirdparty_package: '${arg_NAME}' is not relocatable -- ${_tp_reloc_why}. Refusing to write an absolute-path-pinned prefix into the shared package cache (F5 criterion 10; relativize the install tree, or keep the artifact local until O-2 lands).")
+    endif()
+
+    # Sidecar-first removal: a crash after pack but before sidecar rewrite must
+    # leave an unverifiable pair, not a stale "verified" one.
+    file(REMOVE "${_tp_sha_file}" "${_tp_side_mf}")
+    execute_process(COMMAND "${CMAKE_COMMAND}" -E tar czf "${_tp_pkgfile}" .
+        WORKING_DIRECTORY "${arg_INSTALL_DIR}" RESULT_VARIABLE _tp_rc)
+    if(NOT _tp_rc EQUAL 0)
+        message(FATAL_ERROR "polyorch_thirdparty_package: packing ${arg_NAME} failed (rc=${_tp_rc})")
+    endif()
+    file(SHA256 "${_tp_pkgfile}" _tp_sha)
+    file(WRITE "${_tp_sha_file}" "${_tp_sha}\n")
+    file(WRITE "${_tp_side_mf}" "${_tp_m}")
+    message(STATUS "polyorch thirdparty: ${arg_NAME} packed -> ${_tp_pkgname}")
+    if(arg_PACKAGE_OUT)
+        set(${arg_PACKAGE_OUT} "${_tp_pkgfile}" PARENT_SCOPE)
+    endif()
+endfunction()
+
+#-----------------------------------------------------------------------------------------------------------------------
 # polyorch_thirdparty_import -- consume the upstream's installed config.
 #
 #   polyorch_thirdparty_import(NAME <n> INSTALL_DIR <d> FIND_PACKAGE_NAME <Pkg>
@@ -447,9 +614,12 @@ endmacro()
 # polyorch_thirdparty_recipe -- declarative JSON recipe loader (F11=A).
 #
 #   polyorch_thirdparty_recipe(RECIPE <file.json> [RECIPE_BASE <dir>]
-#     WORK_DIR <d> BUILD_TYPE <cfg> [PROFILE <p>] [GENERATOR <g>] [PARALLEL <n>]
+#     WORK_DIR <d> BUILD_TYPE <cfg> [PROFILE <p>] [TRIPLET <t>]
+#     [GENERATOR <g>] [PARALLEL <n>]
+#     [PACKAGES_DIR <d>] [PACKAGE_FORMAT tar.gz]    (P2; empty dir = no packing)
 #     [SOURCE_DIR_OUT <var>] [INSTALL_DIR_OUT <var>] [FINGERPRINT_OUT <var>]
-#     [MANIFEST_OUT <var>] [FIND_PACKAGE_NAME_OUT <var>] [ALIAS_OUT <var>]
+#     [MANIFEST_OUT <var>] [PACKAGE_OUT <var>]
+#     [FIND_PACKAGE_NAME_OUT <var>] [ALIAS_OUT <var>]
 #     [COMPONENTS_OUT <var>] [TARGETS_OUT <var>])
 #
 # JSON carries static facts only (version/url/hashes/patches/profile option
@@ -461,7 +631,7 @@ endmacro()
 # alias. Import stays a separate verb (this loader returns the wiring).
 function(polyorch_thirdparty_recipe)
     cmake_parse_arguments(arg ""
-        "RECIPE;RECIPE_BASE;WORK_DIR;BUILD_TYPE;PROFILE;GENERATOR;PARALLEL;SOURCE_DIR_OUT;INSTALL_DIR_OUT;FINGERPRINT_OUT;MANIFEST_OUT;FIND_PACKAGE_NAME_OUT;ALIAS_OUT;COMPONENTS_OUT;TARGETS_OUT" "" ${ARGN})
+        "RECIPE;RECIPE_BASE;WORK_DIR;BUILD_TYPE;PROFILE;TRIPLET;GENERATOR;PARALLEL;PACKAGES_DIR;PACKAGE_FORMAT;SOURCE_DIR_OUT;INSTALL_DIR_OUT;FINGERPRINT_OUT;MANIFEST_OUT;PACKAGE_OUT;FIND_PACKAGE_NAME_OUT;ALIAS_OUT;COMPONENTS_OUT;TARGETS_OUT" "" ${ARGN})
     if(NOT arg_RECIPE OR NOT arg_WORK_DIR OR NOT arg_BUILD_TYPE)
         message(FATAL_ERROR "polyorch_thirdparty_recipe: RECIPE, WORK_DIR and BUILD_TYPE are required (BUILD_TYPE explicit: O-3)")
     endif()
@@ -500,10 +670,10 @@ function(polyorch_thirdparty_recipe)
         message(FATAL_ERROR "polyorch_thirdparty_recipe: provider '${_tp_provider}' is reserved but not implemented -- it lands with the P7 provider face; prerequisites: O-10 (in-repo pinning) + O-11 (single cache truth) + PolyOrch O4. Until then ship the library as a pinned source archive (provider \"source\").")
     endif()
     if(_tp_provider STREQUAL "prebuilt" OR _tp_provider STREQUAL "system")
-        message(FATAL_ERROR "polyorch_thirdparty_recipe: provider '${_tp_provider}' arrives with the package-cache face (P2); P1 provides source recipes only")
+        message(FATAL_ERROR "polyorch_thirdparty_recipe: provider '${_tp_provider}' is not a source recipe -- package caching for source builds is PACKAGES_DIR (P2); direct prebuilt/system intake arrives with the consumer lanes (P3+)")
     endif()
     if(NOT _tp_provider STREQUAL "source")
-        message(FATAL_ERROR "polyorch_thirdparty_recipe: unknown provider '${_tp_provider}' (schema v1: source; vcpkg/conan = P7 seam; prebuilt/system = P2 seam)")
+        message(FATAL_ERROR "polyorch_thirdparty_recipe: unknown provider '${_tp_provider}' (schema v1: source; vcpkg/conan = P7 seam; prebuilt/system = P3+ seam)")
     endif()
 
     file(SHA256 "${arg_RECIPE}" _tp_recipe_hash)
@@ -563,7 +733,7 @@ function(polyorch_thirdparty_recipe)
     endif()
     polyorch_thirdparty_fingerprint(_tp_key
         ARCHIVE_SHA256 "${_tp_arch_hash}" BUILD_TYPE "${arg_BUILD_TYPE}"
-        VERSION "${_tp_version}" PROFILE "${arg_PROFILE}" LINK_MODE "${_tp_link}"
+        VERSION "${_tp_version}" PROFILE "${arg_PROFILE}" TRIPLET "${arg_TRIPLET}" LINK_MODE "${_tp_link}"
         OPTIONS ${_tp_opts} RECIPE_SHA256 "${_tp_recipe_hash}" SCHEMA_VERSION "${_tp_schema}")
 
     # ---- layout + cache verdict (manifest identity, NOT existence -- the
@@ -583,22 +753,76 @@ function(polyorch_thirdparty_recipe)
     if(_tp_hit)
         message(STATUS "polyorch thirdparty: ${_tp_name} cache hit key=${_tp_key_SHORT12} build_type=${arg_BUILD_TYPE} -- acquire/build skipped (manifest identity)")
     else()
-        # ---- build (explicit verb, H2) ----
-        set(_tp_cmake_args "")
-        foreach(_tp_o IN LISTS _tp_opts)
-            list(APPEND _tp_cmake_args "-D${_tp_o}")
-        endforeach()
-        polyorch_thirdparty_build(NAME "${_tp_name}" SOURCE_DIR "${_tp_src}"
-            BUILD_DIR "${_tp_builddir}" INSTALL_DIR "${_tp_installdir}"
-            BUILD_TYPE "${arg_BUILD_TYPE}" GENERATOR "${arg_GENERATOR}"
-            PARALLEL "${arg_PARALLEL}" CMAKE_ARGS ${_tp_cmake_args})
+        # ---- package cache (P2): unpack beats build; verdict = sidecar
+        # identity (sha256 pair + manifest key), never file existence ----
+        set(_tp_pkgfile "")
+        set(_tp_pkg_hit FALSE)
+        set(_tp_pkgfmt "tar.gz")
+        if(arg_PACKAGE_FORMAT)
+            set(_tp_pkgfmt "${arg_PACKAGE_FORMAT}")
+        endif()
+        if(arg_PACKAGES_DIR)
+            _polyorch_tp_package_name(_tp_pkgname "${_tp_name}" "${_tp_version}" "${arg_TRIPLET}" "${arg_PROFILE}" "${arg_BUILD_TYPE}" "${_tp_link}" "${_tp_key_SHORT12}" "${_tp_pkgfmt}")
+            set(_tp_pkgfile "${arg_PACKAGES_DIR}/${_tp_pkgname}")
+            if(EXISTS "${_tp_pkgfile}")
+                set(_tp_sha_file "${_tp_pkgfile}.sha256")
+                set(_tp_side_mf "${_tp_pkgfile}.manifest.json")
+                if(NOT EXISTS "${_tp_sha_file}" OR NOT EXISTS "${_tp_side_mf}")
+                    message(FATAL_ERROR "polyorch_thirdparty_recipe: package '${_tp_pkgname}' has no sidecar pair (.sha256 + .manifest.json) -- a package without provenance cannot be trusted")
+                endif()
+                file(SHA256 "${_tp_pkgfile}" _tp_actual)
+                file(READ "${_tp_sha_file}" _tp_recorded)
+                string(STRIP "${_tp_recorded}" _tp_recorded)
+                if(NOT _tp_actual STREQUAL "${_tp_recorded}")
+                    message(FATAL_ERROR "polyorch_thirdparty_recipe: package '${_tp_pkgname}' sha256 mismatch (recorded '${_tp_recorded}', actual '${_tp_actual}') -- refusing to unpack")
+                endif()
+                file(READ "${_tp_side_mf}" _tp_sm)
+                if(NOT "${_tp_sm}" MATCHES "\"key\"[ ]*:")
+                    message(FATAL_ERROR "polyorch_thirdparty_recipe: sidecar manifest of '${_tp_pkgname}' carries no key -- refusing to unpack")
+                endif()
+                string(JSON _tp_skey GET "${_tp_sm}" key)
+                if(NOT _tp_skey STREQUAL "${_tp_key}")
+                    message(FATAL_ERROR "polyorch_thirdparty_recipe: package '${_tp_pkgname}' sidecar key '${_tp_skey}' != current key '${_tp_key}' -- refusing to unpack")
+                endif()
+                file(MAKE_DIRECTORY "${_tp_installdir}")
+                execute_process(COMMAND "${CMAKE_COMMAND}" -E tar xzf "${_tp_pkgfile}"
+                    WORKING_DIRECTORY "${_tp_installdir}" RESULT_VARIABLE _tp_urc)
+                if(NOT _tp_urc EQUAL 0)
+                    message(FATAL_ERROR "polyorch_thirdparty_recipe: unpacking '${_tp_pkgname}' failed (rc=${_tp_urc})")
+                endif()
+                if(NOT EXISTS "${_tp_manifest}")
+                    message(FATAL_ERROR "polyorch_thirdparty_recipe: package '${_tp_pkgname}' extracted but carries no install manifest -- corrupt package")
+                endif()
+                set(_tp_pkg_hit TRUE)
+                message(STATUS "polyorch thirdparty: ${_tp_name} package cache hit key=${_tp_key_SHORT12} build_type=${arg_BUILD_TYPE} -- zero build")
+            endif()
+        endif()
+        if(NOT _tp_pkg_hit)
+            # ---- build (explicit verb, H2) ----
+            set(_tp_cmake_args "")
+            foreach(_tp_o IN LISTS _tp_opts)
+                list(APPEND _tp_cmake_args "-D${_tp_o}")
+            endforeach()
+            polyorch_thirdparty_build(NAME "${_tp_name}" SOURCE_DIR "${_tp_src}"
+                BUILD_DIR "${_tp_builddir}" INSTALL_DIR "${_tp_installdir}"
+                BUILD_TYPE "${arg_BUILD_TYPE}" GENERATOR "${arg_GENERATOR}"
+                PARALLEL "${arg_PARALLEL}" CMAKE_ARGS ${_tp_cmake_args})
 
-        # ---- manifest ----
-        polyorch_thirdparty_manifest_write(MANIFEST "${_tp_manifest}" KEY "${_tp_key}"
-            NAME "${_tp_name}" VERSION "${_tp_version}" LICENSE "${_tp_license}"
-            PROVIDER "${_tp_provider}" PROFILE "${arg_PROFILE}" BUILD_TYPE "${arg_BUILD_TYPE}"
-            LINK_MODE "${_tp_link}" OPTIONS ${_tp_opts} ARCHIVE_SHA256 "${_tp_arch_hash}"
-            RECIPE_SHA256 "${_tp_recipe_hash}" SCHEMA_VERSION "${_tp_schema}")
+            # ---- manifest ----
+            polyorch_thirdparty_manifest_write(MANIFEST "${_tp_manifest}" KEY "${_tp_key}"
+                NAME "${_tp_name}" VERSION "${_tp_version}" LICENSE "${_tp_license}"
+                PROVIDER "${_tp_provider}" PROFILE "${arg_PROFILE}" TRIPLET "${arg_TRIPLET}"
+                BUILD_TYPE "${arg_BUILD_TYPE}"
+                LINK_MODE "${_tp_link}" OPTIONS ${_tp_opts} ARCHIVE_SHA256 "${_tp_arch_hash}"
+                RECIPE_SHA256 "${_tp_recipe_hash}" SCHEMA_VERSION "${_tp_schema}")
+
+            # ---- pack into the shared cache (P2; empty dir = no-op) ----
+            if(arg_PACKAGES_DIR)
+                polyorch_thirdparty_package(NAME "${_tp_name}" INSTALL_DIR "${_tp_installdir}"
+                    PACKAGE_DIR "${arg_PACKAGES_DIR}" MANIFEST "${_tp_manifest}"
+                    FORMAT "${_tp_pkgfmt}" TRIPLET "${arg_TRIPLET}" PACKAGE_OUT _tp_pkgfile)
+            endif()
+        endif()
     endif()
 
     # ---- wiring out (import stays a separate verb) ----
@@ -613,6 +837,9 @@ function(polyorch_thirdparty_recipe)
     endif()
     if(arg_MANIFEST_OUT)
         set(${arg_MANIFEST_OUT} "${_tp_manifest}" PARENT_SCOPE)
+    endif()
+    if(arg_PACKAGE_OUT)
+        set(${arg_PACKAGE_OUT} "${_tp_pkgfile}" PARENT_SCOPE)
     endif()
     set(_tp_fp_name "")
     set(_tp_fp_comps "")

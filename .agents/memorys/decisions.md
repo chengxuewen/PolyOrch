@@ -1036,3 +1036,34 @@ modules/06-thirdparty-face.md; surface inventory 48 -> 54 public functions.
 Version 0.7.3 -> 0.8.0 (new public face; minor). Consumer floor moves WITH
 the face (H5 linkage): MediaServo's shim floor 0.7.0 -> 0.8.0 same stroke --
 an older checkout must FATAL, not silently miss the face.
+## D50 addendum: P2 package cache -- pack/unpack + sidecars + relocate gate (2026-11-03, same round)
+
+- Need: reuse a verified install prefix across build trees/machines without
+  trusting mere presence. The verdict is sidecar identity (sha256 + manifest
+  key), never "the file exists" -- the QExt/CStamp check upgraded once more.
+- Shape: new verb polyorch_thirdparty_package (a caller-side PACKAGES_DIR
+  empty = the verb never runs; QExt semantics, zero side effects). Package
+  name embeds the full identity: <name>-<version>-<triplet>-<profile>-
+  <buildtype>-<linkmode>-<key12>.tar.gz; beside it a bare-hex .sha256 (oxmgr
+  precedent) and a .manifest.json sidecar. The recipe's verdict order is
+  install-manifest identity -> package cache (sidecar pair + sha256 + key,
+  ALL required) -> build; a package hit unpacks and reports "zero build".
+  Packing is idempotent by sidecar identity; REPLACE removes the sidecars
+  FIRST so a crash leaves an unverifiable pair, never a stale "verified" one.
+- Relocate gate (F5 criterion 10): scans *.cmake/*.pc/*.pri for absolute
+  path tokens (>=2 segments; the lead class keeps ${_IMPORT_PREFIX}/lib-style
+  tokens out) with a system-prefix allowlist; anything else refuses to enter
+  the shared cache. Heuristic on purpose (O-2 stays open); the guarantee is
+  behavioural -- the paired test proves absolute-refused AND
+  relativized-accepted.
+- Measured seam: CMake 4.4's `cmake -E tar` has NO --format (a zip/7zip
+  extension silently produced a POSIX tar; verified with file(1)), so only
+  tar.gz is writable. FORMAT zip/7zip is declared-but-refused with a FATAL
+  naming the seam -- writing wrong bytes would be worse than refusing.
+- Tests: t-thirdparty-package-basic (pack/sidecars/zero-build unpack/
+  idempotent repack/key-change -> new name + real rebuild), -corrupt
+  (tampered archive -> FATAL before the install prefix is touched),
+  -relocate (both directions). Suite 91 pass / 8 fail (pre-existing
+  env-class) / 37 skip.
+- Version stays on the 0.8.0 line (additive; the P1 judgment pinned 0.8.0).
+  Inventory 54 -> 55 public functions.

@@ -28,7 +28,7 @@ the winning copy) with the `PolyOrch_BUILD_*` options. Target
 naming on the fused surface follows the D27/D28 grammar: kebab real targets under the
 `polyorch-<dir>-` namespace, `::` for exported/imported names only.
 
-## Public functions (54)
+## Public functions (55)
 
 ### `PolyOrchFindRust.cmake` -- rust toolchain discovery
 
@@ -136,10 +136,11 @@ Covered by: `t-bootstrap-*`, `t-find-real`, `t-env-arg`, `t-json-array*`, `t-scr
 | `polyorch_thirdparty_fetch` | `polyorch_thirdparty_fetch(NAME <n> URL <archive> URL_HASH SHA256=<hex> [PATCHES <f...> PATCH_SHA256 <h...>]` -- verified acquire; verify-before-apply overlays (L6); the stamp is an inputs memo, never proof the outputs survived |
 | `polyorch_thirdparty_build` | `polyorch_thirdparty_build(NAME <n> SOURCE_DIR <d> BUILD_DIR <d> INSTALL_DIR <d> BUILD_TYPE <cfg>` -- explicit verb, separate CMake invocation (H2); TOOLCHAIN_FILE without the compiler pair refused (H3); no prefix/compiler injection (C1) |
 | `polyorch_thirdparty_manifest_write` | `polyorch_thirdparty_manifest_write(MANIFEST <f> KEY <64hex> NAME <n> [LICENSE <spdx>] ...)` -- provenance sidecar; LICENSE mandatory (L7) |
+| `polyorch_thirdparty_package` | `polyorch_thirdparty_package(NAME <n> INSTALL_DIR <d> PACKAGE_DIR <d> [MANIFEST <f>] [FORMAT tar.gz] [REFRESH])` -- pack/unpack face (P2); name embeds full identity + key12; bare-hex `.sha256` + `.manifest.json` sidecars; relocate gate refuses build-host absolute paths (F5 criterion 10); zip/7zip refused (packer seam) |
 | `polyorch_thirdparty_import` | `polyorch_thirdparty_import(NAME <n> INSTALL_DIR <d> FIND_PACKAGE_NAME <Pkg> [COMPONENTS <c...>] [PROVIDED_TARGETS <t...>] [ALIAS <Consumer::Name>])` -- upstream's own config via NO_DEFAULT_PATH + consumer alias (macro on purpose); never auto-builds (H2) |
-| `polyorch_thirdparty_recipe` | `polyorch_thirdparty_recipe(RECIPE <file.json> WORK_DIR <d> BUILD_TYPE <cfg> [PROFILE <p>] ...)` -- JSON schema-v1 loader; provider seams FATAL (P2/P7); cache verdict = manifest identity, per-config install prefixes (O-3) |
+| `polyorch_thirdparty_recipe` | `polyorch_thirdparty_recipe(RECIPE <file.json> WORK_DIR <d> BUILD_TYPE <cfg> [PROFILE <p>] [PACKAGES_DIR <d>] ...)` -- JSON schema-v1 loader; provider seams FATAL (P3+/P7); cache verdict = manifest identity, package-cache unpack before build (P2), per-config install prefixes (O-3) |
 
-Covered by: the `t-thirdparty-*` family (`fingerprint`/`fetch`/`build`/`manifest`/`import`/`recipe`, incl. the refusal legs), capability `cxx`; see [06-thirdparty-face.md](./06-thirdparty-face.md).
+Covered by: the `t-thirdparty-*` family (`fingerprint`/`fetch`/`build`/`manifest`/`package`/`import`/`recipe`, incl. the refusal legs), capability `cxx`; see [06-thirdparty-face.md](./06-thirdparty-face.md).
 
 ## Helper modules (no public surface of their own)
 
