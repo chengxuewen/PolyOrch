@@ -1,0 +1,11 @@
+# expect-log THIRD-PARTY-FP-REQUIRED-OK
+if(POLYORCH_CHILD)
+    include("${CMAKE_CURRENT_LIST_DIR}/../../cmake/PolyOrchThirdPartyHelpers.cmake")
+    string(RANDOM LENGTH 64 ALPHABET 1 RANDOM_SEED 9 _k64)
+    polyorch_thirdparty_fingerprint(kx ARCHIVE_SHA256 "${_k64}" BUILD_TYPE "")
+    message(FATAL_ERROR "unreachable: the BUILD_TYPE guard must fire first")
+else()
+    include("${CMAKE_CURRENT_LIST_DIR}/_inc.cmake")
+    ck_child_fail("BUILD_TYPE is required")
+    message(STATUS "THIRD-PARTY-FP-REQUIRED-OK")
+endif()

@@ -1,0 +1,28 @@
+# expect-log THIRD-PARTY-MANIFEST-OK
+if(POLYORCH_CHILD)
+    include("${CMAKE_CURRENT_LIST_DIR}/../../cmake/PolyOrchThirdPartyHelpers.cmake")
+    string(RANDOM LENGTH 64 ALPHABET 1 RANDOM_SEED 7 _k64)
+    polyorch_thirdparty_manifest_write(MANIFEST "$ENV{TMPDIR}/tp-m.json"
+        KEY "${_k64}" NAME demo)
+    message(FATAL_ERROR "unreachable: LICENSE is mandatory (L7)")
+else()
+    include("${CMAKE_CURRENT_LIST_DIR}/_inc.cmake")
+    include("${CMAKE_CURRENT_LIST_DIR}/../../cmake/PolyOrchThirdPartyHelpers.cmake")
+    ck_child_fail("LICENSE is required")
+    # happy path: the sidecar round-trips key/key12/license + options array
+    set(_m "$ENV{TMPDIR}/tp-m-ok.json")
+    string(RANDOM LENGTH 64 ALPHABET 2 RANDOM_SEED 8 _k64b)
+    string(SUBSTRING "${_k64b}" 0 12 _k12exp)
+    polyorch_thirdparty_manifest_write(MANIFEST "${_m}"
+        KEY "${_k64b}" NAME demo VERSION 1.0 LICENSE MIT OPTIONS "A=1" "B=2")
+    file(READ "${_m}" _j)
+    string(JSON _v GET "${_j}" license)
+    ck_str("${_v}" "MIT")
+    string(JSON _v GET "${_j}" key12)
+    ck_str("${_v}" "${_k12exp}")
+    string(JSON _v GET "${_j}" options 0)
+    ck_str("${_v}" "A=1")
+    string(JSON _v GET "${_j}" options 1)
+    ck_str("${_v}" "B=2")
+    message(STATUS "THIRD-PARTY-MANIFEST-OK")
+endif()

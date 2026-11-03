@@ -18,6 +18,7 @@ include(PolyOrchRustHelpers)     # rust face (brings PolyOrchFindRust)
 include(PolyOrchNodeHelpers)     # node face (D29/D33)
 include(PolyOrchPythonHelpers)   # python face (D32)
 include(PolyOrchPixiHelpers)     # environment face
+include(PolyOrchThirdPartyHelpers)  # third-party dependency face (D50, EXPERIMENTAL)
 ```
 
 or, in the embedded shape, `add_subdirectory(PolyOrch)` from the host (embed sentinel:
@@ -27,7 +28,7 @@ the winning copy) with the `PolyOrch_BUILD_*` options. Target
 naming on the fused surface follows the D27/D28 grammar: kebab real targets under the
 `polyorch-<dir>-` namespace, `::` for exported/imported names only.
 
-## Public functions (48)
+## Public functions (54)
 
 ### `PolyOrchFindRust.cmake` -- rust toolchain discovery
 
@@ -126,6 +127,19 @@ host consumer's live run; the marker legs cannot see it, so
 | `polyorch_pixi_bootstrap` | `polyorch_pixi_bootstrap([VERSION <x.y.z>] [MANIFEST <p>] [ENVIRONMENT <n>]` |
 
 Covered by: `t-bootstrap-*`, `t-find-real`, `t-env-arg`, `t-json-array*`, `t-scratch`, `t-search-manifest`, `t-scripts-install`, `t-tool-ensure-*`, `t-command-vector`, `t-init-workspace`, `t-install-frozen-locked`.
+
+### `PolyOrchThirdPartyHelpers.cmake` -- third-party dependency face (D50, EXPERIMENTAL)
+
+| Function | Signature (source comment) |
+|---|---|
+| `polyorch_thirdparty_fingerprint` | `polyorch_thirdparty_fingerprint(<out-var> ARCHIVE_SHA256 <hex> BUILD_TYPE <cfg>` -- full-field cache key; BUILD_TYPE REQUIRED (O-3 multi-config collapse guard), RECIPE_SHA256/SCHEMA_VERSION are key inputs (M1), OPTIONS normalized (no false-distinct keys) |
+| `polyorch_thirdparty_fetch` | `polyorch_thirdparty_fetch(NAME <n> URL <archive> URL_HASH SHA256=<hex> [PATCHES <f...> PATCH_SHA256 <h...>]` -- verified acquire; verify-before-apply overlays (L6); the stamp is an inputs memo, never proof the outputs survived |
+| `polyorch_thirdparty_build` | `polyorch_thirdparty_build(NAME <n> SOURCE_DIR <d> BUILD_DIR <d> INSTALL_DIR <d> BUILD_TYPE <cfg>` -- explicit verb, separate CMake invocation (H2); TOOLCHAIN_FILE without the compiler pair refused (H3); no prefix/compiler injection (C1) |
+| `polyorch_thirdparty_manifest_write` | `polyorch_thirdparty_manifest_write(MANIFEST <f> KEY <64hex> NAME <n> [LICENSE <spdx>] ...)` -- provenance sidecar; LICENSE mandatory (L7) |
+| `polyorch_thirdparty_import` | `polyorch_thirdparty_import(NAME <n> INSTALL_DIR <d> FIND_PACKAGE_NAME <Pkg> [COMPONENTS <c...>] [PROVIDED_TARGETS <t...>] [ALIAS <Consumer::Name>])` -- upstream's own config via NO_DEFAULT_PATH + consumer alias (macro on purpose); never auto-builds (H2) |
+| `polyorch_thirdparty_recipe` | `polyorch_thirdparty_recipe(RECIPE <file.json> WORK_DIR <d> BUILD_TYPE <cfg> [PROFILE <p>] ...)` -- JSON schema-v1 loader; provider seams FATAL (P2/P7); cache verdict = manifest identity, per-config install prefixes (O-3) |
+
+Covered by: the `t-thirdparty-*` family (`fingerprint`/`fetch`/`build`/`manifest`/`import`/`recipe`, incl. the refusal legs), capability `cxx`; see [06-thirdparty-face.md](./06-thirdparty-face.md).
 
 ## Helper modules (no public surface of their own)
 

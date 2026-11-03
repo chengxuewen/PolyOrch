@@ -338,6 +338,20 @@ function(polyorch_requires cap out)
             set(_ok TRUE)
         endif()
 
+    elseif(cap STREQUAL "cxx")
+        # The thirdparty face's build verb (D50) needs a real C++ compiler
+        # for its fixture payload. PATH first, then the driver-composed dirs
+        # (the same parent/child alignment argument as system-rust: the
+        # fixture children build with whatever the parent can see here).
+        find_program(_pr_cxxp NAMES c++ g++ clang++ cl)
+        if(NOT _pr_cxxp)
+            find_program(_pr_cxxp NAMES c++ g++ clang++ cl PATHS
+                "$ENV{HOME}/.pixi/bin" "$ENV{HOME}/.pixi/envs/default/bin")
+        endif()
+        if(_pr_cxxp)
+            set(_ok TRUE)
+        endif()
+
     else()
         message(FATAL_ERROR
             "polyorch_requires: unknown capability '${cap}' (see the probe table in tests/cases/_requires.cmake)")

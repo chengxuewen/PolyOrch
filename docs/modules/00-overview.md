@@ -49,7 +49,8 @@ under `docs/reference/xmake-skills/` is research material, not shipped payload.
 | [`02-dependency-workflow.md`](./02-dependency-workflow.md) | how a consumer depends on PolyOrch; the two development loops |
 | [`03-error-model.md`](./03-error-model.md) | degrade versus fail hard |
 | [`04-testing-strategy.md`](./04-testing-strategy.md) | the five executable layers |
-| [`05-surface-inventory.md`](./05-surface-inventory.md) | the shipped function index (44 public verbs, D16 form) |
+| [`05-surface-inventory.md`](./05-surface-inventory.md) | the shipped function index (54 public verbs, D16 form) |
+| [`06-thirdparty-face.md`](./06-thirdparty-face.md) | the third-party dependency face (D50, EXPERIMENTAL): verified acquire, explicit build verb, manifest identity, provider seams |
 
 ## Related documents
 

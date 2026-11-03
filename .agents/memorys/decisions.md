@@ -987,3 +987,52 @@ side document). Additive surface: 0.7.2 -> 0.7.3, sentinel companion same stroke
 (the D47 precedent: patch bump, consumer floors stay put). Consumer: MediaServo
 root CMakeLists hooks it at the shared lane gate (one call site, all
 lane-bearing presets reached).
+
+## D50: the third-party dependency face -- verified source acquire, explicit build verb, manifest identity (2026-11-03, sr8-round P1, plan-driven)
+
+(Numbering note: the "D49" label was already spent by the 2026-10-26
+execution-truth PATH/LIBCLANG status entry -- a same-stroke companion that
+never got its own decisions.md row -- so this decision takes D50.)
+
+Need: MediaServo's GUI lane needs third-party libraries (SDL3, Dear ImGui)
+without ad-hoc ExternalProject blobs. The face turns "how did this binary
+get here" into a manifest question: full-field cache key + provenance sidecar
+per artifact, every refusal a FATAL naming the next step. Design baseline:
+the parent-repo plan docs/plans/polyorch-sr8-thirdparty-face (adjudications
+F1-F11, r4 expert-review fold: 2C/6H/8M/8L all applied).
+
+Six public verbs in cmake/PolyOrchThirdPartyHelpers.cmake:
+polyorch_thirdparty_fingerprint (BUILD_TYPE REQUIRED -- O-3: a multi-config
+generator with an empty effective config can never collapse two configs into
+one key; RECIPE_SHA256 + SCHEMA_VERSION are key inputs, M1; OPTIONS
+normalized -- no false-distinct keys), _fetch (URL_HASH mandatory; patches
+verified sha256 first, applied as verbatim same-basename overlays under the
+archive root last, L6; the stamp is an INPUTS memo never proof the outputs
+survived -- a vanished source re-extracts and the sweep deletes only fetch's
+own outputs, sibling build-<cfg>/install-<cfg> dirs survive), _build (a fully
+separate CMake invocation -- explicit verb, never a configure-time side
+effect, H2; TOOLCHAIN_FILE without an explicit compiler pair refused -- H3
+half-group guard; no CMAKE_PREFIX_PATH/compiler injection into the child,
+C1), _manifest_write (license MANDATORY, L7), _import (the upstream's OWN
+installed <Pkg>Config.cmake via NO_DEFAULT_PATH + consumer alias, upstream
+target names untouched; a MACRO on purpose -- find_package(CONFIG) imported
+targets evaporate at function return; never auto-builds at import, H2), and
+_recipe (JSON schema-v1 gate + loader; provider seams are code-level FATALs
+pointing at P2 prebuilt/system and P7 vcpkg/conan; cache verdict = manifest
+identity NOT existence -- the QExt/CxxKit stamp check upgraded; per-config
+install prefixes).
+
+Non-goals pinned: no byte-level reproducibility (L8); the sidecar is
+self-attested (anti-corruption, not anti-poisoning) so shared caches consume
+read-only pending an external trust anchor (M3). P1 is zero-network.
+
+Tests: 11 cases (t-thirdparty-fingerprint-basics/-required, -fetch-basic/
+-hash-mismatch/-patch-mismatch, -build-e2e/-halfgroup, -manifest-license,
+-import-h2, -recipe-e2e/-seams) + the `cxx` capability probe
+(tests/cases/_requires.cmake) + fixture tests/fixtures/thirdparty-basic
+(runtime-packed archive -- no binary fixture committed). Docs:
+modules/06-thirdparty-face.md; surface inventory 48 -> 54 public functions.
+
+Version 0.7.3 -> 0.8.0 (new public face; minor). Consumer floor moves WITH
+the face (H5 linkage): MediaServo's shim floor 0.7.0 -> 0.8.0 same stroke --
+an older checkout must FATAL, not silently miss the face.

@@ -7,7 +7,7 @@ cmake_minimum_required(VERSION 3.25)  # 2026-10-10 (user adjudication 5-B): the 
 # to add this directory -- BUT the PlatformSupport module needs a CXX compiler identity
 # from an ANCESTOR project() (or an equivalent injection such as
 # CMAKE_PROJECT_TOP_LEVEL_INCLUDES); without one its mkspec probe is a FATAL_ERROR.
-project(PolyOrch VERSION 0.7.3 LANGUAGES NONE)
+project(PolyOrch VERSION 0.8.0 LANGUAGES NONE)
 
 # Embed sentinel: a host detects "already added" via `if(NOT TARGET PolyOrch::PolyOrch)`.
 # Imported so the name may carry '::' (real targets cannot; measured in tests/CMakeLists.txt)
@@ -34,6 +34,7 @@ include(${PROJECT_SOURCE_DIR}/cmake/PolyOrchNodeHelpers.cmake)
 include(${PROJECT_SOURCE_DIR}/cmake/PolyOrchPythonHelpers.cmake)
 include(${PROJECT_SOURCE_DIR}/cmake/PolyOrchVSCodeDebugHelpers.cmake)
 include(${PROJECT_SOURCE_DIR}/cmake/PolyOrchBootstrapHelpers.cmake)
+include(${PROJECT_SOURCE_DIR}/cmake/PolyOrchThirdPartyHelpers.cmake)   # D50: third-party face (EXPERIMENTAL)
 # 2026-10-10 (user adjudication 3-A): the sentinel contract is the COMPLETE face set --
 # node/python/vscode joins the root include list so `add_subdirectory(PolyOrch)` alone
 # delivers every polyorch_* command. The include_guard in each module makes this idempotent
