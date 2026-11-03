@@ -16,12 +16,16 @@
 # Deliberate code-level seams (louder than any doc -- F2=A adjudication):
 #   * provider vcpkg/conan        -> FATAL pointing at P7 / O-10
 #   * provider prebuilt/system    -> FATAL pointing at the package-cache face (P2)
-#   * DEPENDENCY_PROVIDER pixi/sysroot -> FATAL pointing at P4 / P6
-# The dependency-provider rules that WILL apply once pixi lands (r4 C1):
-#   only include/lib/pkgconfig sub-paths are ever injected -- never a bare
-#   prefix carrying bin/ -- and the inner configure must receive explicit
-#   compilers; a negative test asserts the inner compiler path never lives
-#   under .pixi/envs. Nothing here may inject a compiler.
+#   * DEPENDENCY_PROVIDER sysroot -> FATAL pointing at P6
+# Dependency providers (P4): none (no injection at all), system (sanitize
+#   only), pixi (NO-ACTIVATION: the environment's include/lib/pkgconfig
+#   SUB-paths are injected into the child env only -- never a bare prefix
+#   carrying bin/, r4 C1; the inner configure must receive an explicit
+#   compiler or a toolchain file; CPATH/C_INCLUDE_PATH/CPLUS_INCLUDE_PATH/
+#   LIBRARY_PATH/COMPILER_PATH/CONDA_PREFIX are unset in the child; the
+#   pixi.lock hash rides the cache key; installed binaries get a readelf -d
+#   audit because static linking is NOT runtime independence). Nothing in
+#   this face may pick a compiler behind the caller's back.
 #
 # Cross-compile forwarding contract (r4 H3): TOOLCHAIN_FILE is forwarded as
 # -DCMAKE_TOOLCHAIN_FILE; a cross caller additionally passes the rest of the
@@ -76,7 +80,7 @@ endfunction()
 #     [LINK_MODE <static|shared>] [OPTIONS <k=v;...>]
 #     [TOOLCHAIN_FILE_SHA256 <h>] [COMPILER_ID <id>] [COMPILER_VERSION <v>]
 #     [CMAKE_VERSION <v>] [DEPENDENCY_PROVIDER <p>] [PIXI_LOCK_SHA256 <h>]
-#     [SYSROOT_ID <id>] [RECIPE_SHA256 <h>] [SCHEMA_VERSION <n>]
+#     [PIXI_ENVIRONMENT <e>] [SYSROOT_ID <id>] [RECIPE_SHA256 <h>] [SCHEMA_VERSION <n>]
 #     [HELPER_VERSION <v>])
 #
 # Sets <var> (64 hex) and <var>_SHORT12 (first 12 hex chars). OPTIONS are
@@ -84,7 +88,7 @@ endfunction()
 # produce a false-distinct key (F4=A "no false distinct" leg).
 function(polyorch_thirdparty_fingerprint out)
     cmake_parse_arguments(arg ""
-        "ARCHIVE_SHA256;BUILD_TYPE;VERSION;PROFILE;TRIPLET;LINK_MODE;TOOLCHAIN_FILE_SHA256;COMPILER_ID;COMPILER_VERSION;CMAKE_VERSION;DEPENDENCY_PROVIDER;PIXI_LOCK_SHA256;SYSROOT_ID;RECIPE_SHA256;SCHEMA_VERSION;HELPER_VERSION"
+        "ARCHIVE_SHA256;BUILD_TYPE;VERSION;PROFILE;TRIPLET;LINK_MODE;TOOLCHAIN_FILE_SHA256;COMPILER_ID;COMPILER_VERSION;CMAKE_VERSION;DEPENDENCY_PROVIDER;PIXI_LOCK_SHA256;PIXI_ENVIRONMENT;SYSROOT_ID;RECIPE_SHA256;SCHEMA_VERSION;HELPER_VERSION"
         "OPTIONS;PATCH_SHA256" ${ARGN})
     if(out STREQUAL "")
         message(FATAL_ERROR "polyorch_thirdparty_fingerprint: <out-var> is required")
@@ -131,6 +135,7 @@ function(polyorch_thirdparty_fingerprint out)
         "options=${_tp_opts_j}" "toolchain_sha256=${arg_TOOLCHAIN_FILE_SHA256}"
         "compiler=${arg_COMPILER_ID}-${arg_COMPILER_VERSION}" "cmake=${arg_CMAKE_VERSION}"
         "dependency_provider=${arg_DEPENDENCY_PROVIDER}" "pixi_lock=${arg_PIXI_LOCK_SHA256}"
+        "pixi_env=${arg_PIXI_ENVIRONMENT}"
         "sysroot_id=${arg_SYSROOT_ID}" "recipe_sha256=${arg_RECIPE_SHA256}"
         "schema_version=${arg_SCHEMA_VERSION}" "helper_version=${arg_HELPER_VERSION}")
         string(APPEND _tp_dossier "${_tp_f}\n")
@@ -309,11 +314,103 @@ function(polyorch_thirdparty_fetch)
 endfunction()
 
 #-----------------------------------------------------------------------------------------------------------------------
+# _polyorch_tp_pixi_subpaths -- the C1-disciplined view of an installed pixi
+# environment: ONLY the include/lib/pkgconfig sub-paths, NEVER the bare
+# prefix (CMAKE_PREFIX_PATH is searched by find_program; a prefix carrying
+# bin/ would let the conda compilers hijack the inner build silently).
+# Requires the pixi face context (polyorch_pixi_setup or the -DPolyOrch_PIXI_*
+# pair) for polyorch_pixi_env_paths.
+function(_polyorch_tp_pixi_subpaths environment prefix_out subs_out pkgcfg_out)
+    if(NOT COMMAND polyorch_pixi_env_paths)
+        message(FATAL_ERROR "thirdparty pixi provider: the PolyOrch pixi face is not loaded -- include PolyOrchPixiHelpers.cmake first")
+    endif()
+    # NO_PREFIX_PATH is load-bearing: the default form appends the bare prefix
+    # to CMAKE_PREFIX_PATH, which is exactly the hijack shape this provider
+    # exists to forbid.
+    polyorch_pixi_env_paths(ENVIRONMENT "${environment}" NO_PREFIX_PATH PREFIX_OUT _tp_px_prefix)
+    if(NOT _tp_px_prefix OR NOT IS_DIRECTORY "${_tp_px_prefix}")
+        message(FATAL_ERROR "thirdparty pixi provider: environment '${environment}' has no installed prefix")
+    endif()
+    set(_tp_subs "")
+    set(_tp_pkgcfg "")
+    foreach(_d "include" "lib")
+        if(IS_DIRECTORY "${_tp_px_prefix}/${_d}")
+            list(APPEND _tp_subs "${_tp_px_prefix}/${_d}")
+        endif()
+    endforeach()
+    foreach(_d "lib/pkgconfig" "share/pkgconfig")
+        if(IS_DIRECTORY "${_tp_px_prefix}/${_d}")
+            list(APPEND _tp_pkgcfg "${_tp_px_prefix}/${_d}")
+        endif()
+    endforeach()
+    # The guard the discipline demands: every injected path is a strict
+    # sub-path; the bare prefix never enters the injection list.
+    foreach(_p IN LISTS _tp_subs _tp_pkgcfg)
+        if(_p STREQUAL _tp_px_prefix)
+            message(FATAL_ERROR "thirdparty pixi provider: refusing to inject the bare prefix (bin/ would enter the program search -- r4 C1)")
+        endif()
+    endforeach()
+    set(${prefix_out} "${_tp_px_prefix}" PARENT_SCOPE)
+    set(${subs_out} "${_tp_subs}" PARENT_SCOPE)
+    set(${pkgcfg_out} "${_tp_pkgcfg}" PARENT_SCOPE)
+endfunction()
+
+#-----------------------------------------------------------------------------------------------------------------------
+# _polyorch_tp_pixi_audit -- static linking is NOT runtime independence
+# (pixi discipline 4): scan the install tree's ELF outputs with readelf -d
+# and flag any RUNPATH/RPATH pointing inside the pixi prefix -- such an
+# artifact needs the pixi runtime at load time and must not be shipped as a
+# standalone release piece. Non-ELF files are skipped silently (readelf
+# exits non-zero on them); a MISSING readelf degrades with a warning and
+# reports "not audited", never a silent pass.
+function(_polyorch_tp_pixi_audit install_dir pixi_prefix out_flag out_detail)
+    # PATH-only discovery, deliberately: the audit must follow the SAME readelf
+    # the caller's environment selects (a test fakes it via PATH; a build box
+    # without readelf in PATH must hit the degrade branch, not pick up a
+    # system-default binary the runtime would never see).
+    # No pre-set of the result variable (an empty value counts as "already
+    # defined" and silently skips the search) and the CACHE entry is dropped
+    # per call (a repeated audit under a different PATH must re-search).
+    unset(_tp_reef CACHE)
+    find_program(_tp_reef NAMES readelf PATHS ENV PATH NO_DEFAULT_PATH)
+    if(NOT _tp_reef)
+        message(WARNING "polyorch thirdparty: readelf not found -- the pixi runtime audit is NOT performed; the artifact is not proven runtime-independent")
+        set(${out_flag} FALSE PARENT_SCOPE)
+        set(${out_detail} "audit not performed: no readelf" PARENT_SCOPE)
+        return()
+    endif()
+    file(GLOB_RECURSE _tp_files LIST_DIRECTORIES false "${install_dir}/*")
+    set(_tp_hits "")
+    set(_tp_checked 0)
+    foreach(_tf IN LISTS _tp_files)
+        execute_process(COMMAND "${_tp_reef}" -d "${_tf}" ERROR_QUIET
+            OUTPUT_VARIABLE _tp_ro RESULT_VARIABLE _tp_rc)
+        if(_tp_rc EQUAL 0)
+            math(EXPR _tp_checked "${_tp_checked} + 1" OUTPUT_FORMAT DECIMAL)
+            string(FIND "${_tp_ro}" "${pixi_prefix}" _tp_at)
+            if(NOT _tp_at EQUAL -1)
+                list(APPEND _tp_hits "${_tf}")
+            endif()
+        endif()
+    endforeach()
+    if(_tp_hits)
+        list(JOIN _tp_hits ", " _tp_hj)
+        set(${out_flag} TRUE PARENT_SCOPE)
+        set(${out_detail} "pixi-prefixed RUNPATH/RPATH found in: ${_tp_hj}" PARENT_SCOPE)
+    else()
+        set(${out_flag} FALSE PARENT_SCOPE)
+        set(${out_detail} "audited ${_tp_checked} ELF output(s): no path into ${pixi_prefix}" PARENT_SCOPE)
+    endif()
+endfunction()
+
+#-----------------------------------------------------------------------------------------------------------------------
 # polyorch_thirdparty_build -- independent configure/build/install (EXPLICIT verb).
 #
 #   polyorch_thirdparty_build(NAME <n> SOURCE_DIR <d> BUILD_DIR <d> INSTALL_DIR <d>
 #     BUILD_TYPE <cfg>                      (required; O-3)
-#   [CMAKE_ARGS <...>] [TOOLCHAIN_FILE <f>] [GENERATOR <g>] [MAKE_PROGRAM <f>] [PARALLEL <n>])
+#   [CMAKE_ARGS <...>] [TOOLCHAIN_FILE <f>] [GENERATOR <g>] [MAKE_PROGRAM <f>]
+#   [DEPENDENCY_PROVIDER none|system|pixi|sysroot] [PIXI_ENVIRONMENT <e>]
+#   [SYSROOT <d>] [SANITIZE_ENV] [PARALLEL <n>])
 #
 # Runs a fully separate CMake invocation (execute_process), so the wrapped
 # project's targets never join the caller's graph. Full logs land at
@@ -323,11 +420,15 @@ endfunction()
 # -DCMAKE_TOOLCHAIN_FILE and CMAKE_ARGS must carry the explicit compiler
 # pair; TOOLCHAIN_FILE without a compiler pair is rejected (H3: refusing a
 # half-forwarded group beats silently host-tooling a cross build).
-# Environment: this face never injects CMAKE_PREFIX_PATH or a compiler into
-# the child (r4 C1); callers reach for the dependency-provider batch (P4).
+# Environment: with no provider (the default) this face injects neither
+# CMAKE_PREFIX_PATH nor a compiler into the child (r4 C1). The providers
+# (P4): system/SANITIZE_ENV only clean the compiler-direct-read vars from the
+# child; pixi additionally injects the environment's include/lib/pkgconfig
+# SUB-paths (never the bare prefix) and REQUIRES an explicit compiler at the
+# call site. sysroot is the P6 seam.
 function(polyorch_thirdparty_build)
-    cmake_parse_arguments(arg ""
-        "NAME;SOURCE_DIR;BUILD_DIR;INSTALL_DIR;BUILD_TYPE;GENERATOR;TOOLCHAIN_FILE;PARALLEL;MAKE_PROGRAM" "CMAKE_ARGS" ${ARGN})
+    cmake_parse_arguments(arg "SANITIZE_ENV"
+        "NAME;SOURCE_DIR;BUILD_DIR;INSTALL_DIR;BUILD_TYPE;GENERATOR;TOOLCHAIN_FILE;PARALLEL;MAKE_PROGRAM;DEPENDENCY_PROVIDER;PIXI_ENVIRONMENT;SYSROOT" "CMAKE_ARGS" ${ARGN})
     foreach(_tp_req IN ITEMS NAME SOURCE_DIR BUILD_DIR INSTALL_DIR BUILD_TYPE)
         if(NOT arg_${_tp_req})
             message(FATAL_ERROR "polyorch_thirdparty_build: ${_tp_req} is required")
@@ -358,6 +459,48 @@ function(polyorch_thirdparty_build)
         endif()
     endif()
 
+    # ---- dependency provider (P4) ----
+    set(_tp_provider "${arg_DEPENDENCY_PROVIDER}")
+    if(_tp_provider STREQUAL "")
+        set(_tp_provider "none")
+    endif()
+    if(NOT _tp_provider MATCHES "^(none|system|pixi|sysroot)$")
+        message(FATAL_ERROR "polyorch_thirdparty_build: unknown DEPENDENCY_PROVIDER '${_tp_provider}' (none|system|pixi; sysroot lands with the cross batch P6)")
+    endif()
+    if(_tp_provider STREQUAL "sysroot")
+        message(FATAL_ERROR "polyorch_thirdparty_build: DEPENDENCY_PROVIDER sysroot arrives with the cross/device batch (P6, O-5); P4 ships none/system/pixi")
+    endif()
+    if(_tp_provider STREQUAL "pixi")
+        if(NOT arg_PIXI_ENVIRONMENT)
+            message(FATAL_ERROR "polyorch_thirdparty_build: DEPENDENCY_PROVIDER pixi requires PIXI_ENVIRONMENT (an unnamed environment is an unbounded dependency set)")
+        endif()
+        # C1: the prefix's bin/ never enters the search set, so the compiler
+        # is never left to ambient discovery -- the call site states it.
+        if(NOT arg_TOOLCHAIN_FILE AND NOT arg_CMAKE_ARGS MATCHES "CMAKE_C_COMPILER|CMAKE_CXX_COMPILER")
+            message(FATAL_ERROR "polyorch_thirdparty_build: DEPENDENCY_PROVIDER pixi requires an explicit compiler at the call site (CMAKE_ARGS carrying CMAKE_C_COMPILER/CMAKE_CXX_COMPILER, or TOOLCHAIN_FILE) -- the compiler-hijack trap this provider exists to close (r4 C1)")
+        endif()
+    endif()
+    # The env wrapper (discipline 2: no-activation, explicit child env). The
+    # assignments TRAIL the --unset block because a later VAR=val wins under
+    # `cmake -E env` (measured ordering, the t-rust-env-forward family).
+    set(_tp_envpre "")
+    set(_tp_pixi_prefix "")
+    if(_tp_provider STREQUAL "pixi")
+        _polyorch_tp_pixi_subpaths("${arg_PIXI_ENVIRONMENT}" _tp_pixi_prefix _tp_px_subs _tp_px_pc)
+        list(JOIN _tp_px_subs ":" _tp_px_subs_j)
+        list(JOIN _tp_px_pc ":" _tp_px_pc_j)
+        set(_tp_envpre "${CMAKE_COMMAND}" -E env
+            --unset=CPATH --unset=C_INCLUDE_PATH --unset=CPLUS_INCLUDE_PATH
+            --unset=LIBRARY_PATH --unset=COMPILER_PATH --unset=CONDA_PREFIX
+            "CMAKE_PREFIX_PATH=${_tp_px_subs_j}"
+            "PKG_CONFIG_PATH=${_tp_px_pc_j}")
+        message(STATUS "polyorch thirdparty: pixi provider for ${arg_NAME} -- prefix sub-paths only (${_tp_px_subs_j}; pkgconfig ${_tp_px_pc_j})")
+    elseif(_tp_provider STREQUAL "system" OR arg_SANITIZE_ENV)
+        set(_tp_envpre "${CMAKE_COMMAND}" -E env
+            --unset=CPATH --unset=C_INCLUDE_PATH --unset=CPLUS_INCLUDE_PATH
+            --unset=LIBRARY_PATH --unset=COMPILER_PATH --unset=CONDA_PREFIX)
+    endif()
+
     file(MAKE_DIRECTORY "${arg_BUILD_DIR}")
     set(_tp_log_cfg "${arg_BUILD_DIR}/polyorch-thirdparty-${arg_NAME}-configure.log")
     set(_tp_log_bld "${arg_BUILD_DIR}/polyorch-thirdparty-${arg_NAME}-build.log")
@@ -365,7 +508,7 @@ function(polyorch_thirdparty_build)
 
     set(_tp_cmd "${CMAKE_COMMAND}" -S "${arg_SOURCE_DIR}" -B "${arg_BUILD_DIR}" -G "${arg_GENERATOR}"
         -DCMAKE_BUILD_TYPE=${arg_BUILD_TYPE} -DCMAKE_INSTALL_PREFIX=${arg_INSTALL_DIR} ${_tp_fwd} ${arg_CMAKE_ARGS})
-    execute_process(COMMAND ${_tp_cmd} OUTPUT_FILE "${_tp_log_cfg}" ERROR_FILE "${_tp_log_cfg}" RESULT_VARIABLE _tp_rc)
+    execute_process(COMMAND ${_tp_envpre} ${_tp_cmd} OUTPUT_FILE "${_tp_log_cfg}" ERROR_FILE "${_tp_log_cfg}" RESULT_VARIABLE _tp_rc)
     if(NOT _tp_rc EQUAL 0)
         message(FATAL_ERROR "polyorch_thirdparty_build: configure failed for ${arg_NAME} (rc=${_tp_rc}); full log: ${_tp_log_cfg}")
     endif()
@@ -374,7 +517,7 @@ function(polyorch_thirdparty_build)
     if(arg_PARALLEL)
         list(APPEND _tp_build "--parallel" "${arg_PARALLEL}")
     endif()
-    execute_process(COMMAND ${_tp_build} OUTPUT_FILE "${_tp_log_bld}" ERROR_FILE "${_tp_log_bld}" RESULT_VARIABLE _tp_rc)
+    execute_process(COMMAND ${_tp_envpre} ${_tp_build} OUTPUT_FILE "${_tp_log_bld}" ERROR_FILE "${_tp_log_bld}" RESULT_VARIABLE _tp_rc)
     if(NOT _tp_rc EQUAL 0)
         message(FATAL_ERROR "polyorch_thirdparty_build: build failed for ${arg_NAME} (rc=${_tp_rc}); full log: ${_tp_log_bld}")
     endif()
@@ -393,11 +536,12 @@ endfunction()
 #   polyorch_thirdparty_manifest_write(MANIFEST <file> KEY <64hex> NAME <n>
 #     [VERSION <v>] [LICENSE <spdx>] [PROVIDER <p>] [PROFILE <p>] [TRIPLET <t>]
 #     [BUILD_TYPE <cfg>] [LINK_MODE <m>] [OPTIONS <k=v;...>] [ARCHIVE_SHA256 <h>]
-#     [RECIPE_SHA256 <h>] [SCHEMA_VERSION <n>] [DEPENDENCY_PROVIDER <p>])
+#     [RECIPE_SHA256 <h>] [SCHEMA_VERSION <n>] [DEPENDENCY_PROVIDER <p>]
+#     [PIXI_RUNTIME_REQUIRED])
 #
 # LICENSE is mandatory (L7: zlib/MIT-class obligations ride the artifact).
 function(polyorch_thirdparty_manifest_write)
-    cmake_parse_arguments(arg ""
+    cmake_parse_arguments(arg "PIXI_RUNTIME_REQUIRED"
         "MANIFEST;KEY;NAME;VERSION;LICENSE;PROVIDER;PROFILE;TRIPLET;BUILD_TYPE;LINK_MODE;ARCHIVE_SHA256;RECIPE_SHA256;SCHEMA_VERSION;DEPENDENCY_PROVIDER" "OPTIONS" ${ARGN})
     if(NOT arg_MANIFEST OR NOT arg_KEY OR NOT arg_NAME)
         message(FATAL_ERROR "polyorch_thirdparty_manifest_write: MANIFEST, KEY and NAME are required")
@@ -429,6 +573,9 @@ function(polyorch_thirdparty_manifest_write)
             string(JSON _tp_m SET "${_tp_m}" "options" ${_tp_oi} "\"${_tp_o}\"")
             math(EXPR _tp_oi "${_tp_oi} + 1")
         endforeach()
+    endif()
+    if(arg_PIXI_RUNTIME_REQUIRED)
+        string(JSON _tp_m SET "${_tp_m}" "pixi_runtime_required" "true")
     endif()
     string(TIMESTAMP _tp_now UTC)
     string(JSON _tp_m SET "${_tp_m}" "created_utc" "\"${_tp_now}\"")
@@ -639,6 +786,10 @@ endmacro()
 #     WORK_DIR <d> BUILD_TYPE <cfg> [PROFILE <p>] [TRIPLET <t>]
 #     [GENERATOR <g>] [PARALLEL <n>]
 #     [PACKAGES_DIR <d>] [PACKAGE_FORMAT tar.gz]    (P2; empty dir = no packing)
+#     [DEPENDENCY_PROVIDER none|system|pixi] [PIXI_ENVIRONMENT <e>]  (P4)
+#     [MAKE_PROGRAM <f>] [TRIPLET <t>]
+#     [CMAKE_ARGS <...>]   (call-site dynamic args: the provider compilers
+#                          are explicit per r4 C1 and never live in the JSON)
 #     [SOURCE_DIR_OUT <var>] [INSTALL_DIR_OUT <var>] [FINGERPRINT_OUT <var>]
 #     [MANIFEST_OUT <var>] [PACKAGE_OUT <var>]
 #     [FIND_PACKAGE_NAME_OUT <var>] [ALIAS_OUT <var>]
@@ -657,7 +808,8 @@ endmacro()
 # (this loader returns the wiring).
 function(polyorch_thirdparty_recipe)
     cmake_parse_arguments(arg ""
-        "RECIPE;RECIPE_BASE;WORK_DIR;BUILD_TYPE;PROFILE;TRIPLET;GENERATOR;PARALLEL;PACKAGES_DIR;PACKAGE_FORMAT;MAKE_PROGRAM;SOURCE_DIR_OUT;INSTALL_DIR_OUT;FINGERPRINT_OUT;MANIFEST_OUT;PACKAGE_OUT;FIND_PACKAGE_NAME_OUT;ALIAS_OUT;COMPONENTS_OUT;TARGETS_OUT" "" ${ARGN})
+        "RECIPE;RECIPE_BASE;WORK_DIR;BUILD_TYPE;PROFILE;TRIPLET;GENERATOR;PARALLEL;PACKAGES_DIR;PACKAGE_FORMAT;MAKE_PROGRAM;DEPENDENCY_PROVIDER;PIXI_ENVIRONMENT;SOURCE_DIR_OUT;INSTALL_DIR_OUT;FINGERPRINT_OUT;MANIFEST_OUT;PACKAGE_OUT;FIND_PACKAGE_NAME_OUT;ALIAS_OUT;COMPONENTS_OUT;TARGETS_OUT"
+        "CMAKE_ARGS" ${ARGN})
     if(NOT arg_RECIPE OR NOT arg_WORK_DIR OR NOT arg_BUILD_TYPE)
         message(FATAL_ERROR "polyorch_thirdparty_recipe: RECIPE, WORK_DIR and BUILD_TYPE are required (BUILD_TYPE explicit: O-3)")
     endif()
@@ -791,10 +943,33 @@ function(polyorch_thirdparty_recipe)
     if("${_tp_json}" MATCHES "\"link_mode\"[ ]*:")
         string(JSON _tp_link GET "${_tp_json}" link_mode)
     endif()
+    # pixi provider inputs (P4): the lockfile is the reproducibility anchor --
+    # its hash rides the key (discipline 3), and the environment name is
+    # already carried by DEPENDENCY_PROVIDER + the injection itself.
+    set(_tp_provider "${arg_DEPENDENCY_PROVIDER}")
+    if(_tp_provider STREQUAL "")
+        set(_tp_provider "none")
+    endif()
+    set(_tp_pixi_lock "")
+    if(_tp_provider STREQUAL "pixi")
+        if(NOT arg_PIXI_ENVIRONMENT)
+            message(FATAL_ERROR "polyorch_thirdparty_recipe: DEPENDENCY_PROVIDER pixi requires PIXI_ENVIRONMENT")
+        endif()
+        if(NOT PolyOrch_PIXI_MANIFEST)
+            message(FATAL_ERROR "polyorch_thirdparty_recipe: DEPENDENCY_PROVIDER pixi requires the pixi face context (polyorch_pixi_setup / PolyOrch_PIXI_MANIFEST)")
+        endif()
+        cmake_path(GET PolyOrch_PIXI_MANIFEST PARENT_PATH _tp_pdir)
+        if(NOT EXISTS "${_tp_pdir}/pixi.lock")
+            message(FATAL_ERROR "polyorch_thirdparty_recipe: pixi provider without pixi.lock beside the manifest -- the lockfile hash is the key input (discipline 3); resolve it first")
+        endif()
+        file(SHA256 "${_tp_pdir}/pixi.lock" _tp_pixi_lock)
+    endif()
     polyorch_thirdparty_fingerprint(_tp_key
         ARCHIVE_SHA256 "${_tp_arch_hash}" BUILD_TYPE "${arg_BUILD_TYPE}"
         VERSION "${_tp_version}" PROFILE "${arg_PROFILE}" TRIPLET "${arg_TRIPLET}" LINK_MODE "${_tp_link}"
-        OPTIONS ${_tp_opts} RECIPE_SHA256 "${_tp_recipe_hash}" SCHEMA_VERSION "${_tp_schema}")
+        OPTIONS ${_tp_opts} RECIPE_SHA256 "${_tp_recipe_hash}" SCHEMA_VERSION "${_tp_schema}"
+        DEPENDENCY_PROVIDER "${_tp_provider}" PIXI_LOCK_SHA256 "${_tp_pixi_lock}"
+        PIXI_ENVIRONMENT "${arg_PIXI_ENVIRONMENT}")
 
     # ---- layout + cache verdict (manifest identity, NOT existence -- the
     # QExt/CxxKit stamp check upgraded here; same key -> same content at the
@@ -863,11 +1038,32 @@ function(polyorch_thirdparty_recipe)
             foreach(_tp_o IN LISTS _tp_opts)
                 list(APPEND _tp_cmake_args "-D${_tp_o}")
             endforeach()
+            # static recipe options first, then the call-site dynamic args
+            # (provider compilers ride this channel -- r4 C1 keeps them out
+            # of the JSON because choosing a compiler is a decision, not a
+            # fact about the artifact)
+            list(APPEND _tp_cmake_args ${arg_CMAKE_ARGS})
             polyorch_thirdparty_build(NAME "${_tp_name}" SOURCE_DIR "${_tp_src}"
                 BUILD_DIR "${_tp_builddir}" INSTALL_DIR "${_tp_installdir}"
                 BUILD_TYPE "${arg_BUILD_TYPE}" GENERATOR "${arg_GENERATOR}"
                 MAKE_PROGRAM "${arg_MAKE_PROGRAM}"
+                DEPENDENCY_PROVIDER "${arg_DEPENDENCY_PROVIDER}" PIXI_ENVIRONMENT "${arg_PIXI_ENVIRONMENT}"
                 PARALLEL "${arg_PARALLEL}" CMAKE_ARGS ${_tp_cmake_args})
+
+            # ---- pixi runtime audit (discipline 4): static linking is not
+            # runtime independence; a pixi-prefixed RUNPATH marks the manifest
+            # instead of silently shipping ----
+            set(_tp_pr_flag "")
+            if(_tp_provider STREQUAL "pixi")
+                _polyorch_tp_pixi_subpaths("${arg_PIXI_ENVIRONMENT}" _tp_aprefix _tp_asubs _tp_apc)
+                _polyorch_tp_pixi_audit("${_tp_installdir}" "${_tp_aprefix}" _tp_needs _tp_adetail)
+                if(_tp_needs)
+                    message(WARNING "polyorch thirdparty: ${_tp_name} NEEDS THE PIXI RUNTIME at load time -- ${_tp_adetail} (not a standalone release piece)")
+                    set(_tp_pr_flag PIXI_RUNTIME_REQUIRED)
+                else()
+                    message(STATUS "polyorch thirdparty: ${_tp_name} pixi audit -- ${_tp_adetail}")
+                endif()
+            endif()
 
             # ---- manifest ----
             polyorch_thirdparty_manifest_write(MANIFEST "${_tp_manifest}" KEY "${_tp_key}"
@@ -875,7 +1071,8 @@ function(polyorch_thirdparty_recipe)
                 PROVIDER "${_tp_provider}" PROFILE "${arg_PROFILE}" TRIPLET "${arg_TRIPLET}"
                 BUILD_TYPE "${arg_BUILD_TYPE}"
                 LINK_MODE "${_tp_link}" OPTIONS ${_tp_opts} ARCHIVE_SHA256 "${_tp_arch_hash}"
-                RECIPE_SHA256 "${_tp_recipe_hash}" SCHEMA_VERSION "${_tp_schema}")
+                RECIPE_SHA256 "${_tp_recipe_hash}" SCHEMA_VERSION "${_tp_schema}"
+                DEPENDENCY_PROVIDER "${_tp_provider}" ${_tp_pr_flag})
 
             # ---- pack into the shared cache (P2; empty dir = no-op) ----
             if(arg_PACKAGES_DIR)

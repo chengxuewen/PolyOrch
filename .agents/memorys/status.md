@@ -263,3 +263,26 @@ rides stdout under capture (judge the combined stream).
 - 2 new cases (fetch-patchcmd, recipe-fetchonly); suite 93/8/37.
 - Consumer side (MediaServo 6eac70e->P3): build gui-deps verb + recipes +
   ImGui wrapper moved to cmake/gui-deps (single definition point).
+
+## 2026-11-03 -- D50 P4: dependency providers (same 0.8.0 line)
+
+- build/recipe DEPENDENCY_PROVIDER none|system|pixi (default none),
+  PIXI_ENVIRONMENT, SANITIZE_ENV; the pixi child env = `cmake -E env` with
+  the six compiler-direct-read vars --unset and the prefix's include/lib/
+  pkgconfig SUB-paths injected (bare prefix refused by construction, C1);
+  explicit compiler required; lock sha + env name + provider ride the key
+  (fingerprint gained PIXI_ENVIRONMENT).
+- readelf -d runtime audit after pixi builds: prefix RUNPATH -> manifest
+  pixi_runtime_required + WARNING; missing readelf = loud "not audited".
+  PATH-only readelf discovery on purpose (tests fake it; traps pinned: a
+  pre-set empty result variable makes find_program skip the search, and the
+  CACHE entry must be dropped per call).
+- 2 cases (provider-pixi envprobe assertions, provider-seams refusals +
+  audit legs); suite 95/8/37. ck() cannot carry multi-word MATCHES patterns
+  (token-join trap) -- the case asserts via local _ckm/_cknm functions.
+- Consumer (MediaServo 80ce338->P4): pixi.toml gui-deps env + lock re-resolved
+  same stroke (L5), `build gui-deps --provider pixi --pixi-env gui-deps`
+  with /usr/bin/cc,c++ explicit, provider path tag (linux-desktop-pixi),
+  import side MEDIASERVO_GUI_DEPS_PROVIDER. Real-box proof: SDL installed
+  against conda xorg packages, audit clean (2 ELFs), import leg resolved the
+  aliased target; default none keeps the P3 layout untouched.

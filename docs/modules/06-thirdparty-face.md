@@ -48,12 +48,39 @@ cache -> build. `PACKAGE_FORMAT` exists but only `tar.gz` is writable today
 changing any key input (options/profile/triplet/recipe digest/...) yields a
 different name and the old package can never be silently reused.
 
+## Dependency providers (P4)
+
+`polyorch_thirdparty_build` / `polyorch_thirdparty_recipe` take
+`DEPENDENCY_PROVIDER none|system|pixi` (default **none** -- F3=A: the system
+toolchain is the constitution, the pixi fill is implemented but never the
+decision by default):
+
+- `none` -- no injection at all (the P1..P3 posture).
+- `system` -- sanitize only: `CPATH`, `C_INCLUDE_PATH`, `CPLUS_INCLUDE_PATH`,
+  `LIBRARY_PATH`, `COMPILER_PATH`, `CONDA_PREFIX` are `--unset` in the child
+  (`cmake -E env`, assignments trailing the unset block -- the measured
+  ordering rule).
+- `pixi` -- no-activation isolation (disciplines 1/2/3/5): the environment's
+  `include`/`lib`/`lib/pkgconfig` SUB-paths are injected into the child env,
+  **never the bare prefix** (a prefix carrying `bin/` would let `find_program`
+  reach the conda compilers -- the hijack this provider exists to close); an
+  explicit compiler (or toolchain file) at the call site is REQUIRED; the
+  `pixi.lock` hash and the environment NAME ride the cache key.
+
+Runtime audit (discipline 4): after a `pixi` build the recipe runs
+`readelf -d` over the install tree's ELF outputs -- a RUNPATH/RPATH pointing
+inside the pixi prefix means the artifact NEEDS THE PIXI RUNTIME and the
+manifest gets `pixi_runtime_required: true` (a marker and a WARNING, never a
+silent pass; a missing readelf degrades loudly as "not audited").
+
 ## Deliberate seams (louder than any doc)
 
 - `provider: vcpkg|conan` -> FATAL naming the P7 provider face (prerequisites
   O-10/O-11/PolyOrch O4) -- reserved, not implemented.
 - `provider: prebuilt|system` -> FATAL naming the P3+ consumer lanes -- the
   P2 package cache covers SOURCE builds only, it is not a prebuilt recipe.
+- `DEPENDENCY_PROVIDER sysroot` -> FATAL naming the cross/device batch (P6,
+  O-5); none/system/pixi landed with P4.
 - The face is **zero-network**: archives ship in-repo (or on a local path); a
   missing URL is a FATAL, never a download.
 
@@ -71,5 +98,8 @@ consume read-only and cross-team sharing needs an external trust anchor (M3).
 `-hash-mismatch` / `-patch-mismatch`, `t-thirdparty-build-e2e` /
 `-halfgroup`, `t-thirdparty-manifest-license`, `t-thirdparty-import-h2`,
 `t-thirdparty-recipe-e2e` / `-seams`, `t-thirdparty-package-basic` /
-`-corrupt` / `-relocate` (capability `cxx` for the build legs; see
-`tests/fixtures/thirdparty-basic/`).
+`-corrupt` / `-relocate`, `t-thirdparty-provider-pixi` (sub-path injection,
+child-env sanitization, the explicit-compiler negative, provider/lock/env
+keying) / `t-thirdparty-provider-seams` (sysroot + guard refusals, the
+faked-readelf audit legs, the manifest marker) (capability `cxx` for the
+build legs; see `tests/fixtures/thirdparty-basic/`).

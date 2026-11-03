@@ -1094,3 +1094,39 @@ an older checkout must FATAL, not silently miss the face.
   linux-desktop + headless under build/3rdparty/<profile>/sdl3/install-<cfg>,
   keys differ per profile; build example + ctest -R core green; closure
   greps empty).
+
+## D50 addendum: P4 dependency providers -- none/system/pixi, no-activation injection, runtime audit (2026-11-03, same round)
+
+- Need: F3=A's "implemented but OFF by default" fill. Building a library
+  whose dev packages are missing on the box must not mean activating a conda
+  shell (the F25 constitution forbids it) nor trusting a bare prefix into
+  CMAKE_PREFIX_PATH (find_program would reach the conda compilers in bin/ --
+  the silent mixed-toolchain hijack, r4 C1).
+- Shape: build/recipe gain DEPENDENCY_PROVIDER none|system|pixi (default
+  none) + PIXI_ENVIRONMENT + SANITIZE_ENV. system/none never inject. pixi
+  wraps the child in `cmake -E env` --unset of CPATH/C_INCLUDE_PATH/
+  CPLUS_INCLUDE_PATH/LIBRARY_PATH/COMPILER_PATH/CONDA_PREFIX and injects
+  ONLY the env prefix's include/lib/lib/pkgconfig SUB-paths (the guard
+  refuses any bare-prefix entry). An explicit compiler at the call site is
+  REQUIRED (r4 C1 -- the provider never lets the child discover one).
+  Discipline 3: pixi.lock sha + the environment NAME + the provider name all
+  ride the cache key (fingerprint gains PIXI_ENVIRONMENT). sysroot stays a
+  P6 seam.
+- Discipline 4 (static linking is NOT runtime independence): after a pixi
+  build the recipe audits the install tree with readelf -d; a RUNPATH/RPATH
+  inside the pixi prefix marks the manifest pixi_runtime_required=true and
+  WARNINGs; a missing readelf degrades LOUDLY ("not audited"), never a
+  silent pass. Tests fake readelf via PATH -- discovery is PATH-only on
+  purpose.
+- Tests: t-thirdparty-provider-pixi (envprobe fixture asserts the child env
+  verbatim: sub-path injection, sanitized vars, the explicit compiler, the
+  compiler-hijack negative, provider/lock/env keying), t-thirdparty-
+  provider-seams (sysroot/no-env/no-compiler refusals, the three audit
+  legs, the manifest round-trip). Suite 95 pass / 8 pre-existing / 37 skip.
+- Consumer proof (MediaServo, same stroke): pixi.toml declares the isolated
+  gui-deps environment (no media/dev stack), `build gui-deps --provider pixi`
+  installed SDL against the conda xorg packages with /usr/bin compilers --
+  readelf audited 2 ELF outputs clean, the tree landed under a
+  profile-suffixed path (linux-desktop-pixi, no aliasing), and the import
+  side reads it via MEDIASERVO_GUI_DEPS_PROVIDER. Default none keeps the P3
+  layout byte-for-byte; `build example` and the F25 gate are untouched.
