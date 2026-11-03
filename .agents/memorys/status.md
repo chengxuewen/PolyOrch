@@ -249,3 +249,17 @@ rides stdout under capture (judge the combined stream).
 - Suite after P2: 91 pass / 8 fail / 37 skip (8 = the pinned env-class set).
   Inventory 54 -> 55; docs/modules/06-thirdparty-face.md gained the package
   cache section; provider seam text for prebuilt/system re-pointed at P3+.
+
+## 2026-11-03 -- D50 P3 supplier support (same 0.8.0 line)
+
+- fetch PATCH_COMMAND (command-shaped patches: CWD = source tree, command
+  text in the stamp dossier; measured: the SDL guard script applies 4 sites
+  idempotently), recipe patch_command (relative elements resolve against
+  the recipe base) + fetch_only (F8 wrappers: no build/install/cache),
+  build/recipe MAKE_PROGRAM (-DCMAKE_MAKE_PROGRAM for sanitized-PATH
+  children). Trap pinned: a ninja that only lives in an activated env
+  vanishes under the sanitized PATH and project() dies with a misleading
+  "CMAKE_C_COMPILER not set" -- pin the tool's absolute path.
+- 2 new cases (fetch-patchcmd, recipe-fetchonly); suite 93/8/37.
+- Consumer side (MediaServo 6eac70e->P3): build gui-deps verb + recipes +
+  ImGui wrapper moved to cmake/gui-deps (single definition point).

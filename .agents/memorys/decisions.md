@@ -1067,3 +1067,30 @@ an older checkout must FATAL, not silently miss the face.
   env-class) / 37 skip.
 - Version stays on the 0.8.0 line (additive; the P1 judgment pinned 0.8.0).
   Inventory 54 -> 55 public functions.
+
+## D50 addendum: P3 supplier support -- command patches, fetch-only recipes, MAKE_PROGRAM (2026-11-03, same round)
+
+- Need: the consumer lane (MediaServo P3) builds SDL3 as an INDEPENDENT
+  project from the same recipe face. Three supplier gaps surfaced:
+  (1) SDL's Xwayland guard is a command-shaped, idempotent python rewrite
+  -- file-overlay PATCHES cannot express it; (2) ImGui is a source wrapper
+  (F8) that must be acquired/verified but never built/installed/cached;
+  (3) a child configure running under the consumer's sanitized PATH cannot
+  see an activated-env ninja, and project() dies with a MISLEADING
+  "CMAKE_C_COMPILER not set".
+- Shape: fetch gains PATCH_COMMAND (runs after the overlays, CWD = the
+  extracted tree, command text IS a stamp input -- a changed command
+  re-acquires and re-patches; the archive stays immutable). Recipe JSON
+  gains patch_command[<argv...>] (relative path elements that EXIST under
+  the recipe base are made absolute -- the command runs in the source tree)
+  and fetch_only (acquire+patch, then return SOURCE_DIR; no fingerprint/
+  build/manifest/cache/import outputs). build/recipe gain MAKE_PROGRAM,
+  forwarded as -DCMAKE_MAKE_PROGRAM to the child configure.
+- Tests: t-thirdparty-fetch-patchcmd (apply / idempotent stamp hit /
+  changed command -> pristine re-extract + re-patch), t-thirdparty-
+  recipe-fetchonly (relative patch_command resolves, no key/build/install).
+  Suite 93 pass / 8 pre-existing env-class / 37 skip.
+- Consumer proof lives in MediaServo (build gui-deps: SDL installed as
+  linux-desktop + headless under build/3rdparty/<profile>/sdl3/install-<cfg>,
+  keys differ per profile; build example + ctest -R core green; closure
+  greps empty).

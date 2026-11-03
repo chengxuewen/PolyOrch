@@ -147,18 +147,22 @@ endfunction()
 #
 #   polyorch_thirdparty_fetch(NAME <n> URL <archive|dir> URL_HASH SHA256=<hex>
 #     [PATCHES <f...>] [PATCH_SHA256 <h...>]      (parallel lists, both or neither)
+#     [PATCH_COMMAND <cmd...>]                    (runs with CWD = the source tree)
 #     [OUTPUT_DIR <d>]                            (default: CMAKE_CURRENT_BINARY_DIR/3rdparty)
 #     SOURCE_DIR_OUT <var> [ARCHIVE_SHA256_OUT <var>])
 #
 # URL_HASH is mandatory (an unverified artifact is unkeyable). Patches are
 # verified sha256 FIRST and only then applied (L6) -- a file patch is applied
 # as a verbatim copy over the extracted tree, relative to the archive root;
-# command-shaped patches stay the recipe's PATCH_COMMAND business (applied by
-# the caller after fetch). The stamp records the dossier, not a timestamp:
-# changing any input rebuilds the tree; identical inputs are a no-op.
+# command-shaped patches (SDL's Xwayland guard script class) run through
+# PATCH_COMMAND after the overlays, with the extracted tree as CWD and their
+# command text in the stamp dossier (a changed command re-acquires and
+# re-patches; the archive itself is immutable). The stamp records the dossier,
+# not a timestamp: changing any input rebuilds the tree; identical inputs are
+# a no-op.
 function(polyorch_thirdparty_fetch)
     cmake_parse_arguments(arg ""
-        "NAME;URL;URL_HASH;OUTPUT_DIR;SOURCE_DIR_OUT;ARCHIVE_SHA256_OUT" "PATCHES;PATCH_SHA256" ${ARGN})
+        "NAME;URL;URL_HASH;OUTPUT_DIR;SOURCE_DIR_OUT;ARCHIVE_SHA256_OUT" "PATCHES;PATCH_SHA256;PATCH_COMMAND" ${ARGN})
     if(NOT arg_NAME OR NOT arg_URL OR NOT arg_URL_HASH OR NOT arg_SOURCE_DIR_OUT)
         message(FATAL_ERROR "polyorch_thirdparty_fetch: NAME, URL, URL_HASH and SOURCE_DIR_OUT are required")
     endif()
@@ -222,9 +226,10 @@ function(polyorch_thirdparty_fetch)
     set(_tp_root "${arg_OUTPUT_DIR}/${arg_NAME}")
     set(_tp_src "${_tp_root}/source")
     set(_tp_stamp "${_tp_root}/fetch-stamp.txt")
-    # Stamp key = artifact + patches only (fetch is config-independent; the
-    # full-field cache key is the recipe face's business, not extraction's).
-    string(SHA256 _tp_fetch_key "archive=${_tp_arch_hash}\npatches=${_tp_patch_combined}\n")
+    # Stamp key = artifact + patches + the command text (fetch is config-
+    # independent; the full-field cache key is the recipe face's business,
+    # not extraction's).
+    string(SHA256 _tp_fetch_key "archive=${_tp_arch_hash}\npatches=${_tp_patch_combined}\npatch_command=${arg_PATCH_COMMAND}\n")
     if(EXISTS "${_tp_stamp}")
         file(READ "${_tp_stamp}" _tp_old)
         if(_tp_old STREQUAL "${_tp_fetch_key}" AND EXISTS "${_tp_src}")
@@ -286,6 +291,16 @@ function(polyorch_thirdparty_fetch)
         math(EXPR _tp_i "${_tp_i} + 1")
     endforeach()
 
+    # Command-shaped patch: runs inside the extracted tree (the SDL guard
+    # scripts address sources by relative path and are idempotent per site).
+    if(arg_PATCH_COMMAND)
+        execute_process(COMMAND ${arg_PATCH_COMMAND}
+            WORKING_DIRECTORY "${_tp_src}" RESULT_VARIABLE _tp_prc)
+        if(NOT _tp_prc EQUAL 0)
+            message(FATAL_ERROR "polyorch_thirdparty_fetch: PATCH_COMMAND failed for ${arg_NAME} (rc=${_tp_prc}); command: ${arg_PATCH_COMMAND} (cwd: ${_tp_src})")
+        endif()
+    endif()
+
     file(WRITE "${_tp_stamp}" "${_tp_fetch_key}")
     set(${arg_SOURCE_DIR_OUT} "${_tp_src}" PARENT_SCOPE)
     if(arg_ARCHIVE_SHA256_OUT)
@@ -298,7 +313,7 @@ endfunction()
 #
 #   polyorch_thirdparty_build(NAME <n> SOURCE_DIR <d> BUILD_DIR <d> INSTALL_DIR <d>
 #     BUILD_TYPE <cfg>                      (required; O-3)
-#     [CMAKE_ARGS <...>] [TOOLCHAIN_FILE <f>] [GENERATOR <g>] [PARALLEL <n>])
+#   [CMAKE_ARGS <...>] [TOOLCHAIN_FILE <f>] [GENERATOR <g>] [MAKE_PROGRAM <f>] [PARALLEL <n>])
 #
 # Runs a fully separate CMake invocation (execute_process), so the wrapped
 # project's targets never join the caller's graph. Full logs land at
@@ -312,7 +327,7 @@ endfunction()
 # the child (r4 C1); callers reach for the dependency-provider batch (P4).
 function(polyorch_thirdparty_build)
     cmake_parse_arguments(arg ""
-        "NAME;SOURCE_DIR;BUILD_DIR;INSTALL_DIR;BUILD_TYPE;GENERATOR;TOOLCHAIN_FILE;PARALLEL" "CMAKE_ARGS" ${ARGN})
+        "NAME;SOURCE_DIR;BUILD_DIR;INSTALL_DIR;BUILD_TYPE;GENERATOR;TOOLCHAIN_FILE;PARALLEL;MAKE_PROGRAM" "CMAKE_ARGS" ${ARGN})
     foreach(_tp_req IN ITEMS NAME SOURCE_DIR BUILD_DIR INSTALL_DIR BUILD_TYPE)
         if(NOT arg_${_tp_req})
             message(FATAL_ERROR "polyorch_thirdparty_build: ${_tp_req} is required")
@@ -327,6 +342,13 @@ function(polyorch_thirdparty_build)
             message(FATAL_ERROR "polyorch_thirdparty_build: TOOLCHAIN_FILE given but CMAKE_ARGS carries no explicit CMAKE_C(XX)_COMPILER pair (H3: a half-forwarded cross group silently builds with the host toolchain -- pass the compilers or drop the toolchain file)")
         endif()
         list(APPEND _tp_fwd "-DCMAKE_TOOLCHAIN_FILE=${arg_TOOLCHAIN_FILE}")
+    endif()
+    # MAKE_PROGRAM: the child configure runs under the caller's sanitized PATH
+    # (F25 sends the system constitution); a ninja that only lives in an
+    # activated env would otherwise vanish and project() would die with a
+    # misleading "CMAKE_C_COMPILER not set". Pin the tool's absolute path.
+    if(arg_MAKE_PROGRAM)
+        list(APPEND _tp_fwd "-DCMAKE_MAKE_PROGRAM=${arg_MAKE_PROGRAM}")
     endif()
     if(NOT arg_GENERATOR)
         if(CMAKE_GENERATOR)
@@ -627,11 +649,15 @@ endmacro()
 # then pick a profile") stay at the consumer call site -- never in the
 # loader. Schema v1 required fields: schema_version(==1), name, version,
 # provider, license, url, url_hash; optional: patches[{path,sha256}],
-# profiles{<p>{<OPT>:<v>}}, link_mode, find_package{name,components,targets},
-# alias. Import stays a separate verb (this loader returns the wiring).
+# patch_command[<argv...>] (relative path elements resolve against the recipe
+# base; the command runs with CWD = the extracted source tree), fetch_only
+# (F8 source-wrapper recipes: acquire + patch, then return the source dir --
+# no build/install/manifest/cache), profiles{<p>{<OPT>:<v>}}, link_mode,
+# find_package{name,components,targets}, alias. Import stays a separate verb
+# (this loader returns the wiring).
 function(polyorch_thirdparty_recipe)
     cmake_parse_arguments(arg ""
-        "RECIPE;RECIPE_BASE;WORK_DIR;BUILD_TYPE;PROFILE;TRIPLET;GENERATOR;PARALLEL;PACKAGES_DIR;PACKAGE_FORMAT;SOURCE_DIR_OUT;INSTALL_DIR_OUT;FINGERPRINT_OUT;MANIFEST_OUT;PACKAGE_OUT;FIND_PACKAGE_NAME_OUT;ALIAS_OUT;COMPONENTS_OUT;TARGETS_OUT" "" ${ARGN})
+        "RECIPE;RECIPE_BASE;WORK_DIR;BUILD_TYPE;PROFILE;TRIPLET;GENERATOR;PARALLEL;PACKAGES_DIR;PACKAGE_FORMAT;MAKE_PROGRAM;SOURCE_DIR_OUT;INSTALL_DIR_OUT;FINGERPRINT_OUT;MANIFEST_OUT;PACKAGE_OUT;FIND_PACKAGE_NAME_OUT;ALIAS_OUT;COMPONENTS_OUT;TARGETS_OUT" "" ${ARGN})
     if(NOT arg_RECIPE OR NOT arg_WORK_DIR OR NOT arg_BUILD_TYPE)
         message(FATAL_ERROR "polyorch_thirdparty_recipe: RECIPE, WORK_DIR and BUILD_TYPE are required (BUILD_TYPE explicit: O-3)")
     endif()
@@ -696,6 +722,31 @@ function(polyorch_thirdparty_recipe)
         endwhile()
     endif()
 
+    # ---- command-shaped patch + fetch-only mode (P3 consumer lane) ----
+    # patch_command elements that name an existing path relative to the
+    # recipe base are made absolute: the command's CWD is the extracted
+    # source tree, so a relative "patches/x.py" would miss.
+    set(_tp_patch_cmd "")
+    if("${_tp_json}" MATCHES "\"patch_command\"[ ]*:")
+        string(JSON _tp_npc LENGTH "${_tp_json}" patch_command)
+        set(_tp_pci 0)
+        while(_tp_pci LESS _tp_npc)
+            string(JSON _tp_pe GET "${_tp_json}" patch_command ${_tp_pci})
+            if(NOT IS_ABSOLUTE "${_tp_pe}" AND EXISTS "${arg_RECIPE_BASE}/${_tp_pe}")
+                set(_tp_pe "${arg_RECIPE_BASE}/${_tp_pe}")
+            endif()
+            list(APPEND _tp_patch_cmd "${_tp_pe}")
+            math(EXPR _tp_pci "${_tp_pci} + 1" OUTPUT_FORMAT DECIMAL)
+        endwhile()
+    endif()
+    set(_tp_fetch_only FALSE)
+    if("${_tp_json}" MATCHES "\"fetch_only\"[ ]*:")
+        string(JSON _tp_fo GET "${_tp_json}" fetch_only)
+        if(_tp_fo)
+            set(_tp_fetch_only TRUE)
+        endif()
+    endif()
+
     # ---- profile options ----
     set(_tp_opts "")
     if(arg_PROFILE)
@@ -723,8 +774,17 @@ function(polyorch_thirdparty_recipe)
     endif()
     polyorch_thirdparty_fetch(NAME "${_tp_name}" URL "${_tp_url}" URL_HASH "SHA256=${_tp_urlhash}"
         PATCHES ${_tp_patches} PATCH_SHA256 ${_tp_patch_shas}
+        PATCH_COMMAND ${_tp_patch_cmd}
         OUTPUT_DIR "${arg_WORK_DIR}"
         SOURCE_DIR_OUT _tp_src ARCHIVE_SHA256_OUT _tp_arch_hash)
+
+    if(_tp_fetch_only)
+        if(arg_SOURCE_DIR_OUT)
+            set(${arg_SOURCE_DIR_OUT} "${_tp_src}" PARENT_SCOPE)
+        endif()
+        message(STATUS "polyorch thirdparty: ${_tp_name} fetch-only recipe (F8 source wrapper) -- source at ${_tp_src}; no build/install/manifest/cache")
+        return()
+    endif()
 
     # ---- fingerprint (recipe itself is a key input, M1) ----
     set(_tp_link "")
@@ -806,6 +866,7 @@ function(polyorch_thirdparty_recipe)
             polyorch_thirdparty_build(NAME "${_tp_name}" SOURCE_DIR "${_tp_src}"
                 BUILD_DIR "${_tp_builddir}" INSTALL_DIR "${_tp_installdir}"
                 BUILD_TYPE "${arg_BUILD_TYPE}" GENERATOR "${arg_GENERATOR}"
+                MAKE_PROGRAM "${arg_MAKE_PROGRAM}"
                 PARALLEL "${arg_PARALLEL}" CMAKE_ARGS ${_tp_cmake_args})
 
             # ---- manifest ----
