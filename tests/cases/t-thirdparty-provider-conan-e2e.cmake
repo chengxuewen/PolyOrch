@@ -104,10 +104,20 @@ else()
     ck_file("${_pkg}")
     ck_file("${_pkg}.sha256")
     ck_file("${_pkg}.manifest.json")
-    # zero intrusion: the in-repo islands hold only their declared files
+    # zero intrusion: the in-repo island is a read-only input; the guard
+    # watches GENERATED names (anchored on path boundaries, never substrings)
+    # plus a lower bound on the count -- the island is multi-provider by
+    # design (r9a H2) and its file count only ever grows.
     file(GLOB _dirty "${_island}/*")
+    foreach(_bad IN ITEMS "(^|/)vcpkg_installed(/|$)"
+            "(^|/)CMakeUserPresets[.]json$" "(^|/)conan_toolchain[.]cmake$"
+            "(^|/)deploy(/|$)")
+        if("${_dirty}" MATCHES "${_bad}")
+            message(FATAL_ERROR "the generate wrote into the island: ${_bad} -- ${_dirty}")
+        endif()
+    endforeach()
     list(LENGTH _dirty _nd)
-    ck(_nd EQUAL 3)
+    ck(_nd GREATER_EQUAL 3)
     file(GLOB _ti "${_w}/conan-tool/pixi.toml")
     ck(_ti)
 

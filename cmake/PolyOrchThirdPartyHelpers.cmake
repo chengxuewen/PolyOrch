@@ -1234,6 +1234,10 @@ endmacro()
 #     WORK_DIR <d> BUILD_TYPE <cfg> [PROFILE <p>] [TRIPLET <t>]
 #     [GENERATOR <g>] [PARALLEL <n>]
 #     [PACKAGES_DIR <d>] [PACKAGE_FORMAT tar.gz]    (P2; empty dir = no packing)
+#     [VCPKG_PROGRAM <f>] [CONAN_PROGRAM <f>] [BOOTSTRAP_TOOL <on|off>]
+#     [BINARY_CACHE <on|off>]    (vcpkg lane ONLY -- on the conan lane the
+#                                  switch is refused with a warning: conan's
+#                                  own cache is CONAN_HOME inside the anchor)
 #     [DEPENDENCY_PROVIDER none|system|pixi] [PIXI_ENVIRONMENT <e>]  (P4)
 #     [MAKE_PROGRAM <f>] [TRIPLET <t>]
 #     [CMAKE_ARGS <...>]   (call-site dynamic args: the provider compilers
@@ -1685,6 +1689,13 @@ Or keep this library on provider \"source\" (edit the recipe).")
                 endif()
                 if(_tp_provider STREQUAL "conan")
                     # ---- conan generate (P7b) ----
+                    # BINARY_CACHE is a vcpkg-lane switch; honoring it here
+                    # would be a silent no-op -- the interface refuses to
+                    # pretend (a caller asking for acceleration must be told
+                    # the conan lane accelerates through CONAN_HOME instead).
+                    if(_tp_bincache)
+                        message(WARNING "polyorch_thirdparty_recipe: BINARY_CACHE is ignored on the conan lane -- conan's own cache is CONAN_HOME inside the work anchor (ephemeral acceleration, never the verdict; the pack cache in PACKAGES_DIR is the reuse face)")
+                    endif()
                     # four rungs to get the tool, then the version the lock
                     # pins must be the version that runs: a different binary is
                     # not the artifact the key says it is.
@@ -1696,6 +1707,16 @@ Or keep this library on provider \"source\" (edit the recipe).")
                     # and build folders next to the consumer file it is handed
                     # (the same zero-intrusion reason the vcpkg lane copies for
                     # -- that one is measured, this one is prevented).
+                    # Everything this lane creates below (the island copy, the
+                    # conan-home cache, the tool island, deploy) lives INSIDE
+                    # the work anchor on purpose, mirroring the vcpkg lane's
+                    # posture: ephemeral acceleration only -- never keyed,
+                    # never the verdict -- and it dies with the anchor on the
+                    # next clean. Reuse crosses the anchor only through the
+                    # PACKAGES_DIR pack; nothing here is swept mid-life
+                    # because a swept cache would re-fetch without changing
+                    # any verdict (the same reason the vcpkg lane keeps its
+                    # downloads/ and binary cache alive in the anchor).
                     set(_tp_cpin "${arg_WORK_DIR}/${_tp_name}/pin")
                     file(REMOVE_RECURSE "${_tp_cpin}")
                     file(MAKE_DIRECTORY "${_tp_cpin}")
