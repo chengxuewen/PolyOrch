@@ -286,3 +286,8 @@ rides stdout under capture (judge the combined stream).
   import side MEDIASERVO_GUI_DEPS_PROVIDER. Real-box proof: SDL installed
   against conda xorg packages, audit clean (2 ELFs), import leg resolved the
   aliased target; default none keeps the P3 layout untouched.
+
+## 2026-11-04 -- sr8 r6: the P7 prereq adjudications land (O4 closed here)
+- Parent plan polyorch-sr8-thirdparty-face gained §3.1 (five one-by-one rulings): O4=A dual-track tool supply (conan via conda env, vcpkg-tool via our own thirdparty face -- the conda vcpkg package measured dead at 2023.04.15); O-10=A per-library pin islands (manifest+baseline / conanfile+lock, pin hash into key); O-11=A cache layering (P2 sidecar identity is the ONLY verdict; vcpkg/conan caches pinned anchor-local, ephemeral, not keyed; CACHE_DIR absorbed by the WORK_DIR anchor); O-12=C supplier-derived triplet + conan profile GENERATED from cmake facts (hash into key, call-site override); O-13=C conditional entry (P7 ships NO overlay channel -- loader FATALs on vcpkg/conan + patch fields; trigger = a real candidate).
+- Evidence survey (in-plan): QExt/CxxKit InstallVcpkg.cmake -- pipeline shape borrowable (install/export --raw -> archive -> unpack-consume, build-time needs no vcpkg: isomorphic with our H2 + import face); six defects are exactly our already-built medicines (key-less naming, existence verdicts, clone-into-source-dir, configure-time install, no pin, no sha/provenance); borrow list: raw-export flat prefix, triplet+link-mode suffix table, TOOLS double tree, NO_FALLBACK strict-first (P7 default: pre-baked archives + FATAL pointing at generation commands; auto-fallback deferred).
+- architecture.md O4 row closed (RESOLVED 2026-11-04, dual-track form). Docs only; zero code touched this stroke.
