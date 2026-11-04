@@ -73,14 +73,16 @@ inside the pixi prefix means the artifact NEEDS THE PIXI RUNTIME and the
 manifest gets `pixi_runtime_required: true` (a marker and a WARNING, never a
 silent pass; a missing readelf degrades loudly as "not audited").
 
-## Ecosystem provider lane (P7a, vcpkg)
+## Ecosystem provider lanes (P7a vcpkg, P7b conan)
 
-A `provider: "vcpkg"` recipe pins through an ISLAND instead of an archive: one
-`pkg-deps/<lib>/vcpkg.json` with `builtin-baseline` committed beside the
-recipe. The island's content hash is the artifact-identity anchor (it rides
-`ARCHIVE_SHA256` plus explicit `ECOSYSTEM_PROVIDER`/`ECOSYSTEM_PIN_SHA256`/
-`ECOSYSTEM_TRIPLET` key fields), so editing a pin -- baseline, override, one
-space -- mints a new key and the old artifact can never be silently reused.
+An ecosystem recipe pins through an ISLAND instead of an archive: one
+`pkg-deps/<lib>/` directory committed beside the recipe. Its content hash is
+the artifact-identity anchor (it rides `ARCHIVE_SHA256` plus the explicit
+`ECOSYSTEM_*` key fields), so editing a pin -- baseline, override, lock byte,
+one space -- mints a new key and the old artifact can never be reused silently.
+The island may hold BOTH providers' manifests (`vcpkg.json` and
+`conanfile.txt`+`conan.lock`): the file set is selected by provider, so
+switching lanes is a one-line edit to `provider` and nothing else.
 
 Verdict order: install manifest -> package cache -> **ecosystem generate** ->
 source build. The generate is the ONE network step and only runs under an
@@ -111,20 +113,61 @@ never recipe JSON, because the recipe hash is a key input and a speed switch
 must not mint a cache identity. Default: binary cache off (`clear`), bootstrap
 allowed. The vcpkg cache lives in the anchor, is never keyed, dies with it.
 
+### The conan lane (P7b)
+
+Same skeleton, conan's own mechanics -- all of them measured here, because
+every one of them disagreed with what a reasonable reading of the docs assumed:
+
+- Island = `conanfile.txt` (or `.py`) **plus** `conan.lock`; the lock is
+  mandatory (without it versions float) and must be passed to the install
+  EXPLICITLY as `--lockfile` -- an island that merely contains a lock does not
+  make conan read it, which would leave a pin silently doing nothing while the
+  key claims it is pinned.
+- The profile is GENERATED from cmake facts into the anchor (never
+  `conan profile detect`, which answers "what is this machine" rather than
+  "what did this build decide"), and is passed as BOTH slots (`-pr` and
+  `-pr:b`): with `CONAN_HOME` anchored and empty, conan otherwise demands a
+  default profile -- the exact fallback this lane refuses. A caller-supplied
+  `PROFILE` is refused too, with conan's own wording (conan HAS profiles; they
+  are just not the caller's to hand in).
+- Tool supply: `CONAN_PROGRAM` > `tools/bin` > PATH > **solve the committed
+  `pkg-deps/conan-tool/` island with pixi into the anchor** (the island
+  declares one tool and zero libraries, so it is a tool pin, not PolyOrch
+  becoming a package manager). The version that rides the key is the one the
+  island's `pixi.lock` names -- read as TEXT, because asking the binary would
+  make the strict-refusal path need a conan installed; the lock's own hash
+  deliberately does NOT ride the key, since a lock embeds host virtual packages
+  (`__glibc`/`__linux`/`__archspec`) and a host fact in the key would weld
+  artifact identity to one machine. The resolved binary's reported version is
+  checked against the pin and a mismatch refuses.
+- `PIXI_CACHE_DIR` is inherited when already set (the consumer entry script
+  exports a project-scoped one) and otherwise pointed into the anchor --
+  unhandled, pixi writes `$HOME/.cache`: global state, and unwritable in a
+  sandbox.
+- The prefix comes from `--deployer=direct_deploy` (without a deployer the
+  output folder holds generator files only and the libraries stay in the
+  cache), consumed through the CMakeDeps configs at the top level. Those
+  configs resolve packages via `${CMAKE_CURRENT_LIST_DIR}/direct_deploy/<pkg>`
+  -- fully relative, which is what makes the pack relocatable; `conan_toolchain.cmake`
+  is the one artifact that DOES pin the host and is neither emitted nor copied.
+  Because a static fmt is modelled as an INTERFACE library carrying
+  `INTERFACE_LINK_LIBRARIES` (no `IMPORTED_LOCATION` at all), the e2e proof is
+  a program that compiles, links and RUNS out of a relocated copy.
+- The triplet slot takes the profile name (`polyorch-release`), so package
+  names distinguish lanes without inventing a vcpkg-shaped vocabulary.
+
 ## Deliberate seams (louder than any doc)
 
-- `provider: conan` -> FATAL naming the P7b lane (same shape as vcpkg: the
-  island is `conanfile` + `conan.lock`, the profile is generated from cmake
-  facts). Reserved, not implemented. `provider: vcpkg` LANDED with P7a (above).
 - `provider: prebuilt|system` -> FATAL naming the P3+ consumer lanes -- the
   P2 package cache covers SOURCE builds only, it is not a prebuilt recipe.
+  Both ecosystem providers LANDED: `vcpkg` with P7a, `conan` with P7b (above).
 - `DEPENDENCY_PROVIDER sysroot` -> FATAL naming the cross/device batch (P6,
   O-5); none/system/pixi landed with P4.
 - The face is **zero-network** for source recipes: archives ship in-repo (or
   on a local path); a missing URL is a FATAL, never a download. The ecosystem
-  lane is the deliberate exception, and it is behind `GENERATE_ECOSYSTEM` --
-  without that switch a vcpkg recipe with no cached artifact also never
-  touches the network.
+  lanes are the deliberate exception, and they are behind `GENERATE_ECOSYSTEM`
+  -- without that switch, a vcpkg or conan recipe with no cached artifact also
+  never touches the network.
 
 ## Non-goals (pinned by the r4 review)
 
@@ -151,8 +194,17 @@ refusal legs: the strict manual word-for-word plus the FORCE_SYSTEM_BINARIES
 negative, the O-13 reds with the source recipe as the green control, island
 and license-drift refusals, the lane-knob refusals, both triplet refusals; and
 inline checks on the pinned env, both postures, directory creation, the
-triplet ladder, pin-hash sensitivity, ECOSYSTEM_* keying) and online by
-`t-thirdparty-provider-vcpkg-e2e` (`# e2e: required`: generate -> island zero
-intrusion -> pack + sidecars -> offline reuse with the registry root deleted
--> changed island strict refusal; no host preparation needed, the lane
-bootstraps the tool itself; see `tests/fixtures/thirdparty-ecosystem/`).
+triplet ladder, pin-hash sensitivity, ECOSYSTEM_* keying), by
+`t-thirdparty-provider-conan` (13 refusal legs including the conan-wording
+profile gate, the tool-version-mismatch and no-bootstrap gates, and a
+no-host-paths scan; inline checks that the generated profile carries conan's
+six fields, that its hash is stable yet moves on a cppstd/build_type change,
+that **mutating the tool lock's host virtual packages leaves the pinned
+version untouched** (the anti-host-binding proof), and that one island serving
+both providers keeps a vcpkg pin unmoved by conan-side bytes), and online by
+`t-thirdparty-provider-vcpkg-e2e` / `t-thirdparty-provider-conan-e2e`
+(`# e2e: required`: generate -> island zero intrusion -> pack + sidecars ->
+offline reuse with the tool state deleted -> changed-island strict refusal;
+the conan one additionally compiles, links and RUNS a program against a
+relocated copy). Neither needs host preparation -- both lanes fetch or solve
+their own tool; see `tests/fixtures/thirdparty-ecosystem/`.

@@ -14,8 +14,17 @@ if(TP_LEG)
         file(WRITE "$ENV{TMPDIR}/tp-seg.json"
   "{\"schema_version\":1,\"name\":\"x\",\"version\":\"1\",\"provider\":\"vcpkg\",\"license\":\"MIT\",\"pin_dir\":\"$ENV{TMPDIR}/tp-seg-island\"}")
     elseif(TP_LEG STREQUAL "conan")
+        # P7b: the conan leg is a real ecosystem recipe now too -- an island
+        # (conanfile + lock) that dies at the strict-first gate like vcpkg
+        file(MAKE_DIRECTORY "$ENV{TMPDIR}/tp-seg-island-conan")
+        file(WRITE "$ENV{TMPDIR}/tp-seg-island-conan/conanfile.txt"
+  "[requires]\nfmt/11.0.2\n")
+        file(WRITE "$ENV{TMPDIR}/tp-seg-island-conan/conan.lock"
+  "{\"version\":\"0.5\",\"requires\":[\"fmt/11.0.2#${_h}%1.0\"],\"build_requires\":[],\"python_requires\":[],\"config_requires\":[]}\n")
         file(WRITE "$ENV{TMPDIR}/tp-seg.json"
-  "{\"schema_version\":1,\"name\":\"x\",\"version\":\"1\",\"provider\":\"conan\",\"license\":\"MIT\"}")
+  "{\"schema_version\":1,\"name\":\"x\",\"version\":\"1\",\"provider\":\"conan\",\"license\":\"MIT\",\"pin_dir\":\"$ENV{TMPDIR}/tp-seg-island-conan\"}")
+        # script mode has no compiler facts and the lane will not guess one
+        set(PolyOrch_CONAN_COMPILER "/usr/bin/c++")
     elseif(TP_LEG STREQUAL "schema-missing")
         file(WRITE "$ENV{TMPDIR}/tp-seg.json"
   "{\"schema_version\":1,\"name\":\"x\",\"version\":\"1\",\"provider\":\"source\",\"license\":\"MIT\",\"url\":\"/nonexistent.tar.gz\"}")
@@ -48,8 +57,13 @@ else()
                 endif()
             endforeach()
         endif()
-        if(_leg STREQUAL "conan" AND NOT _txt MATCHES "P7b")
-            message(FATAL_ERROR "conan leg wording missing:\n${_txt}")
+        if(_leg STREQUAL "conan")
+            # strict-first as well, and the manual must speak conan
+            foreach(_w IN ITEMS "strict-first" "GENERATE_ECOSYSTEM" "no auto-fallback" "CONAN_HOME=")
+                if(NOT _txt MATCHES "${_w}")
+                    message(FATAL_ERROR "conan leg wording '${_w}' missing:\n${_txt}")
+                endif()
+            endforeach()
         endif()
         if(_leg STREQUAL "schema-missing" AND NOT _txt MATCHES "required field")
             message(FATAL_ERROR "schema-missing leg wording missing:\n${_txt}")

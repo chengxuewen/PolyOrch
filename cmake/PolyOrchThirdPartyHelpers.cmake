@@ -14,9 +14,16 @@
 #   * declarative JSON recipe loader + schema gate
 #
 # Deliberate code-level seams (louder than any doc -- F2=A adjudication):
-#   * provider vcpkg/conan        -> FATAL pointing at P7 / O-10
 #   * provider prebuilt/system    -> FATAL pointing at the package-cache face (P2)
 #   * DEPENDENCY_PROVIDER sysroot -> FATAL pointing at P6
+# Ecosystem providers LANDED: vcpkg (P7a -- pin island + strict-first gate +
+# an opt-in GENERATE_ECOSYSTEM generate) and conan (P7b -- same shape: island
+# of conanfile+lock, a profile GENERATED from cmake facts, the tool island
+# solved into the anchor, direct_deploy consumed through the upstream's own
+# CMake config). Both are still behind the strict gate: without a pre-baked
+# artifact nothing is downloaded unless the caller asks for it.
+# (r8/r9: the header used to list provider vcpkg/conan as FATAL seams; that
+# drifted while the lanes landed -- the listing IS the contract, keep it true.)
 # Dependency providers (P4): none (no injection at all), system (sanitize
 #   only), pixi (NO-ACTIVATION: the environment's include/lib/pkgconfig
 #   SUB-paths are injected into the child env only -- never a bare prefix
@@ -40,6 +47,33 @@
 # upstream's own (this face adds only consumer-side aliases).
 #-----------------------------------------------------------------------------------------------------------------------
 include_guard(GLOBAL)
+
+# Where this module's own cmake/ directory is, captured at include time into a
+# GLOBAL property. Inside a FUNCTION CMAKE_CURRENT_LIST_DIR still names the
+# file being *processed* (measured under cmake -P: the top-level script, not
+# the module that defines the function) -- the variable is dynamically scoped
+# just like in a macro -- a plain set() would die at the include_guard(GLOBAL)
+# boundary for later directories, and a CACHE entry would go stale when the
+# tree is relocated (the IDE-source-list lesson). Consumers of this read the
+# repository root through _polyorch_tp_module_dir().
+set_property(GLOBAL PROPERTY POLYORCH_THIRDPARTY_CMAKE_DIR "${CMAKE_CURRENT_LIST_DIR}")
+
+# _polyorch_tp_module_dir -- the repository root of this face's own data (the
+# pkg-deps/ tool islands live there). Call-site override supported for odd
+# layouts and for tests: set PolyOrch_THIRDPARTY_ROOT.
+function(_polyorch_tp_module_dir out)
+    set(_tp_root "${PolyOrch_THIRDPARTY_ROOT}")
+    if(NOT _tp_root)
+        get_property(_tp_cdir GLOBAL PROPERTY POLYORCH_THIRDPARTY_CMAKE_DIR)
+        if(_tp_cdir)
+            cmake_path(GET _tp_cdir PARENT_PATH _tp_root)
+        endif()
+    endif()
+    if(NOT _tp_root)
+        message(FATAL_ERROR "_polyorch_tp_module_dir: this module's own location is unknown (included in an unusual way) and PolyOrch_THIRDPARTY_ROOT is unset -- the pkg-deps/ tool islands cannot be located")
+    endif()
+    set(${out} "${_tp_root}" PARENT_SCOPE)
+endfunction()
 
 # _polyorch_tp_is_hex64 -- cmake regexes carry NO {n} quantifier (POSIX-BRE
 # class), so "exactly 64 hex chars" is LENGTH + character-class, never a
@@ -73,21 +107,37 @@ endfunction()
 #-----------------------------------------------------------------------------------------------------------------------
 # _polyorch_tp_pin_hash -- content fingerprint of a per-library pin island
 # (O-10=A): the island IS the reproducibility anchor, so its bytes ride the
-# cache key. vcpkg islands carry the baseline INSIDE vcpkg.json (the official
-# builtin-baseline field) -- a separate baseline file would be a second copy
-# that can drift; conan islands (P7b) will hash conanfile + conan.lock the
-# same way. Fixed file order: the hash must be stable across runs/hosts.
+# cache key. A vcpkg island carries vcpkg.json (the baseline INSIDE it -- the
+# official builtin-baseline field; a separate baseline file would be a second
+# copy that can drift); a conan island carries conanfile.txt (or conanfile.py)
+# PLUS conan.lock -- without the lock the versions float and every run may
+# resolve differently, so the lock is mandatory here (P7b). Fixed file order:
+# the hash must be stable across runs/hosts. An island MAY hold both providers'
+# files (r9a H2): the file set is selected by provider and the other lane's
+# files stay unread, so a recipe switches provider by editing one line while
+# pin_dir keeps pointing at the same directory.
 function(_polyorch_tp_pin_hash pin_dir provider out)
     set(_tp_files "")
     if(provider STREQUAL "vcpkg")
         set(_tp_files "vcpkg.json")
+    elseif(provider STREQUAL "conan")
+        if(EXISTS "${pin_dir}/conanfile.py")
+            set(_tp_files "conanfile.py")
+        else()
+            set(_tp_files "conanfile.txt")
+        endif()
+        list(APPEND _tp_files "conan.lock")
     else()
-        message(FATAL_ERROR "_polyorch_tp_pin_hash: unknown ecosystem provider '${provider}' (vcpkg today; conan = P7b)")
+        message(FATAL_ERROR "_polyorch_tp_pin_hash: unknown ecosystem provider '${provider}' (vcpkg, conan)")
     endif()
     set(_tp_cat "")
     foreach(_tp_f IN LISTS _tp_files)
         if(NOT EXISTS "${pin_dir}/${_tp_f}")
-            message(FATAL_ERROR "_polyorch_tp_pin_hash: pin island '${pin_dir}' misses '${_tp_f}' (O-10: a vcpkg island = one vcpkg.json with the builtin-baseline embedded; commit it beside the recipe)")
+            set(_tp_hint "a vcpkg island = one vcpkg.json with the builtin-baseline embedded")
+            if(provider STREQUAL "conan")
+                set(_tp_hint "a conan island = conanfile.txt (or conanfile.py) plus conan.lock -- generate the lock once (conan lock create ...) and commit it; an island without it resolves floating versions per run")
+            endif()
+            message(FATAL_ERROR "_polyorch_tp_pin_hash: pin island '${pin_dir}' misses '${_tp_f}' (${_tp_hint}; commit it beside the recipe)")
         endif()
         file(READ "${pin_dir}/${_tp_f}" _tp_c)
         string(APPEND _tp_cat "=== ${_tp_f} ===\n${_tp_c}\n")
@@ -192,6 +242,284 @@ function(_polyorch_tp_vcpkg_env work_dir out binary_cache)
 endfunction()
 
 #-----------------------------------------------------------------------------------------------------------------------
+# _polyorch_tp_conan_profile -- the conan profile is GENERATED from cmake
+# facts (O-12=C), never from `conan profile detect`: detect answers "what is
+# this machine", this lane needs "what did this build decide" -- the two can
+# disagree (a compiler detect found next to the one the caller chose), and a
+# silent disagreement is exactly the drift this face refuses.
+#
+# The emitted shape mirrors what detect produces on this host (measured with
+# 2.32: os/arch/build_type/compiler/compiler.version/compiler.libcxx and a
+# compiler.cppstd line). Vocabulary is conan's, not cmake's (measured): gcc is
+# "gcc", macOS is "Mac", arm64 is "armv8".
+#
+# Two deliberate abstentions:
+#  * compiler.cppstd is written ONLY when the caller states it
+#    (PolyOrch_CONAN_CPPSTD). Guessing a compiler's default standard would be
+#    fake precision, and conan already falls back to the compiler default when
+#    the setting is absent -- the honest default is "unset", not "gnu17".
+#  * compiler.libcxx defaults to libstdc++11 for gcc/clang on Linux (the
+#    measured detect value) and is overridable; any other combination is
+#    refused instead of assumed. msvc has no libcxx setting, so none is
+#    written for it.
+# Script mode leaves CMAKE_SYSTEM_*/CMAKE_CXX_COMPILER_* empty (measured, the
+# P7a triplet lesson), so every fact falls back: explicit argument/cache
+# variable > cmake variable > probe the compiler binary -- and refuses loudly
+# when nothing can answer.
+function(_polyorch_tp_conan_profile out_file out_name out_hash work_dir build_type)
+    set(_tp_name "polyorch-${build_type}")
+    string(TOLOWER "${_tp_name}" _tp_name)
+
+    # ---- os / arch (conan vocabulary, host facts with script-mode fallback) ----
+    set(_tp_proc "${CMAKE_SYSTEM_PROCESSOR}")
+    if(NOT _tp_proc)
+        set(_tp_proc "${CMAKE_HOST_SYSTEM_PROCESSOR}")
+    endif()
+    if(NOT _tp_proc AND UNIX)
+        execute_process(COMMAND uname -m OUTPUT_VARIABLE _tp_u OUTPUT_STRIP_TRAILING_WHITESPACE)
+        set(_tp_proc "${_tp_u}")
+    endif()
+    string(TOLOWER "${_tp_proc}" _tp_proc)
+    if(_tp_proc MATCHES "^(x86_64|amd64)$")
+        set(_tp_arch "x86_64")
+    elseif(_tp_proc MATCHES "^(aarch64|arm64)$")
+        set(_tp_arch "armv8")
+    else()
+        message(FATAL_ERROR "_polyorch_tp_conan_profile: cannot map processor '${_tp_proc}' into conan's vocabulary (x86_64/armv8) -- the lane will not guess a cross target")
+    endif()
+    set(_tp_sys "${CMAKE_SYSTEM_NAME}")
+    if(NOT _tp_sys)
+        set(_tp_sys "${CMAKE_HOST_SYSTEM_NAME}")
+    endif()
+    if(_tp_sys STREQUAL "Linux")
+        set(_tp_os "Linux")
+    elseif(_tp_sys STREQUAL "Darwin")
+        set(_tp_os "Mac")
+    elseif(_tp_sys MATCHES "Windows" OR WIN32)
+        set(_tp_os "Windows")
+    else()
+        message(FATAL_ERROR "_polyorch_tp_conan_profile: unsupported system '${_tp_sys}' for conan (Linux/Mac/Windows)")
+    endif()
+
+    # ---- compiler id / version / path ----
+    set(_tp_cid "${PolyOrch_CONAN_COMPILER_ID}")
+    if(NOT _tp_cid AND CMAKE_CXX_COMPILER_ID)
+        set(_tp_cid "${CMAKE_CXX_COMPILER_ID}")
+    endif()
+    set(_tp_cxx "${PolyOrch_CONAN_COMPILER}")
+    if(NOT _tp_cxx AND CMAKE_CXX_COMPILER)
+        set(_tp_cxx "${CMAKE_CXX_COMPILER}")
+    endif()
+    if(NOT _tp_cid)
+        if(NOT _tp_cxx)
+            message(FATAL_ERROR "_polyorch_tp_conan_profile: no compiler to derive the profile from -- cmake reports no CMAKE_CXX_COMPILER_ID (script mode) and PolyOrch_CONAN_COMPILER is unset. Pass PolyOrch_CONAN_COMPILER <path> (and optionally PolyOrch_CONAN_COMPILER_ID/_VERSION): this lane never picks a compiler behind the caller's back.")
+        endif()
+        # Ask the binary; do not read its name. The commonest
+        # CMAKE_CXX_COMPILER value is literally "c++" -- a symlink to g++ on
+        # Debian/Ubuntu and to clang++ on macOS -- so name-based inference
+        # mislabels exactly the default case (measured: /usr/bin/c++
+        # --version reports GCC 11.4.0, while the name matches neither
+        # g++/gcc nor clang).
+        execute_process(COMMAND "${_tp_cxx}" --version OUTPUT_VARIABLE _tp_vv ERROR_QUIET)
+        if(_tp_vv MATCHES "clang")
+            set(_tp_cid "clang")
+            if(_tp_os STREQUAL "Mac")
+                set(_tp_cid "apple-clang")
+            endif()
+        elseif(_tp_vv MATCHES "GNU|gcc|g\\+\\+|Free Software Foundation")
+            # the FSF copyright line is not decoration: invoked through the
+            # plain "c++" symlink the output carries NO GNU/gcc/g++ token at
+            # all (measured: "c++ (Ubuntu 11.4.0-1ubuntu1~22.04.3) 11.4.0"),
+            # so matching only the familiar words silently fails on the
+            # commonest compiler path on Linux.
+            set(_tp_cid "gcc")
+        else()
+            message(FATAL_ERROR "_polyorch_tp_conan_profile: cannot name a conan compiler id from '${_tp_cxx} --version' output -- set PolyOrch_CONAN_COMPILER_ID (gcc/clang/apple-clang/msvc); guessing a compiler is not this lane's job")
+        endif()
+    endif()
+    set(_tp_map "")
+    if(_tp_cid STREQUAL "GNU")
+        set(_tp_map "gcc")
+    elseif(_tp_cid STREQUAL "Clang")
+        set(_tp_map "clang")
+    elseif(_tp_cid STREQUAL "AppleClang")
+        set(_tp_map "apple-clang")
+    elseif(_tp_cid STREQUAL "MSVC")
+        set(_tp_map "msvc")
+    elseif(_tp_cid MATCHES "^(gcc|clang|apple-clang|msvc)$")
+        set(_tp_map "${_tp_cid}")
+    else()
+        message(FATAL_ERROR "_polyorch_tp_conan_profile: compiler id '${_tp_cid}' has no conan counterpart (gcc/clang/apple-clang/msvc)")
+    endif()
+    set(_tp_cver "${PolyOrch_CONAN_COMPILER_VERSION}")
+    if(NOT _tp_cver AND CMAKE_CXX_COMPILER_VERSION)
+        set(_tp_cver "${CMAKE_CXX_COMPILER_VERSION}")
+    endif()
+    if(NOT _tp_cver)
+        if(NOT _tp_cxx OR NOT EXISTS "${_tp_cxx}")
+            message(FATAL_ERROR "_polyorch_tp_conan_profile: cannot determine the compiler version and no compiler binary to ask -- set PolyOrch_CONAN_COMPILER_VERSION")
+        endif()
+        execute_process(COMMAND "${_tp_cxx}" --version OUTPUT_VARIABLE _tp_vv ERROR_QUIET)
+        string(REGEX MATCH "[0-9][0-9]*\\.[0-9]" _tp_vv "${_tp_vv}")
+        if(NOT _tp_vv)
+            message(FATAL_ERROR "_polyorch_tp_conan_profile: '${_tp_cxx} --version' yielded no parsable version")
+        endif()
+        string(REGEX MATCH "^[0-9]*" _tp_cver "${_tp_vv}")
+    endif()
+
+    # ---- the INI ----
+    set(_tp_ini "[settings]\n")
+    string(APPEND _tp_ini "os=${_tp_os}\narch=${_tp_arch}\nbuild_type=${build_type}\n")
+    string(APPEND _tp_ini "compiler=${_tp_map}\ncompiler.version=${_tp_cver}\n")
+    if(NOT _tp_map STREQUAL "msvc")
+        set(_tp_libcxx "${PolyOrch_CONAN_LIBCXX}")
+        if(NOT _tp_libcxx)
+            if(_tp_os STREQUAL "Linux")
+                set(_tp_libcxx "libstdc++11")
+            else()
+                message(FATAL_ERROR "_polyorch_tp_conan_profile: compiler.libcxx is required for ${_tp_map} on ${_tp_os} and this lane will not assume it -- set PolyOrch_CONAN_LIBCXX (e.g. libc++ on macOS)")
+            endif()
+        endif()
+        string(APPEND _tp_ini "compiler.libcxx=${_tp_libcxx}\n")
+    endif()
+    if(PolyOrch_CONAN_CPPSTD)
+        string(APPEND _tp_ini "compiler.cppstd=${PolyOrch_CONAN_CPPSTD}\n")
+    endif()
+
+    set(_tp_file "${work_dir}/profiles/${_tp_name}.ini")
+    file(MAKE_DIRECTORY "${work_dir}/profiles")
+    file(WRITE "${_tp_file}" "${_tp_ini}")
+    string(SHA256 _tp_h "${_tp_ini}")
+    set(${out_file} "${_tp_file}" PARENT_SCOPE)
+    set(${out_name} "${_tp_name}" PARENT_SCOPE)
+    set(${out_hash} "${_tp_h}" PARENT_SCOPE)
+endfunction()
+
+#-----------------------------------------------------------------------------------------------------------------------
+# _polyorch_tp_conan_tool -- the conan executable, four rungs, plus its
+# version (the version is what rides the cache key; the resolved pixi.lock
+# hash does NOT, because a lock embeds host virtual packages and would bind
+# artifact identity to this machine -- r9/r9a).
+#
+# C1 discipline: this NEVER calls polyorch_pixi_setup / polyorch_pixi_env_paths
+# -- those bind the single-value PolyOrch_PIXI_MANIFEST cache and setup would
+# overwrite the consumer's manifest, i.e. swapping the project's pixi context
+# out from under it. The tool island solves in the anchor and its env path is
+# assembled by rule, then verified (no guessing at detached env directories).
+# The vcpkg poison (VCPKG_FORCE_SYSTEM_BINARIES) has no analogue here, but the
+# cache rule does: pixi writes its package cache to $HOME by default, which is
+# both global state and unwritable in sandboxes (measured: "no writable layers
+# to cache package to"). An externally set PIXI_CACHE_DIR is respected (the
+# entry script exports a project-scoped one by adjudication); otherwise it goes
+# into the anchor.
+function(_polyorch_tp_conan_tool out_exe out_version work_dir allow_bootstrap explicit_program)
+    set(_tp_conan "${explicit_program}")
+    if(NOT _tp_conan)
+        set(_tp_conan "${PolyOrch_CONAN_PROGRAM}")
+    endif()
+    if(_tp_conan AND NOT EXISTS "${_tp_conan}")
+        message(FATAL_ERROR "_polyorch_tp_conan_tool: CONAN_PROGRAM '${_tp_conan}' does not exist")
+    endif()
+    if(NOT _tp_conan)
+        # the empty variable must be removed before asking find_program: it
+        # refuses to search when the name is already defined, even to "" (the
+        # same trap bites twice in one round -- see the e2e case's compiler
+        # discovery), and here it would silently disable the tools/bin rung.
+        unset(_tp_conan)
+        # unlike the vcpkg lane, this rung may consult PATH: a stray vcpkg
+        # brings its own root (it derives root from the executable's directory
+        # and ignores VCPKG_ROOT -- measured), whereas conan is self-contained
+        # here because CONAN_HOME is set by this lane and any version that is
+        # not the pinned one is refused below. The version gate, not the
+        # search path, is what protects the key.
+        find_program(_tp_conan NAMES conan
+            PATHS "${work_dir}/tools/bin" "${work_dir}/bin")
+    endif()
+    if(NOT _tp_conan AND NOT allow_bootstrap)
+        message(FATAL_ERROR "polyorch_thirdparty_recipe: no conan tool found and BOOTSTRAP_TOOL is off (no download) -- pass CONAN_PROGRAM <path>, place a conan in <WORK_DIR>/tools/bin, or drop BOOTSTRAP_TOOL to let the lane solve pkg-deps/conan-tool/pixi.toml into the anchor")
+    endif()
+    if(NOT _tp_conan)
+        set(_tp_pixi "${PolyOrch_PIXI_PROGRAM}")
+        if(_tp_pixi)
+            if(NOT EXISTS "${_tp_pixi}")
+                message(FATAL_ERROR "_polyorch_tp_conan_tool: PolyOrch_PIXI_PROGRAM '${_tp_pixi}' does not exist")
+            endif()
+        else()
+            unset(_tp_pixi)
+            find_program(_tp_pixi NAMES pixi PATHS "$ENV{HOME}/.pixi/bin" /usr/local/bin)
+        endif()
+        if(NOT _tp_pixi)
+            message(FATAL_ERROR "polyorch_thirdparty_recipe: bootstrapping the conan tool needs pixi (not found on PATH or in ~/.pixi/bin) -- pass CONAN_PROGRAM <path> or PolyOrch_PIXI_PROGRAM <path>")
+        endif()
+        set(_tp_ti "${work_dir}/conan-tool")
+        # the island ships WITH this module, resolved through
+        # _polyorch_tp_module_dir() -- never from a cache variable and never
+        # from CMAKE_CURRENT_LIST_DIR inside the function (that names the file
+        # being processed, not the defining module; measured in script mode).
+        _polyorch_tp_module_dir(_tp_repo)
+        set(_tp_src "${_tp_repo}/pkg-deps/conan-tool")
+        if(NOT EXISTS "${_tp_src}/pixi.lock")
+            message(FATAL_ERROR "polyorch_thirdparty_recipe: the conan tool island is incomplete at ${_tp_src} (pixi.toml + pixi.lock must both be committed -- the lock is the tool pin)")
+        endif()
+        if(NOT EXISTS "${_tp_ti}/.pixi/envs/default/bin/conan")
+            execute_process(COMMAND "${CMAKE_COMMAND}" -E copy_directory "${_tp_src}" "${_tp_ti}"
+                RESULT_VARIABLE _tp_rc ERROR_VARIABLE _tp_e)
+            if(NOT _tp_rc EQUAL 0)
+                message(FATAL_ERROR "polyorch_thirdparty_recipe: copying the conan tool island into the anchor failed rc=${_tp_rc}: ${_tp_e}")
+            endif()
+            set(_tp_cenv "")
+            if(NOT DEFINED ENV{PIXI_CACHE_DIR} OR "$ENV{PIXI_CACHE_DIR}" STREQUAL "")
+                file(MAKE_DIRECTORY "${work_dir}/pixi-cache")
+                set(_tp_cenv "PIXI_CACHE_DIR=${work_dir}/pixi-cache")
+            endif()
+            message(STATUS "polyorch thirdparty: solving the conan tool island into ${_tp_ti} (pixi; one network step, the committed lock fixes the version)")
+            execute_process(COMMAND "${CMAKE_COMMAND}" -E env ${_tp_cenv}
+                    "${_tp_pixi}" install --manifest-path "${_tp_ti}/pixi.toml"
+                RESULT_VARIABLE _tp_rc OUTPUT_VARIABLE _tp_o ERROR_VARIABLE _tp_e)
+            if(NOT _tp_rc EQUAL 0)
+                message(FATAL_ERROR "polyorch_thirdparty_recipe: solving the conan tool island failed rc=${_tp_rc}:\n${_tp_o}${_tp_e}")
+            endif()
+        endif()
+        set(_tp_conan "${_tp_ti}/.pixi/envs/default/bin/conan")
+        if(NOT EXISTS "${_tp_conan}")
+            message(FATAL_ERROR "polyorch_thirdparty_recipe: pixi solved the tool island but no conan at ${_tp_conan} -- this lane refuses to guess a relocated env directory (a detached-environments setup must pass CONAN_PROGRAM explicitly)")
+        endif()
+    endif()
+    execute_process(COMMAND "${_tp_conan}" --version OUTPUT_VARIABLE _tp_vv ERROR_QUIET OUTPUT_STRIP_TRAILING_WHITESPACE)
+    string(REGEX MATCH "[0-9]+\\.[0-9]+[^ \t\n]*" _tp_ver "${_tp_vv}")
+    if(NOT _tp_ver)
+        message(FATAL_ERROR "polyorch_thirdparty_recipe: cannot parse a conan version from '${_tp_vv}'")
+    endif()
+    set(${out_exe} "${_tp_conan}" PARENT_SCOPE)
+    set(${out_version} "${_tp_ver}" PARENT_SCOPE)
+endfunction()
+
+#-----------------------------------------------------------------------------------------------------------------------
+# _polyorch_tp_conan_pinned_version -- the conan tool version the repository
+# pins, read as TEXT from the tool island's committed pixi.lock (measured
+# form: .../noarch/conan-2.32.0-pyhd8ed1ab_0.conda). Why the lock and not
+# `conan --version`: the tool version rides the cache key, and the key must be
+# computable on the STRICT refusal path too -- asking the binary would make a
+# recipe that only wants to hear "no artifact yet" depend on having a conan
+# installed (the vcpkg lane gets this for free: its tool version is implied by
+# the pinned baseline inside the island, which already rides the key).
+# The lock's full hash deliberately does NOT enter the key: it embeds host
+# virtual packages (__glibc/__linux/__archspec, measured), and a host fact in
+# the key would bind artifact identity to this machine (criterion 16).
+function(_polyorch_tp_conan_pinned_version out)
+    _polyorch_tp_module_dir(_tp_repo)
+    set(_tp_lk "${_tp_repo}/pkg-deps/conan-tool/pixi.lock")
+    if(NOT EXISTS "${_tp_lk}")
+        message(FATAL_ERROR "_polyorch_tp_conan_pinned_version: the conan tool island has no committed lock at ${_tp_lk} -- the lock IS the tool pin (run pixi lock/install there once and commit the result)")
+    endif()
+    file(READ "${_tp_lk}" _tp_txt)
+    if(NOT _tp_txt MATCHES "conan-([0-9][0-9.]*)-")
+        message(FATAL_ERROR "_polyorch_tp_conan_pinned_version: no conan package entry parseable in ${_tp_lk} (expected .../conan-<version>-<build>.conda)")
+    endif()
+    set(${out} "${CMAKE_MATCH_1}" PARENT_SCOPE)
+endfunction()
+
+#-----------------------------------------------------------------------------------------------------------------------
 # polyorch_thirdparty_fingerprint -- full-field cache key.
 #
 #   polyorch_thirdparty_fingerprint(<out-var>
@@ -202,6 +530,8 @@ endfunction()
 #     [TOOLCHAIN_FILE_SHA256 <h>] [COMPILER_ID <id>] [COMPILER_VERSION <v>]
 #     [CMAKE_VERSION <v>] [DEPENDENCY_PROVIDER <p>] [PIXI_LOCK_SHA256 <h>]
 #     [PIXI_ENVIRONMENT <e>] [SYSROOT_ID <id>] [RECIPE_SHA256 <h>] [SCHEMA_VERSION <n>]
+#     [ECOSYSTEM_PROVIDER <p>] [ECOSYSTEM_PIN_SHA256 <h>] [ECOSYSTEM_TRIPLET <t>]
+#     [ECOSYSTEM_TOOL_VERSION <v>] [ECOSYSTEM_PROFILE_SHA256 <h>]
 #     [HELPER_VERSION <v>])
 #
 # Sets <var> (64 hex) and <var>_SHORT12 (first 12 hex chars). OPTIONS are
@@ -209,7 +539,7 @@ endfunction()
 # produce a false-distinct key (F4=A "no false distinct" leg).
 function(polyorch_thirdparty_fingerprint out)
     cmake_parse_arguments(arg ""
-        "ARCHIVE_SHA256;BUILD_TYPE;VERSION;PROFILE;TRIPLET;LINK_MODE;TOOLCHAIN_FILE_SHA256;COMPILER_ID;COMPILER_VERSION;CMAKE_VERSION;DEPENDENCY_PROVIDER;PIXI_LOCK_SHA256;PIXI_ENVIRONMENT;SYSROOT_ID;RECIPE_SHA256;SCHEMA_VERSION;HELPER_VERSION;ECOSYSTEM_PROVIDER;ECOSYSTEM_PIN_SHA256;ECOSYSTEM_TRIPLET"
+        "ARCHIVE_SHA256;BUILD_TYPE;VERSION;PROFILE;TRIPLET;LINK_MODE;TOOLCHAIN_FILE_SHA256;COMPILER_ID;COMPILER_VERSION;CMAKE_VERSION;DEPENDENCY_PROVIDER;PIXI_LOCK_SHA256;PIXI_ENVIRONMENT;SYSROOT_ID;RECIPE_SHA256;SCHEMA_VERSION;HELPER_VERSION;ECOSYSTEM_PROVIDER;ECOSYSTEM_PIN_SHA256;ECOSYSTEM_TRIPLET;ECOSYSTEM_TOOL_VERSION;ECOSYSTEM_PROFILE_SHA256"
         "OPTIONS;PATCH_SHA256" ${ARGN})
     if(out STREQUAL "")
         message(FATAL_ERROR "polyorch_thirdparty_fingerprint: <out-var> is required")
@@ -260,6 +590,8 @@ function(polyorch_thirdparty_fingerprint out)
         "sysroot_id=${arg_SYSROOT_ID}" "recipe_sha256=${arg_RECIPE_SHA256}"
         "ecosystem_provider=${arg_ECOSYSTEM_PROVIDER}" "ecosystem_pin=${arg_ECOSYSTEM_PIN_SHA256}"
         "ecosystem_triplet=${arg_ECOSYSTEM_TRIPLET}"
+        "ecosystem_tool_version=${arg_ECOSYSTEM_TOOL_VERSION}"
+        "ecosystem_profile=${arg_ECOSYSTEM_PROFILE_SHA256}"
         "schema_version=${arg_SCHEMA_VERSION}" "helper_version=${arg_HELPER_VERSION}")
         string(APPEND _tp_dossier "${_tp_f}\n")
     endforeach()
@@ -665,7 +997,7 @@ endfunction()
 # LICENSE is mandatory (L7: zlib/MIT-class obligations ride the artifact).
 function(polyorch_thirdparty_manifest_write)
     cmake_parse_arguments(arg "PIXI_RUNTIME_REQUIRED"
-        "MANIFEST;KEY;NAME;VERSION;LICENSE;PROVIDER;PROFILE;TRIPLET;BUILD_TYPE;LINK_MODE;ARCHIVE_SHA256;RECIPE_SHA256;SCHEMA_VERSION;DEPENDENCY_PROVIDER;ECOSYSTEM_PIN_SHA256;ECOSYSTEM_TRIPLET" "OPTIONS" ${ARGN})
+        "MANIFEST;KEY;NAME;VERSION;LICENSE;PROVIDER;PROFILE;TRIPLET;BUILD_TYPE;LINK_MODE;ARCHIVE_SHA256;RECIPE_SHA256;SCHEMA_VERSION;DEPENDENCY_PROVIDER;ECOSYSTEM_PIN_SHA256;ECOSYSTEM_TRIPLET;ECOSYSTEM_TOOL_VERSION;ECOSYSTEM_PROFILE_SHA256" "OPTIONS" ${ARGN})
     if(NOT arg_MANIFEST OR NOT arg_KEY OR NOT arg_NAME)
         message(FATAL_ERROR "polyorch_thirdparty_manifest_write: MANIFEST, KEY and NAME are required")
     endif()
@@ -680,7 +1012,7 @@ function(polyorch_thirdparty_manifest_write)
     string(JSON _tp_m SET "${_tp_m}" "key" "\"${arg_KEY}\"")
     string(SUBSTRING "${arg_KEY}" 0 12 _tp_k12)
     string(JSON _tp_m SET "${_tp_m}" "key12" "\"${_tp_k12}\"")
-    foreach(_tp_f IN ITEMS VERSION PROVIDER PROFILE TRIPLET BUILD_TYPE LINK_MODE ARCHIVE_SHA256 RECIPE_SHA256 SCHEMA_VERSION DEPENDENCY_PROVIDER ECOSYSTEM_PIN_SHA256 ECOSYSTEM_TRIPLET)
+    foreach(_tp_f IN ITEMS VERSION PROVIDER PROFILE TRIPLET BUILD_TYPE LINK_MODE ARCHIVE_SHA256 RECIPE_SHA256 SCHEMA_VERSION DEPENDENCY_PROVIDER ECOSYSTEM_PIN_SHA256 ECOSYSTEM_TRIPLET ECOSYSTEM_TOOL_VERSION ECOSYSTEM_PROFILE_SHA256)
         if(arg_${_tp_f})
             string(TOLOWER "${_tp_f}" _tp_jf)
             string(REPLACE "_" "" _tp_jf "${_tp_jf}")
@@ -931,7 +1263,7 @@ endmacro()
 # (this loader returns the wiring).
 function(polyorch_thirdparty_recipe)
     cmake_parse_arguments(arg "GENERATE_ECOSYSTEM"
-        "RECIPE;RECIPE_BASE;WORK_DIR;BUILD_TYPE;PROFILE;TRIPLET;GENERATOR;PARALLEL;PACKAGES_DIR;PACKAGE_FORMAT;MAKE_PROGRAM;DEPENDENCY_PROVIDER;PIXI_ENVIRONMENT;VCPKG_PROGRAM;VCPKG_ROOT_DIR;BINARY_CACHE;BOOTSTRAP_TOOL;SOURCE_DIR_OUT;INSTALL_DIR_OUT;FINGERPRINT_OUT;MANIFEST_OUT;PACKAGE_OUT;FIND_PACKAGE_NAME_OUT;ALIAS_OUT;COMPONENTS_OUT;TARGETS_OUT"
+        "RECIPE;RECIPE_BASE;WORK_DIR;BUILD_TYPE;PROFILE;TRIPLET;GENERATOR;PARALLEL;PACKAGES_DIR;PACKAGE_FORMAT;MAKE_PROGRAM;DEPENDENCY_PROVIDER;PIXI_ENVIRONMENT;VCPKG_PROGRAM;VCPKG_ROOT_DIR;CONAN_PROGRAM;BINARY_CACHE;BOOTSTRAP_TOOL;SOURCE_DIR_OUT;INSTALL_DIR_OUT;FINGERPRINT_OUT;MANIFEST_OUT;PACKAGE_OUT;FIND_PACKAGE_NAME_OUT;ALIAS_OUT;COMPONENTS_OUT;TARGETS_OUT"
         "CMAKE_ARGS" ${ARGN})
     if(NOT arg_RECIPE OR NOT arg_WORK_DIR OR NOT arg_BUILD_TYPE)
         message(FATAL_ERROR "polyorch_thirdparty_recipe: RECIPE, WORK_DIR and BUILD_TYPE are required (BUILD_TYPE explicit: O-3)")
@@ -988,11 +1320,16 @@ function(polyorch_thirdparty_recipe)
             endif()
         endforeach()
     elseif(_tp_provider STREQUAL "conan")
-        message(FATAL_ERROR "polyorch_thirdparty_recipe: provider 'conan' lands with the P7b lane (same shape as vcpkg: pixi-isolated tool, profile generated from cmake facts) -- until then ship the library as a pinned source archive (provider \"source\")")
+        set(_tp_eco TRUE)
+        foreach(_tp_f IN ITEMS pin_dir)
+            if(NOT "${_tp_json}" MATCHES "\"${_tp_f}\"[ ]*:")
+                message(FATAL_ERROR "polyorch_thirdparty_recipe: schema violation in ${arg_RECIPE}: required field '${_tp_f}' missing (ecosystem recipes pin through the island, not url/url_hash)")
+            endif()
+        endforeach()
     elseif(_tp_provider STREQUAL "prebuilt" OR _tp_provider STREQUAL "system")
         message(FATAL_ERROR "polyorch_thirdparty_recipe: provider '${_tp_provider}' is not a source recipe -- package caching for source builds is PACKAGES_DIR (P2); direct prebuilt/system intake arrives with the consumer lanes (P3+)")
     else()
-        message(FATAL_ERROR "polyorch_thirdparty_recipe: unknown provider '${_tp_provider}' (schema v1: source, vcpkg; conan = P7b seam; prebuilt/system = P3+ seam)")
+        message(FATAL_ERROR "polyorch_thirdparty_recipe: unknown provider '${_tp_provider}' (schema v1: source, vcpkg, conan; prebuilt/system = P3+ seam)")
     endif()
 
     # ---- link mode is lane-shared (the ecosystem triplet derives from it) ----
@@ -1044,10 +1381,18 @@ function(polyorch_thirdparty_recipe)
         endif()
         # contradictory inputs are refused loudly, never ignored
         if(arg_PROFILE)
-            message(FATAL_ERROR "polyorch_thirdparty_recipe: PROFILE is a source-lane concept (per-profile option tables); the ecosystem lane pins through the island -- remove PROFILE or switch the recipe to provider \"source\"")
+            if(_tp_provider STREQUAL "conan")
+                # r9a M4: conan DOES have a profile -- it is GENERATED here
+                # from cmake facts, which is exactly why the call site must not
+                # hand one in (a passed profile is a second source of truth for
+                # the compiler settings that ride the key).
+                message(FATAL_ERROR "polyorch_thirdparty_recipe: PROFILE is not accepted on the conan lane -- the lane GENERATES the profile from cmake facts (O-12=C, PolyOrch_CONAN_COMPILER*/CPPSTD/LIBCXX); a caller-supplied profile would be a second truth for the settings that ride the key -- remove PROFILE")
+            else()
+                message(FATAL_ERROR "polyorch_thirdparty_recipe: PROFILE is a source-lane concept (per-profile option tables); the ecosystem lane pins through the island -- remove PROFILE or switch the recipe to provider \"source\"")
+            endif()
         endif()
         if(arg_DEPENDENCY_PROVIDER AND NOT arg_DEPENDENCY_PROVIDER STREQUAL "none")
-            message(FATAL_ERROR "polyorch_thirdparty_recipe: DEPENDENCY_PROVIDER is a build-lane concept (our build verb's child env); the ecosystem lane builds inside vcpkg -- remove it or switch to provider \"source\"")
+            message(FATAL_ERROR "polyorch_thirdparty_recipe: DEPENDENCY_PROVIDER is a build-lane concept (our build verb's child env); the '${_tp_provider}' lane builds inside the ecosystem tool -- remove it or switch to provider \"source\"")
         endif()
 
         # ---- pin island (O-10=A) ----
@@ -1055,20 +1400,51 @@ function(polyorch_thirdparty_recipe)
         if(NOT IS_ABSOLUTE "${_tp_pindir}")
             set(_tp_pindir "${arg_RECIPE_BASE}/${_tp_pindir}")
         endif()
-        _polyorch_tp_pin_hash("${_tp_pindir}" vcpkg _tp_pin_hash)
+        _polyorch_tp_pin_hash("${_tp_pindir}" "${_tp_provider}" _tp_pin_hash)
 
         # ---- license dual-source consistency (M3): the recipe is the truth,
         # a diverging island license is recipe drift, not a choice ----
-        file(READ "${_tp_pindir}/vcpkg.json" _tp_island_json)
-        if("${_tp_island_json}" MATCHES "\"license\"[ ]*:")
-            string(JSON _tp_island_lic GET "${_tp_island_json}" license)
-            if(NOT _tp_island_lic STREQUAL "${_tp_license}")
-                message(FATAL_ERROR "polyorch_thirdparty_recipe: '${_tp_name}' license drift -- recipe says '${_tp_license}' but the pin island says '${_tp_island_lic}'; reconcile them (the recipe field is the recorded truth)")
+        # vcpkg islands carry a "license" field; a conan CONSUMER island
+        # (conanfile.txt) has none at all -- the license lives in the upstream
+        # recipe -- so only a conanfile.py that states one is compared.
+        if(_tp_provider STREQUAL "vcpkg")
+            file(READ "${_tp_pindir}/vcpkg.json" _tp_island_json)
+            if("${_tp_island_json}" MATCHES "\"license\"[ ]*:")
+                string(JSON _tp_island_lic GET "${_tp_island_json}" license)
+                if(NOT _tp_island_lic STREQUAL "${_tp_license}")
+                    message(FATAL_ERROR "polyorch_thirdparty_recipe: '${_tp_name}' license drift -- recipe says '${_tp_license}' but the pin island says '${_tp_island_lic}'; reconcile them (the recipe field is the recorded truth)")
+                endif()
+            endif()
+        elseif(EXISTS "${_tp_pindir}/conanfile.py")
+            file(READ "${_tp_pindir}/conanfile.py" _tp_cfile)
+            if("${_tp_cfile}" MATCHES "license[ ]*=[ ]*\"([^\"]+)\"")
+                if(NOT CMAKE_MATCH_1 STREQUAL "${_tp_license}")
+                    message(FATAL_ERROR "polyorch_thirdparty_recipe: '${_tp_name}' license drift -- recipe says '${_tp_license}' but the island's conanfile.py says '${CMAKE_MATCH_1}'; reconcile them (the recipe field is the recorded truth)")
+                endif()
             endif()
         endif()
 
-        # ---- triplet (O-12=C): call-site override > platform face > self-derived ----
-        _polyorch_tp_ecosystem_triplet(_tp_eco_triplet "${_tp_link}" "${arg_TRIPLET}")
+        # ---- the lane's identity axis: a triplet (vcpkg) or a GENERATED
+        # profile (conan); both ride the key ----
+        set(_tp_profile_file "")
+        set(_tp_profile_name "")
+        set(_tp_profile_hash "")
+        set(_tp_tool_version "")
+        if(_tp_provider STREQUAL "vcpkg")
+            # triplet (O-12=C): call-site override > platform face > self-derived
+            _polyorch_tp_ecosystem_triplet(_tp_eco_triplet "${_tp_link}" "${arg_TRIPLET}")
+        else()
+            _polyorch_tp_conan_pinned_version(_tp_tool_version)
+            _polyorch_tp_conan_profile(_tp_profile_file _tp_profile_name _tp_profile_hash
+                "${arg_WORK_DIR}" "${arg_BUILD_TYPE}")
+            # r9a M2: conan has no triplet, yet the package name and the
+            # dossier both carry that slot -- it takes the profile name. The
+            # settings' real identity rides ECOSYSTEM_PROFILE_SHA256; leaving
+            # the slot empty would print "none" in the file name and collide
+            # with a source recipe's look, and inventing a vcpkg-style token
+            # here would be a fake vocabulary.
+            set(_tp_eco_triplet "${_tp_profile_name}")
+        endif()
     endif()
 
     file(SHA256 "${arg_RECIPE}" _tp_recipe_hash)
@@ -1182,7 +1558,9 @@ function(polyorch_thirdparty_recipe)
             VERSION "${_tp_version}" TRIPLET "${_tp_eco_triplet}" LINK_MODE "${_tp_link}"
             RECIPE_SHA256 "${_tp_recipe_hash}" SCHEMA_VERSION "${_tp_schema}"
             ECOSYSTEM_PROVIDER "${_tp_provider}" ECOSYSTEM_PIN_SHA256 "${_tp_pin_hash}"
-            ECOSYSTEM_TRIPLET "${_tp_eco_triplet}")
+            ECOSYSTEM_TRIPLET "${_tp_eco_triplet}"
+            ECOSYSTEM_TOOL_VERSION "${_tp_tool_version}"
+            ECOSYSTEM_PROFILE_SHA256 "${_tp_profile_hash}")
     else()
         # pixi provider inputs (P4): the lockfile is the reproducibility anchor --
         # its hash rides the key (discipline 3), and the environment name is
@@ -1291,16 +1669,137 @@ function(polyorch_thirdparty_recipe)
                 # PRE-BAKED artifacts; with none, it never silently falls
                 # back to source and never implicitly fetches the registry ----
                 if(NOT arg_GENERATE_ECOSYSTEM)
-                    _polyorch_tp_vcpkg_env("${arg_WORK_DIR}" _tp_strict_env ${_tp_bincache})
-                    string(JOIN " " _tp_strict_env_j ${_tp_strict_env})
+                    # the refusal is an operator manual, and the manual has to
+                    # name THIS provider's tool, env and command -- printing a
+                    # vcpkg recipe for a conan miss would send the reader off to
+                    # do the wrong thing loudly.
+                    if(_tp_provider STREQUAL "conan")
+                        set(_tp_tool_hint "pass CONAN_PROGRAM <path>, place a conan in <WORK_DIR>/tools/bin, or let the lane solve the committed pkg-deps/conan-tool island into the anchor with pixi (BOOTSTRAP_TOOL off refuses to download)")
+                        set(_tp_manual "  ${CMAKE_COMMAND} -E env CONAN_HOME=${arg_WORK_DIR}/conan-home <conan> install ${_tp_pindir}/conanfile.txt --output-folder=<anchor dir> --deployer=direct_deploy -pr=${_tp_profile_file} -g CMakeDeps --build=missing")
+                    else()
+                        _polyorch_tp_vcpkg_env("${arg_WORK_DIR}" _tp_strict_env ${_tp_bincache})
+                        string(JOIN " " _tp_strict_env_j ${_tp_strict_env})
+                        set(_tp_tool_hint "pass VCPKG_PROGRAM <path>, keep a vcpkg already in the registry root, or let the lane bootstrap it into the anchor-local root (BOOTSTRAP_TOOL off refuses to download)")
+                        set(_tp_manual "  ${CMAKE_COMMAND} -E env ${_tp_strict_env_j} <vcpkg> --vcpkg-root=${_tp_root} install --x-manifest-root=${_tp_pindir} --triplet=${_tp_eco_triplet}")
+                    endif()
                     message(FATAL_ERROR
-"polyorch_thirdparty_recipe: ecosystem provider '${_tp_provider}' for '${_tp_name}' has no pre-baked artifact (package cache miss) -- strict-first (P7a): no auto-fallback to source, no implicit registry fetch.
+"polyorch_thirdparty_recipe: ecosystem provider '${_tp_provider}' for '${_tp_name}' has no pre-baked artifact (package cache miss) -- strict-first (P7a/P7b): no auto-fallback to source, no implicit registry fetch.
 Generate once (the one network step); every later run is an offline cache hit:
-  re-run this same call with GENERATE_ECOSYSTEM ON -- the lane clones the registry at the pinned baseline, makes a tool available (VCPKG_PROGRAM, a vcpkg already in the root, or bootstrap into the anchor-local root; BOOTSTRAP_TOOL off refuses to download), installs a COPY of the pin island (the in-repo island is never written) and packs the result into PACKAGES_DIR
+  re-run this same call with GENERATE_ECOSYSTEM ON -- the lane makes a tool available (${_tp_tool_hint}), installs a COPY of the pin island (the in-repo island is never written) and packs the result into PACKAGES_DIR
 Or drive the tool yourself with the lane's env:
-  ${CMAKE_COMMAND} -E env ${_tp_strict_env_j} <vcpkg> --vcpkg-root=${_tp_root} install --x-manifest-root=${_tp_pindir} --triplet=${_tp_eco_triplet}
+${_tp_manual}
 Or keep this library on provider \"source\" (edit the recipe).")
                 endif()
+                if(_tp_provider STREQUAL "conan")
+                    # ---- conan generate (P7b) ----
+                    # four rungs to get the tool, then the version the lock
+                    # pins must be the version that runs: a different binary is
+                    # not the artifact the key says it is.
+                    _polyorch_tp_conan_tool(_tp_conan _tp_conan_ver "${arg_WORK_DIR}" ${_tp_boot} "${arg_CONAN_PROGRAM}")
+                    if(NOT _tp_conan_ver STREQUAL "${_tp_tool_version}")
+                        message(FATAL_ERROR "polyorch_thirdparty_recipe: conan tool mismatch for '${_tp_name}' -- pkg-deps/conan-tool/pixi.lock pins ${_tp_tool_version} but '${_tp_conan}' reports ${_tp_conan_ver}. Re-solve the island (pixi lock, commit the result) or point CONAN_PROGRAM at the pinned binary; a silent swap would pack bytes the cache key does not describe.")
+                    endif()
+                    # the island is used through a copy: conan writes presets
+                    # and build folders next to the consumer file it is handed
+                    # (the same zero-intrusion reason the vcpkg lane copies for
+                    # -- that one is measured, this one is prevented).
+                    set(_tp_cpin "${arg_WORK_DIR}/${_tp_name}/pin")
+                    file(REMOVE_RECURSE "${_tp_cpin}")
+                    file(MAKE_DIRECTORY "${_tp_cpin}")
+                    execute_process(COMMAND "${CMAKE_COMMAND}" -E copy_directory "${_tp_pindir}" "${_tp_cpin}"
+                        RESULT_VARIABLE _tp_rc ERROR_VARIABLE _tp_e)
+                    if(NOT _tp_rc EQUAL 0)
+                        message(FATAL_ERROR "polyorch_thirdparty_recipe: copying the conan pin island '${_tp_pindir}' into the anchor failed rc=${_tp_rc}: ${_tp_e}")
+                    endif()
+                    set(_tp_cfile "${_tp_cpin}/conanfile.txt")
+                    if(EXISTS "${_tp_cpin}/conanfile.py")
+                        set(_tp_cfile "${_tp_cpin}/conanfile.py")
+                    endif()
+                    set(_tp_chome "${arg_WORK_DIR}/conan-home")
+                    file(MAKE_DIRECTORY "${_tp_chome}")
+                    set(_tp_dep "${arg_WORK_DIR}/${_tp_name}/deploy-${arg_BUILD_TYPE}")
+                    file(REMOVE_RECURSE "${_tp_dep}")
+                    # CMakeDeps only, no CMakeToolchain: the toolchain file is
+                    # the one generated artifact that pins the host absolute
+                    # path (measured), it is not needed to consume a prefix, and
+                    # not emitting it is a cheaper guarantee than filtering it
+                    # out later. --deployer=direct_deploy is what actually puts
+                    # files on disk: without a deployer the output folder holds
+                    # generators only and the libraries stay in CONAN_HOME
+                    # (measured), which is exactly what a relocatable package
+                    # must not depend on. --lockfile is passed EXPLICITLY: an
+                    # island that merely contains conan.lock does not make conan
+                    # read it, and an unread lock is a pin that silently does
+                    # nothing while the key claims it is pinned (measured form:
+                    # fmt/11.0.2#<recipe revision>%<timestamp>).
+                    execute_process(COMMAND "${CMAKE_COMMAND}" -E env
+                            --unset=CPATH --unset=C_INCLUDE_PATH --unset=CPLUS_INCLUDE_PATH
+                            --unset=LIBRARY_PATH --unset=COMPILER_PATH --unset=CONDA_PREFIX
+                            "CONAN_HOME=${_tp_chome}"
+                            "${_tp_conan}" install "${_tp_cfile}"
+                            "--output-folder=${_tp_dep}"
+                            "--deployer=direct_deploy"
+                            "-pr=${_tp_profile_file}"
+                            # both slots, explicitly: conan asks for a BUILD
+                            # profile as well, and with CONAN_HOME anchored
+                            # (empty) it would otherwise demand
+                            # `conan profile detect` -- the very fallback this
+                            # lane refuses. Same profile for build and host is
+                            # the correct statement for a native generate;
+                            # cross builds split the two and land in P6.
+                            "-pr:b=${_tp_profile_file}"
+                            "--lockfile=${_tp_cpin}/conan.lock"
+                            "-g" "CMakeDeps"
+                            "--build=missing"
+                        RESULT_VARIABLE _tp_rc OUTPUT_VARIABLE _tp_o ERROR_VARIABLE _tp_e)
+                    if(NOT _tp_rc EQUAL 0)
+                        message(FATAL_ERROR "polyorch_thirdparty_recipe: conan install for '${_tp_name}' failed rc=${_tp_rc}:\n${_tp_o}${_tp_e}")
+                    endif()
+                    file(GLOB _tp_pkgs "${_tp_dep}/direct_deploy/*")
+                    if(NOT _tp_pkgs)
+                        message(FATAL_ERROR "polyorch_thirdparty_recipe: the conan generate delivered no packages under ${_tp_dep}/direct_deploy -- strict about layout, never silent (profile ${_tp_profile_name})")
+                    endif()
+                    # curated copy, layout preserved: the CMakeDeps configs
+                    # resolve the package trees through
+                    # ${CMAKE_CURRENT_LIST_DIR}/direct_deploy/<pkg> (measured),
+                    # so the configs and the trees travel together or not at all
+                    # -- and that is what makes the prefix survive relocation.
+                    file(MAKE_DIRECTORY "${_tp_installdir}")
+                    file(GLOB _tp_cfgs "${_tp_dep}/*.cmake")
+                    foreach(_tp_c IN LISTS _tp_cfgs)
+                        get_filename_component(_tp_cb "${_tp_c}" NAME)
+                        if(_tp_cb STREQUAL "conan_toolchain.cmake")
+                            continue()
+                        endif()
+                        file(COPY "${_tp_c}" DESTINATION "${_tp_installdir}")
+                    endforeach()
+                    execute_process(COMMAND "${CMAKE_COMMAND}" -E copy_directory
+                            "${_tp_dep}/direct_deploy" "${_tp_installdir}/direct_deploy"
+                        RESULT_VARIABLE _tp_rc ERROR_VARIABLE _tp_e)
+                    if(NOT _tp_rc EQUAL 0)
+                        message(FATAL_ERROR "polyorch_thirdparty_recipe: copying the deployed packages into ${_tp_installdir} failed: ${_tp_e}")
+                    endif()
+                    # relocate gate (F5): no exemption for ecosystem output
+                    _polyorch_tp_relocate_audit("${_tp_installdir}" _tp_rel_ok _tp_rel_why)
+                    if(NOT _tp_rel_ok)
+                        message(FATAL_ERROR "polyorch_thirdparty_recipe: conan output for '${_tp_name}' fails the relocate gate -- ${_tp_rel_why} (relativize the file or keep the package local; no silent exemption)")
+                    endif()
+                    polyorch_thirdparty_manifest_write(MANIFEST "${_tp_manifest}" KEY "${_tp_key}"
+                        NAME "${_tp_name}" VERSION "${_tp_version}" LICENSE "${_tp_license}"
+                        PROVIDER "${_tp_provider}" TRIPLET "${_tp_eco_triplet}"
+                        BUILD_TYPE "${arg_BUILD_TYPE}"
+                        LINK_MODE "${_tp_link}" ARCHIVE_SHA256 "${_tp_arch_hash}"
+                        RECIPE_SHA256 "${_tp_recipe_hash}" SCHEMA_VERSION "${_tp_schema}"
+                        ECOSYSTEM_PIN_SHA256 "${_tp_pin_hash}" ECOSYSTEM_TRIPLET "${_tp_eco_triplet}"
+                        ECOSYSTEM_TOOL_VERSION "${_tp_tool_version}"
+                        ECOSYSTEM_PROFILE_SHA256 "${_tp_profile_hash}")
+                    if(arg_PACKAGES_DIR)
+                        polyorch_thirdparty_package(NAME "${_tp_name}" INSTALL_DIR "${_tp_installdir}"
+                            PACKAGE_DIR "${arg_PACKAGES_DIR}" MANIFEST "${_tp_manifest}"
+                            FORMAT "${_tp_pkgfmt}" TRIPLET "${_tp_eco_triplet}" PACKAGE_OUT _tp_pkgfile)
+                    endif()
+                    message(STATUS "polyorch thirdparty: ${_tp_name} ecosystem generate (${_tp_provider}/${_tp_eco_triplet}) key=${_tp_key_SHORT12} conan=${_tp_tool_version} -- packed into the cache")
+                else()
                 # ---- GENERATE_ECOSYSTEM: the one explicit network step ----
                 find_program(_tp_git NAMES git)
                 if(NOT _tp_git)
@@ -1460,6 +1959,7 @@ set(VCPKG_BUILD_TYPE release)
                         FORMAT "${_tp_pkgfmt}" TRIPLET "${_tp_eco_triplet}" PACKAGE_OUT _tp_pkgfile)
                 endif()
                 message(STATUS "polyorch thirdparty: ${_tp_name} ecosystem generate (${_tp_provider}/${_tp_eco_triplet}) key=${_tp_key_SHORT12} -- packed into the cache")
+                endif()
             else()
             # ---- build (explicit verb, H2) ----
             set(_tp_cmake_args "")

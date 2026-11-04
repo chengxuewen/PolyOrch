@@ -58,11 +58,21 @@ else()
     # ships only a vcpkg wrapper plus the built-in FindZLIB module)
     ck_file("${_i}/share/fmt/fmt-config.cmake")
     # zero intrusion: the island the recipe points at is a read-only input
-    # (manifest-mode install would write vcpkg_installed/ right into it)
-    file(GLOB _dirty "${_island}/*")
-    ck_str("${_dirty}" "${_island}/vcpkg.json")
-    file(GLOB _dirty2 "${_fx}/pkg-deps-fmt/*")
-    ck_str("${_dirty2}" "${_fx}/pkg-deps-fmt/vcpkg.json")
+    # (manifest-mode install would write vcpkg_installed/ right into it).
+    # The check watches GENERATED names, not file counts: this island carries
+    # both providers' manifests by design (r9a H2), so a count would be a lie
+    # waiting for the next lane to land.
+    foreach(_isl "${_island}" "${_fx}/pkg-deps-fmt")
+        file(GLOB _isl_files "${_isl}/*")
+        foreach(_bad IN ITEMS "vcpkg_installed" "CMakeUserPresets.json"
+                "conan_toolchain.cmake" "deploy")
+            if("${_isl_files}" MATCHES "${_bad}")
+                message(FATAL_ERROR "the generate wrote into the island: ${_bad} -- ${_isl_files}")
+            endif()
+        endforeach()
+        list(LENGTH _isl_files _isln)
+        ck(_isln EQUAL 3)
+    endforeach()
     # provenance: provider axis records vcpkg + the island hash + the triplet
     file(READ "${_mf}" _j)
     string(JSON _v GET "${_j}" key)

@@ -1,0 +1,29 @@
+# The conan TOOL island (sr8 P7b, the O4=A dual track).
+#
+# This is a tool pin, not a project environment: exactly one dependency and
+# zero libraries, so holding it here does not make PolyOrch a package manager
+# for other people's code. The lane copies this directory into its build anchor
+# and runs `pixi install --manifest-path` there -- the solved environment lands
+# in the anchor (disposable, never inside the source tree), while the version
+# pinned below stays the reproducibility truth.
+#
+# pixi.lock MUST be committed beside this file: the resolved conan version
+# rides the cache key, read as TEXT out of the lock (asking the binary would
+# force the strict-refusal path to have a conan installed). The lock's own hash
+# deliberately does NOT enter the key -- a lock embeds host virtual packages
+# (__glibc/__linux/__archspec) and a host fact in the key would bind artifact
+# identity to the machine that solved it.
+#
+# platforms lists only what has actually been solved and verified here; adding
+# a platform means running `pixi lock` for it and committing the result, not
+# editing this list optimistically.
+[workspace]
+channels = ["conda-forge"]
+name = "polyorch-conan-tool"
+platforms = ["linux-64"]
+version = "0.1.0"
+
+[tasks]
+
+[dependencies]
+conan = ">=2.32.0,<3"

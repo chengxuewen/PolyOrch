@@ -1210,6 +1210,93 @@ an older checkout must FATAL, not silently miss the face.
   green with no host preparation. The three thirdparty pixi/build/recipe
   cases were repeated 3x to confirm the first run's extra red was pixi
   cold-start flakiness in the pre-existing family, not this lane.
-- Not in this stroke: P7b (conan, still a FATAL seam), P7c (MediaServo
-  consumer face: `--ecosystem` CLI, dev smoke), the vendored tool archive,
-  and the conditional entry for patched ecosystem libraries (O-13).
+- Not in this stroke: P7b (conan -- landed in the following stroke, see the P7b
+  addendum below), P7c (MediaServo consumer face: `--ecosystem` CLI, dev smoke),
+  the vendored tool archive, and the conditional entry for patched ecosystem
+  libraries (O-13).
+
+## D50 addendum: P7b conan lane -- generated profile, solved tool island, lock-pinned version (2026-11-04, sr8-round P7b, plan-driven r9/r9a)
+
+- What landed: `provider: "conan"` from FATAL seam to a real lane, the same
+  skeleton as P7a (island pin -> key -> strict gate -> opt-in
+  GENERATE_ECOSYSTEM -> relocate gate -> P2 pack) with conan's own mechanics.
+  New internal parts: `_polyorch_tp_module_dir`, `_polyorch_tp_conan_profile`,
+  `_polyorch_tp_conan_pinned_version`, `_polyorch_tp_conan_tool`; two new key
+  fields (`ECOSYSTEM_TOOL_VERSION`, `ECOSYSTEM_PROFILE_SHA256`) mirrored into
+  the manifest; recipe kw `CONAN_PROGRAM`; `_polyorch_tp_pin_hash` now selects
+  its file set by provider.
+- The tool island is a repository artifact: `pkg-deps/conan-tool/{pixi.toml,
+  pixi.lock}` (21 KB lock), declaring ONE tool and zero libraries -- a tool pin,
+  not a package manager, and on the ACQUIRE axis, so F3=A (which governs the
+  build-time DEPENDENCY_PROVIDER axis) is untouched. Declaration lives in the
+  repo, execution copies it into the anchor and solves there (measured: env
+  lands at `<anchor>/conan-tool/.pixi/envs/<env>`, never `PolyOrch/.pixi`).
+  Four rungs: CONAN_PROGRAM > tools/bin > PATH > solve (default); `BOOTSTRAP_TOOL
+  off` stops at the refusal. `platforms` lists only what was actually solved.
+- Measured facts that changed the design (each one contradicted a reasonable
+  assumption; the plan text was corrected in r9/r9a before code):
+  1. Without a deployer, conan's `--output-folder` contains generator files
+     only -- zero library files; `libfmt.a` stays in `CONAN_HOME/p/b/<hash>/p/lib`.
+     `--deployer=direct_deploy` is what produces a disk tree. `relative_deploy`
+     no longer exists in 2.32 ("Cannot find deployer").
+  2. An island that merely CONTAINS conan.lock does not make conan read it:
+     `--lockfile` must be passed explicitly, or the pin silently does nothing
+     while the cache key claims it is pinned.
+  3. conan needs a BUILD profile as well as a host one (`-pr` + `-pr:b`).
+     With CONAN_HOME anchored and empty it otherwise demands
+     `conan profile detect` -- the very fallback this lane refuses.
+  4. The tool version must come from the lock as TEXT, not from running the
+     binary: otherwise even the strict-refusal path would need a conan
+     installed, and the offline gates would stop being offline.
+  5. A pixi.lock embeds host virtual packages (`__glibc`/`__linux`/
+     `__archspec`), so copying P4's lock-sha-into-key discipline would weld
+     artifact identity to the solving machine. Key = resolved version; lock
+     sha = sidecar provenance. The e2e asserts the asymmetry: mutating a
+     virtual package leaves the pinned version unchanged.
+  6. conan's CMakeDeps models a static fmt as an INTERFACE library carrying
+     `INTERFACE_LINK_LIBRARIES` -- there is no `IMPORTED_LOCATION` at all, so
+     the relocation proof had to become a program that compiles, links and
+     RUNS (`CONSUME-RAN 42`) rather than a property probe.
+  7. `conan_toolchain.cmake` is the single generated file pinning the host
+     path; it is neither emitted (no CMakeToolchain generator) nor copied.
+     Everything copied is `${CMAKE_CURRENT_LIST_DIR}`-relative and survives a
+     move.
+  8. pixi writes its package cache to `$HOME/.cache` by default -- global state
+     and unwritable in a sandbox ("no writable layers to cache package to").
+     Only `PIXI_CACHE_DIR` matters (XDG_CACHE_HOME/RATTLER_PKG_CACHE were never
+     consulted); policy = inherit the caller's (the entry script exports a
+     project-scoped one), fall back to the anchor.
+- Review findings that were self-inflicted and are recorded so they are not
+  repeated: (a) the r9 plan said "reuse `polyorch_pixi_env_paths`" -- that and
+  every other pixi-face entry point binds the single-value
+  `PolyOrch_PIXI_MANIFEST` and `polyorch_pixi_setup` OVERWRITES it, so routing
+  a tool island through it would swap the consumer's pixi context (found by
+  reading the sources during review, not at runtime); (b) `find_program` was
+  asked to search a variable that had just been `set()` to "" -- it refuses to
+  search a defined variable, even empty, which silently disabled the tools/bin
+  rung and turned the e2e into a false SKIP (this trap fired twice in one day);
+  (c) `CMAKE_CURRENT_LIST_DIR` inside a FUNCTION is also the file being
+  processed, not the defining module -- the same dynamic scoping as a macro, so
+  the module root now comes from a GLOBAL property captured at include time;
+  (d) `^` in CMake MATCHES anchors the whole string, never a line -- `^os=`
+  cannot match past a profile's header line, use `(^|\n)`;
+  (e) unescaped `|` inside a markdown table row breaks the table -- it was
+  introduced twice while documenting it.
+- Island sharing (r9a H2): the fixture island now carries `vcpkg.json` AND
+  `conanfile.txt`+`conan.lock`, and the e2e switches lanes by rewriting the
+  `provider` line only -- the "one line" promise is executed, not described.
+  Keys differ across lanes (measured `4c580e052cd9` vs `eec177421010`) and
+  package names distinguish them via the triplet slot (profile name
+  `polyorch-release` vs `x64-linux-static`).
+- Tests: `t-thirdparty-provider-conan` (13 offline refusal legs + inline
+  profile/vocabulary, hash-stability, anti-host-binding and shared-island
+  assertions), `t-thirdparty-provider-conan-e2e` (`# e2e: required`, green on
+  this host with no preparation beyond a compiler: solve -> generate ->
+  relocate-and-run -> reuse with the tool state deleted -> changed-island
+  strict refusal), plus the rewritten conan leg in `t-thirdparty-recipe-seams`.
+  Suite 97 pass / 8 pre-existing / 39 skip, stable over three consecutive runs;
+  both ecosystem e2e cases re-verified after the shared changes.
+- Not in this stroke: P7c (MediaServo consumer face), cross builds (which is
+  where `-pr:b` would split from `-pr:h`, P6), and a non-Linux tool island
+  platform (adding one requires solving and committing the lock, not editing
+  the platforms list).
