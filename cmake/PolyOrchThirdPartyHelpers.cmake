@@ -48,29 +48,22 @@
 #-----------------------------------------------------------------------------------------------------------------------
 include_guard(GLOBAL)
 
-# Where this module's own cmake/ directory is, captured at include time into a
-# GLOBAL property. Inside a FUNCTION CMAKE_CURRENT_LIST_DIR still names the
-# file being *processed* (measured under cmake -P: the top-level script, not
-# the module that defines the function) -- the variable is dynamically scoped
-# just like in a macro -- a plain set() would die at the include_guard(GLOBAL)
-# boundary for later directories, and a CACHE entry would go stale when the
-# tree is relocated (the IDE-source-list lesson). Consumers of this read the
-# repository root through _polyorch_tp_module_dir().
-set_property(GLOBAL PROPERTY POLYORCH_THIRDPARTY_CMAKE_DIR "${CMAKE_CURRENT_LIST_DIR}")
-
-# _polyorch_tp_module_dir -- the repository root of this face's own data (the
-# pkg-deps/ tool islands live there). Call-site override supported for odd
-# layouts and for tests: set PolyOrch_THIRDPARTY_ROOT.
+# _polyorch_tp_module_dir -- the repository root this face's own data lives in
+# (the pkg-deps/ tool islands).
+# CMake variable scope is DYNAMIC: inside a function CMAKE_CURRENT_LIST_DIR is
+# the file being processed -- the caller's -P script, not this module (PIT-10,
+# re-hit in the conan stroke; measured again on 4.4.3 in script mode: LIST_DIR
+# = the caller's directory, FUNCTION_LIST_DIR = the defining file's). Use
+# CMAKE_CURRENT_FUNCTION_LIST_DIR, which is exactly the defining file's
+# directory -- no global state and no dependence on include order. A call-site
+# override stays available for unusual layouts.
 function(_polyorch_tp_module_dir out)
     set(_tp_root "${PolyOrch_THIRDPARTY_ROOT}")
     if(NOT _tp_root)
-        get_property(_tp_cdir GLOBAL PROPERTY POLYORCH_THIRDPARTY_CMAKE_DIR)
-        if(_tp_cdir)
-            cmake_path(GET _tp_cdir PARENT_PATH _tp_root)
-        endif()
+        get_filename_component(_tp_root "${CMAKE_CURRENT_FUNCTION_LIST_DIR}/.." ABSOLUTE)
     endif()
-    if(NOT _tp_root)
-        message(FATAL_ERROR "_polyorch_tp_module_dir: this module's own location is unknown (included in an unusual way) and PolyOrch_THIRDPARTY_ROOT is unset -- the pkg-deps/ tool islands cannot be located")
+    if(NOT IS_DIRECTORY "${_tp_root}/pkg-deps")
+        message(FATAL_ERROR "_polyorch_tp_module_dir: no pkg-deps/ under '${_tp_root}' -- this module's own location cannot be resolved (set PolyOrch_THIRDPARTY_ROOT for an unusual layout)")
     endif()
     set(${out} "${_tp_root}" PARENT_SCOPE)
 endfunction()
