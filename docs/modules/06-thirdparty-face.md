@@ -26,7 +26,7 @@ expert-review fold).
 | `polyorch_thirdparty_manifest_write` | The provenance sidecar (JSON): key/key12, license (MANDATORY, L7 -- SDL=zlib, ImGui=MIT class obligations ride the artifact), provider, build_type, recipe digests. |
 | `polyorch_thirdparty_package` | Packs an installed prefix into the shared package cache (P2). Name = `<name>-<version>-<triplet>-<profile>-<buildtype>-<linkmode>-<key12>.tar.gz` (§2.4); beside it a bare-hex `.sha256` and a `.manifest.json` sidecar. Packing without a manifest is refused (an anonymous package cannot be judged stale). An idempotent pack compares sidecar identity, never mere file existence. A **relocate gate** scans textual config surfaces (`*.cmake`/`*.pc`/`*.pri`) for build-host absolute paths and refuses to write a pinned prefix into the shared cache (F5 criterion 10). FORMAT seam: only `tar.gz` is writable (`cmake -E tar` on CMake 4.4 has no `--format`; zip/7zip names over tar bytes would be mis-labeled, so they FATAL instead). |
 | `polyorch_thirdparty_import` | Consumes the upstream's OWN installed `<Pkg>Config.cmake` (`NO_DEFAULT_PATH` fixed posture) and hands the consumer an ALIAS; upstream target names stay untouched (SDL3:: stays SDL3::). A MACRO on purpose -- find_package(CONFIG) imported targets would evaporate at function return. Never auto-builds at import time (H2): a missing install prefix is a FATAL pointing at the build verb. |
-| `polyorch_thirdparty_recipe` | The declarative JSON loader (schema v1 gate: provider seams FATAL pointing at P3+/P7). Optional `patch_command` (relative path elements resolve against the recipe base; CWD = the source tree) and `fetch_only` (F8 source-wrapper recipes: acquire + patch, then return the source dir -- no build/install/manifest/cache; ImGui rides this). Cache verdict = manifest identity, NOT existence (the QExt/CxxKit stamp check upgraded): same key skips acquire/build, per-config install prefixes. JSON carries static facts only; "probe the system, then pick a profile" stays at the consumer call site. |
+| `polyorch_thirdparty_recipe` | The declarative JSON loader (schema v1 gate, provider-shaped required set: `source` carries the archive pair `url`/`url_hash`, `vcpkg` carries the pin island `pin_dir`; `conan` FATALs toward P7b). Optional `patch_command` (relative path elements resolve against the recipe base; CWD = the source tree) and `fetch_only` (F8 source-wrapper recipes: acquire + patch, then return the source dir -- no build/install/manifest/cache; ImGui rides this). Cache verdict = manifest identity, NOT existence (the QExt/CxxKit stamp check upgraded): same key skips acquire/build, per-config install prefixes. JSON carries static facts only; "probe the system, then pick a profile" stays at the consumer call site. |
 
 ## Package cache (P2)
 
@@ -73,16 +73,58 @@ inside the pixi prefix means the artifact NEEDS THE PIXI RUNTIME and the
 manifest gets `pixi_runtime_required: true` (a marker and a WARNING, never a
 silent pass; a missing readelf degrades loudly as "not audited").
 
+## Ecosystem provider lane (P7a, vcpkg)
+
+A `provider: "vcpkg"` recipe pins through an ISLAND instead of an archive: one
+`pkg-deps/<lib>/vcpkg.json` with `builtin-baseline` committed beside the
+recipe. The island's content hash is the artifact-identity anchor (it rides
+`ARCHIVE_SHA256` plus explicit `ECOSYSTEM_PROVIDER`/`ECOSYSTEM_PIN_SHA256`/
+`ECOSYSTEM_TRIPLET` key fields), so editing a pin -- baseline, override, one
+space -- mints a new key and the old artifact can never be silently reused.
+
+Verdict order: install manifest -> package cache -> **ecosystem generate** ->
+source build. The generate is the ONE network step and only runs under an
+explicit `GENERATE_ECOSYSTEM`. Without it and without a pre-baked artifact the
+lane FATALs -- strict-first, no auto-fallback to source, no implicit registry
+fetch -- and the refusal is an operator manual (philosophy, the generate
+switch, a copy-pasteable command with the lane's exact env, the
+`provider "source"` off-ramp).
+
+A generate clones the registry treeless at the pinned baseline, makes a tool
+available (four rungs: `VCPKG_PROGRAM` > `vcpkg` already in the root > the
+anchor's `tools/bin` > bootstrap into the root, which the baseline pins by
+release tag+sha; `BOOTSTRAP_TOOL off` refuses to download), installs a COPY of
+the island under the anchor (manifest mode would otherwise write
+`vcpkg_installed/` into the in-repo island -- zero intrusion holds), consumes
+the flat prefix `<pin copy>/vcpkg_installed/<triplet>` directly, runs it
+through the SAME relocate gate as source builds (no exemption: the pack is
+refused if the output pins the generate host), and packs it into
+`PACKAGES_DIR` with its sidecars. Every vcpkg child runs in a pinned env
+(anchor-local downloads and cache, no metrics, no PATH lookup, `--vcpkg-root`
+passed explicitly because the tool otherwise derives its root from its own
+directory). Triplet is supplier-derived (`TRIPLET` override > `PolyOrch_VCPKG_TRIPLET`
+> host facts; static adds the `-static` suffix and the lane writes that
+overlay triplet itself, release-only).
+
+Lane postures `BINARY_CACHE` and `BOOTSTRAP_TOOL` are call-site knobs ONLY --
+never recipe JSON, because the recipe hash is a key input and a speed switch
+must not mint a cache identity. Default: binary cache off (`clear`), bootstrap
+allowed. The vcpkg cache lives in the anchor, is never keyed, dies with it.
+
 ## Deliberate seams (louder than any doc)
 
-- `provider: vcpkg|conan` -> FATAL naming the P7 provider face (prerequisites
-  O-10/O-11/PolyOrch O4) -- reserved, not implemented.
+- `provider: conan` -> FATAL naming the P7b lane (same shape as vcpkg: the
+  island is `conanfile` + `conan.lock`, the profile is generated from cmake
+  facts). Reserved, not implemented. `provider: vcpkg` LANDED with P7a (above).
 - `provider: prebuilt|system` -> FATAL naming the P3+ consumer lanes -- the
   P2 package cache covers SOURCE builds only, it is not a prebuilt recipe.
 - `DEPENDENCY_PROVIDER sysroot` -> FATAL naming the cross/device batch (P6,
   O-5); none/system/pixi landed with P4.
-- The face is **zero-network**: archives ship in-repo (or on a local path); a
-  missing URL is a FATAL, never a download.
+- The face is **zero-network** for source recipes: archives ship in-repo (or
+  on a local path); a missing URL is a FATAL, never a download. The ecosystem
+  lane is the deliberate exception, and it is behind `GENERATE_ECOSYSTEM` --
+  without that switch a vcpkg recipe with no cached artifact also never
+  touches the network.
 
 ## Non-goals (pinned by the r4 review)
 
@@ -103,3 +145,14 @@ child-env sanitization, the explicit-compiler negative, provider/lock/env
 keying) / `t-thirdparty-provider-seams` (sysroot + guard refusals, the
 faked-readelf audit legs, the manifest marker) (capability `cxx` for the
 build legs; see `tests/fixtures/thirdparty-basic/`).
+
+The ecosystem lane is covered offline by `t-thirdparty-provider-vcpkg` (14
+refusal legs: the strict manual word-for-word plus the FORCE_SYSTEM_BINARIES
+negative, the O-13 reds with the source recipe as the green control, island
+and license-drift refusals, the lane-knob refusals, both triplet refusals; and
+inline checks on the pinned env, both postures, directory creation, the
+triplet ladder, pin-hash sensitivity, ECOSYSTEM_* keying) and online by
+`t-thirdparty-provider-vcpkg-e2e` (`# e2e: required`: generate -> island zero
+intrusion -> pack + sidecars -> offline reuse with the registry root deleted
+-> changed island strict refusal; no host preparation needed, the lane
+bootstraps the tool itself; see `tests/fixtures/thirdparty-ecosystem/`).

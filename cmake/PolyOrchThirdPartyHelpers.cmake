@@ -71,6 +71,127 @@ function(_polyorch_tp_package_name out name version triplet profile buildtype li
 endfunction()
 
 #-----------------------------------------------------------------------------------------------------------------------
+# _polyorch_tp_pin_hash -- content fingerprint of a per-library pin island
+# (O-10=A): the island IS the reproducibility anchor, so its bytes ride the
+# cache key. vcpkg islands carry the baseline INSIDE vcpkg.json (the official
+# builtin-baseline field) -- a separate baseline file would be a second copy
+# that can drift; conan islands (P7b) will hash conanfile + conan.lock the
+# same way. Fixed file order: the hash must be stable across runs/hosts.
+function(_polyorch_tp_pin_hash pin_dir provider out)
+    set(_tp_files "")
+    if(provider STREQUAL "vcpkg")
+        set(_tp_files "vcpkg.json")
+    else()
+        message(FATAL_ERROR "_polyorch_tp_pin_hash: unknown ecosystem provider '${provider}' (vcpkg today; conan = P7b)")
+    endif()
+    set(_tp_cat "")
+    foreach(_tp_f IN LISTS _tp_files)
+        if(NOT EXISTS "${pin_dir}/${_tp_f}")
+            message(FATAL_ERROR "_polyorch_tp_pin_hash: pin island '${pin_dir}' misses '${_tp_f}' (O-10: a vcpkg island = one vcpkg.json with the builtin-baseline embedded; commit it beside the recipe)")
+        endif()
+        file(READ "${pin_dir}/${_tp_f}" _tp_c)
+        string(APPEND _tp_cat "=== ${_tp_f} ===\n${_tp_c}\n")
+    endforeach()
+    string(SHA256 _tp_h "${_tp_cat}")
+    set(${out} "${_tp_h}" PARENT_SCOPE)
+endfunction()
+
+#-----------------------------------------------------------------------------------------------------------------------
+# _polyorch_tp_ecosystem_triplet -- supplier-derived triplet (O-12=C):
+# call-site TRIPLET override > PolyOrch_VCPKG_TRIPLET (when the platform
+# face is loaded) > self-derived from the host facts. Script mode (cmake -P)
+# never initializes CMAKE_SYSTEM_* (measured on 4.4: empty until a project()
+# runs) -- the derivation chain falls back to CMAKE_HOST_* and finally
+# uname -m, the same source cmake itself asks. The static link mode appends
+# "-static" (an overlay triplet the generate step writes); static-on-windows
+# is refused (vcpkg guidance: static CRT).
+function(_polyorch_tp_ecosystem_triplet out link_mode override)
+    set(_tp_t "${override}")
+    if(NOT _tp_t AND DEFINED PolyOrch_VCPKG_TRIPLET)
+        set(_tp_t "${PolyOrch_VCPKG_TRIPLET}")
+    endif()
+    if(NOT _tp_t)
+        set(_tp_proc "${CMAKE_SYSTEM_PROCESSOR}")
+        if(NOT _tp_proc)
+            set(_tp_proc "${CMAKE_HOST_SYSTEM_PROCESSOR}")
+        endif()
+        if(NOT _tp_proc AND UNIX)
+            execute_process(COMMAND uname -m OUTPUT_VARIABLE _tp_uname OUTPUT_STRIP_TRAILING_WHITESPACE)
+            set(_tp_proc "${_tp_uname}")
+        endif()
+        string(TOLOWER "${_tp_proc}" _tp_proc)
+        if(_tp_proc MATCHES "^(x86_64|amd64)$")
+            set(_tp_proc "x64")
+        elseif(_tp_proc MATCHES "^(aarch64|arm64)$")
+            set(_tp_proc "arm64")
+        else()
+            message(FATAL_ERROR "_polyorch_tp_ecosystem_triplet: cannot map processor '${_tp_proc}' into the vcpkg vocabulary -- pass TRIPLET explicitly")
+        endif()
+        set(_tp_sys "${CMAKE_SYSTEM_NAME}")
+        if(NOT _tp_sys)
+            set(_tp_sys "${CMAKE_HOST_SYSTEM_NAME}")
+        endif()
+        if(_tp_sys STREQUAL "Linux")
+            set(_tp_sys "linux")
+        elseif(_tp_sys STREQUAL "Darwin")
+            set(_tp_sys "osx")
+        elseif(_tp_sys MATCHES "Windows" OR WIN32)
+            set(_tp_sys "windows")
+        else()
+            message(FATAL_ERROR "_polyorch_tp_ecosystem_triplet: unsupported system name '${_tp_sys}' -- pass TRIPLET explicitly")
+        endif()
+        set(_tp_t "${_tp_proc}-${_tp_sys}")
+    endif()
+    if("${link_mode}" STREQUAL "static")
+        if(_tp_t MATCHES "windows$")
+            message(FATAL_ERROR "_polyorch_tp_ecosystem_triplet: static link_mode on a windows triplet is refused (vcpkg guidance: static CRT) -- use dynamic or an explicit TRIPLET override")
+        endif()
+        if(NOT _tp_t MATCHES "-static$")
+            string(APPEND _tp_t "-static")
+        endif()
+    endif()
+    set(${out} "${_tp_t}" PARENT_SCOPE)
+endfunction()
+
+#-----------------------------------------------------------------------------------------------------------------------
+# _polyorch_tp_vcpkg_env -- the pinned environment for every vcpkg child
+# process (O-11=A discipline 3): downloads and the binary cache live INSIDE
+# the work anchor as ephemeral acceleration -- never keyed, never the verdict.
+#
+# Two measured facts shape this list:
+#  * VCPKG_FORCE_SYSTEM_BINARIES is NOT set. It converts vcpkg's normal
+#    self-sufficiency (it fetches its own cmake/ninja, verified by tag+sha)
+#    into a hard host requirement -- on a box without ninja the compiler
+#    detection dies outright (measured: detect_compiler rc!=0, while the same
+#    install with no injection succeeds). None of QExt/CxxKit/OpenCTK sets it.
+#  * VCPKG_DEFAULT_BINARY_CACHE must point at an EXISTING directory (measured:
+#    "must be a directory"), so both anchor directories are created here --
+#    the strict gate prints these very assignments as a copy-paste command and
+#    that command has to run as printed.
+#
+# binary_cache controls only HOW FAST, never WHAT: off (default) keeps
+# VCPKG_BINARY_SOURCES=clear (pure source build per generate); on points the
+# files cache at the anchor. Stale-hit safety is vcpkg's own problem -- its
+# cache entries are keyed by compiler hash + port version (measured: cache
+# submissions name zlib:x64-linux@1.3.2#2), so an upgraded compiler misses.
+function(_polyorch_tp_vcpkg_env work_dir out binary_cache)
+    set(_tp_dl "${work_dir}/vcpkg-downloads")
+    set(_tp_bc "${work_dir}/vcpkg-binary")
+    file(MAKE_DIRECTORY "${_tp_dl}" "${_tp_bc}")
+    set(_tp_src "clear")
+    if(binary_cache)
+        set(_tp_src "files,${_tp_bc},readwrite")
+    endif()
+    set(${out}
+        "VCPKG_DOWNLOADS=${_tp_dl}"
+        "VCPKG_DEFAULT_BINARY_CACHE=${_tp_bc}"
+        "VCPKG_BINARY_SOURCES=${_tp_src}"
+        "VCPKG_DISABLE_METRICS=1"
+        "VCPKG_MAX_CONCURRENCY=2"
+        PARENT_SCOPE)
+endfunction()
+
+#-----------------------------------------------------------------------------------------------------------------------
 # polyorch_thirdparty_fingerprint -- full-field cache key.
 #
 #   polyorch_thirdparty_fingerprint(<out-var>
@@ -88,7 +209,7 @@ endfunction()
 # produce a false-distinct key (F4=A "no false distinct" leg).
 function(polyorch_thirdparty_fingerprint out)
     cmake_parse_arguments(arg ""
-        "ARCHIVE_SHA256;BUILD_TYPE;VERSION;PROFILE;TRIPLET;LINK_MODE;TOOLCHAIN_FILE_SHA256;COMPILER_ID;COMPILER_VERSION;CMAKE_VERSION;DEPENDENCY_PROVIDER;PIXI_LOCK_SHA256;PIXI_ENVIRONMENT;SYSROOT_ID;RECIPE_SHA256;SCHEMA_VERSION;HELPER_VERSION"
+        "ARCHIVE_SHA256;BUILD_TYPE;VERSION;PROFILE;TRIPLET;LINK_MODE;TOOLCHAIN_FILE_SHA256;COMPILER_ID;COMPILER_VERSION;CMAKE_VERSION;DEPENDENCY_PROVIDER;PIXI_LOCK_SHA256;PIXI_ENVIRONMENT;SYSROOT_ID;RECIPE_SHA256;SCHEMA_VERSION;HELPER_VERSION;ECOSYSTEM_PROVIDER;ECOSYSTEM_PIN_SHA256;ECOSYSTEM_TRIPLET"
         "OPTIONS;PATCH_SHA256" ${ARGN})
     if(out STREQUAL "")
         message(FATAL_ERROR "polyorch_thirdparty_fingerprint: <out-var> is required")
@@ -137,6 +258,8 @@ function(polyorch_thirdparty_fingerprint out)
         "dependency_provider=${arg_DEPENDENCY_PROVIDER}" "pixi_lock=${arg_PIXI_LOCK_SHA256}"
         "pixi_env=${arg_PIXI_ENVIRONMENT}"
         "sysroot_id=${arg_SYSROOT_ID}" "recipe_sha256=${arg_RECIPE_SHA256}"
+        "ecosystem_provider=${arg_ECOSYSTEM_PROVIDER}" "ecosystem_pin=${arg_ECOSYSTEM_PIN_SHA256}"
+        "ecosystem_triplet=${arg_ECOSYSTEM_TRIPLET}"
         "schema_version=${arg_SCHEMA_VERSION}" "helper_version=${arg_HELPER_VERSION}")
         string(APPEND _tp_dossier "${_tp_f}\n")
     endforeach()
@@ -542,7 +665,7 @@ endfunction()
 # LICENSE is mandatory (L7: zlib/MIT-class obligations ride the artifact).
 function(polyorch_thirdparty_manifest_write)
     cmake_parse_arguments(arg "PIXI_RUNTIME_REQUIRED"
-        "MANIFEST;KEY;NAME;VERSION;LICENSE;PROVIDER;PROFILE;TRIPLET;BUILD_TYPE;LINK_MODE;ARCHIVE_SHA256;RECIPE_SHA256;SCHEMA_VERSION;DEPENDENCY_PROVIDER" "OPTIONS" ${ARGN})
+        "MANIFEST;KEY;NAME;VERSION;LICENSE;PROVIDER;PROFILE;TRIPLET;BUILD_TYPE;LINK_MODE;ARCHIVE_SHA256;RECIPE_SHA256;SCHEMA_VERSION;DEPENDENCY_PROVIDER;ECOSYSTEM_PIN_SHA256;ECOSYSTEM_TRIPLET" "OPTIONS" ${ARGN})
     if(NOT arg_MANIFEST OR NOT arg_KEY OR NOT arg_NAME)
         message(FATAL_ERROR "polyorch_thirdparty_manifest_write: MANIFEST, KEY and NAME are required")
     endif()
@@ -557,7 +680,7 @@ function(polyorch_thirdparty_manifest_write)
     string(JSON _tp_m SET "${_tp_m}" "key" "\"${arg_KEY}\"")
     string(SUBSTRING "${arg_KEY}" 0 12 _tp_k12)
     string(JSON _tp_m SET "${_tp_m}" "key12" "\"${_tp_k12}\"")
-    foreach(_tp_f IN ITEMS VERSION PROVIDER PROFILE TRIPLET BUILD_TYPE LINK_MODE ARCHIVE_SHA256 RECIPE_SHA256 SCHEMA_VERSION DEPENDENCY_PROVIDER)
+    foreach(_tp_f IN ITEMS VERSION PROVIDER PROFILE TRIPLET BUILD_TYPE LINK_MODE ARCHIVE_SHA256 RECIPE_SHA256 SCHEMA_VERSION DEPENDENCY_PROVIDER ECOSYSTEM_PIN_SHA256 ECOSYSTEM_TRIPLET)
         if(arg_${_tp_f})
             string(TOLOWER "${_tp_f}" _tp_jf)
             string(REPLACE "_" "" _tp_jf "${_tp_jf}")
@@ -807,8 +930,8 @@ endmacro()
 # find_package{name,components,targets}, alias. Import stays a separate verb
 # (this loader returns the wiring).
 function(polyorch_thirdparty_recipe)
-    cmake_parse_arguments(arg ""
-        "RECIPE;RECIPE_BASE;WORK_DIR;BUILD_TYPE;PROFILE;TRIPLET;GENERATOR;PARALLEL;PACKAGES_DIR;PACKAGE_FORMAT;MAKE_PROGRAM;DEPENDENCY_PROVIDER;PIXI_ENVIRONMENT;SOURCE_DIR_OUT;INSTALL_DIR_OUT;FINGERPRINT_OUT;MANIFEST_OUT;PACKAGE_OUT;FIND_PACKAGE_NAME_OUT;ALIAS_OUT;COMPONENTS_OUT;TARGETS_OUT"
+    cmake_parse_arguments(arg "GENERATE_ECOSYSTEM"
+        "RECIPE;RECIPE_BASE;WORK_DIR;BUILD_TYPE;PROFILE;TRIPLET;GENERATOR;PARALLEL;PACKAGES_DIR;PACKAGE_FORMAT;MAKE_PROGRAM;DEPENDENCY_PROVIDER;PIXI_ENVIRONMENT;VCPKG_PROGRAM;VCPKG_ROOT_DIR;BINARY_CACHE;BOOTSTRAP_TOOL;SOURCE_DIR_OUT;INSTALL_DIR_OUT;FINGERPRINT_OUT;MANIFEST_OUT;PACKAGE_OUT;FIND_PACKAGE_NAME_OUT;ALIAS_OUT;COMPONENTS_OUT;TARGETS_OUT"
         "CMAKE_ARGS" ${ARGN})
     if(NOT arg_RECIPE OR NOT arg_WORK_DIR OR NOT arg_BUILD_TYPE)
         message(FATAL_ERROR "polyorch_thirdparty_recipe: RECIPE, WORK_DIR and BUILD_TYPE are required (BUILD_TYPE explicit: O-3)")
@@ -827,7 +950,10 @@ function(polyorch_thirdparty_recipe)
     # presence is probed on the raw text first and only present members are
     # ever read. Cmake regexes carry no {n} and no \s: the key probe is
     # "key"[ ]*: (a real JSON key never has a newline between key and colon).
-    foreach(_tp_f IN ITEMS schema_version name version provider license url url_hash)
+    # The required set is provider-shaped (P7a): source recipes carry the
+    # artifact pair (url/url_hash); ecosystem recipes carry the pin island
+    # (pin_dir) instead -- the island IS the artifact anchor.
+    foreach(_tp_f IN ITEMS schema_version name version provider license)
         if(NOT "${_tp_json}" MATCHES "\"${_tp_f}\"[ ]*:")
             message(FATAL_ERROR "polyorch_thirdparty_recipe: schema violation in ${arg_RECIPE}: required field '${_tp_f}' missing")
         endif()
@@ -840,18 +966,109 @@ function(polyorch_thirdparty_recipe)
     string(JSON _tp_version GET "${_tp_json}" version)
     string(JSON _tp_provider GET "${_tp_json}" provider)
     string(JSON _tp_license GET "${_tp_json}" license)
-    string(JSON _tp_url GET "${_tp_json}" url)
-    string(JSON _tp_urlhash GET "${_tp_json}" url_hash)
-
-    # ---- provider seams (code-level, F2=A) ----
-    if(_tp_provider STREQUAL "vcpkg" OR _tp_provider STREQUAL "conan")
-        message(FATAL_ERROR "polyorch_thirdparty_recipe: provider '${_tp_provider}' is reserved but not implemented -- it lands with the P7 provider face; prerequisites: O-10 (in-repo pinning) + O-11 (single cache truth) + PolyOrch O4. Until then ship the library as a pinned source archive (provider \"source\").")
-    endif()
-    if(_tp_provider STREQUAL "prebuilt" OR _tp_provider STREQUAL "system")
+    set(_tp_eco FALSE)
+    set(_tp_pindir "")
+    set(_tp_pin_hash "")
+    set(_tp_eco_triplet "")
+    set(_tp_url "")
+    set(_tp_urlhash "")
+    if(_tp_provider STREQUAL "source")
+        foreach(_tp_f IN ITEMS url url_hash)
+            if(NOT "${_tp_json}" MATCHES "\"${_tp_f}\"[ ]*:")
+                message(FATAL_ERROR "polyorch_thirdparty_recipe: schema violation in ${arg_RECIPE}: required field '${_tp_f}' missing")
+            endif()
+        endforeach()
+        string(JSON _tp_url GET "${_tp_json}" url)
+        string(JSON _tp_urlhash GET "${_tp_json}" url_hash)
+    elseif(_tp_provider STREQUAL "vcpkg")
+        set(_tp_eco TRUE)
+        foreach(_tp_f IN ITEMS pin_dir)
+            if(NOT "${_tp_json}" MATCHES "\"${_tp_f}\"[ ]*:")
+                message(FATAL_ERROR "polyorch_thirdparty_recipe: schema violation in ${arg_RECIPE}: required field '${_tp_f}' missing (ecosystem recipes pin through the island, not url/url_hash)")
+            endif()
+        endforeach()
+    elseif(_tp_provider STREQUAL "conan")
+        message(FATAL_ERROR "polyorch_thirdparty_recipe: provider 'conan' lands with the P7b lane (same shape as vcpkg: pixi-isolated tool, profile generated from cmake facts) -- until then ship the library as a pinned source archive (provider \"source\")")
+    elseif(_tp_provider STREQUAL "prebuilt" OR _tp_provider STREQUAL "system")
         message(FATAL_ERROR "polyorch_thirdparty_recipe: provider '${_tp_provider}' is not a source recipe -- package caching for source builds is PACKAGES_DIR (P2); direct prebuilt/system intake arrives with the consumer lanes (P3+)")
+    else()
+        message(FATAL_ERROR "polyorch_thirdparty_recipe: unknown provider '${_tp_provider}' (schema v1: source, vcpkg; conan = P7b seam; prebuilt/system = P3+ seam)")
     endif()
-    if(NOT _tp_provider STREQUAL "source")
-        message(FATAL_ERROR "polyorch_thirdparty_recipe: unknown provider '${_tp_provider}' (schema v1: source; vcpkg/conan = P7 seam; prebuilt/system = P3+ seam)")
+
+    # ---- link mode is lane-shared (the ecosystem triplet derives from it) ----
+    set(_tp_link "")
+    if("${_tp_json}" MATCHES "\"link_mode\"[ ]*:")
+        string(JSON _tp_link GET "${_tp_json}" link_mode)
+    endif()
+
+    if(_tp_eco)
+        # ---- lane postures: call-site ONLY, never recipe fields ----
+        # Both knobs change HOW FAST a generate runs, not WHAT it produces, so
+        # neither may enter the recipe JSON: the recipe hash is a key input
+        # (M1), and a pure speed switch must never mint a fresh cache identity.
+        # Defaults: no vcpkg binary cache (clear), tool bootstrap allowed.
+        set(_tp_bincache FALSE)
+        if(DEFINED arg_BINARY_CACHE AND NOT arg_BINARY_CACHE STREQUAL "")
+            if(arg_BINARY_CACHE MATCHES "^(on|ON|true|TRUE|1)$")
+                set(_tp_bincache TRUE)
+            elseif(NOT arg_BINARY_CACHE MATCHES "^(off|OFF|false|FALSE|0)$")
+                message(FATAL_ERROR "polyorch_thirdparty_recipe: BINARY_CACHE must be on|off, got '${arg_BINARY_CACHE}'")
+            endif()
+        elseif(PolyOrch_VCPKG_BINARY_CACHE)
+            set(_tp_bincache TRUE)
+        endif()
+        set(_tp_boot TRUE)
+        if(DEFINED arg_BOOTSTRAP_TOOL AND NOT arg_BOOTSTRAP_TOOL STREQUAL "")
+            if(arg_BOOTSTRAP_TOOL MATCHES "^(off|OFF|false|FALSE|0)$")
+                set(_tp_boot FALSE)
+            elseif(NOT arg_BOOTSTRAP_TOOL MATCHES "^(on|ON|true|TRUE|1)$")
+                message(FATAL_ERROR "polyorch_thirdparty_recipe: BOOTSTRAP_TOOL must be on|off, got '${arg_BOOTSTRAP_TOOL}'")
+            endif()
+        elseif(DEFINED PolyOrch_VCPKG_NO_BOOTSTRAP AND PolyOrch_VCPKG_NO_BOOTSTRAP)
+            set(_tp_boot FALSE)
+        endif()
+
+        # ---- O-13=C gate: patched libraries never ride the ecosystem lane ----
+        set(_tp_has_patch FALSE)
+        if("${_tp_json}" MATCHES "\"patches\"[ ]*:")
+            string(JSON _tp_npatch LENGTH "${_tp_json}" patches)
+            if(NOT _tp_npatch EQUAL 0)
+                set(_tp_has_patch TRUE)
+            endif()
+        endif()
+        if("${_tp_json}" MATCHES "\"patch_command\"[ ]*:")
+            set(_tp_has_patch TRUE)
+        endif()
+        if(_tp_has_patch)
+            message(FATAL_ERROR "polyorch_thirdparty_recipe: '${_tp_name}' has patches but provider '${_tp_provider}' (O-13): patched libraries stay on provider \"source\"; the overlay-port lane is a conditional entry -- bring a real candidate and open a ruling")
+        endif()
+        # contradictory inputs are refused loudly, never ignored
+        if(arg_PROFILE)
+            message(FATAL_ERROR "polyorch_thirdparty_recipe: PROFILE is a source-lane concept (per-profile option tables); the ecosystem lane pins through the island -- remove PROFILE or switch the recipe to provider \"source\"")
+        endif()
+        if(arg_DEPENDENCY_PROVIDER AND NOT arg_DEPENDENCY_PROVIDER STREQUAL "none")
+            message(FATAL_ERROR "polyorch_thirdparty_recipe: DEPENDENCY_PROVIDER is a build-lane concept (our build verb's child env); the ecosystem lane builds inside vcpkg -- remove it or switch to provider \"source\"")
+        endif()
+
+        # ---- pin island (O-10=A) ----
+        string(JSON _tp_pindir GET "${_tp_json}" pin_dir)
+        if(NOT IS_ABSOLUTE "${_tp_pindir}")
+            set(_tp_pindir "${arg_RECIPE_BASE}/${_tp_pindir}")
+        endif()
+        _polyorch_tp_pin_hash("${_tp_pindir}" vcpkg _tp_pin_hash)
+
+        # ---- license dual-source consistency (M3): the recipe is the truth,
+        # a diverging island license is recipe drift, not a choice ----
+        file(READ "${_tp_pindir}/vcpkg.json" _tp_island_json)
+        if("${_tp_island_json}" MATCHES "\"license\"[ ]*:")
+            string(JSON _tp_island_lic GET "${_tp_island_json}" license)
+            if(NOT _tp_island_lic STREQUAL "${_tp_license}")
+                message(FATAL_ERROR "polyorch_thirdparty_recipe: '${_tp_name}' license drift -- recipe says '${_tp_license}' but the pin island says '${_tp_island_lic}'; reconcile them (the recipe field is the recorded truth)")
+            endif()
+        endif()
+
+        # ---- triplet (O-12=C): call-site override > platform face > self-derived ----
+        _polyorch_tp_ecosystem_triplet(_tp_eco_triplet "${_tp_link}" "${arg_TRIPLET}")
     endif()
 
     file(SHA256 "${arg_RECIPE}" _tp_recipe_hash)
@@ -920,15 +1137,24 @@ function(polyorch_thirdparty_recipe)
         endwhile()
     endif()
 
-    # ---- acquire (verified) ----
-    if(NOT IS_ABSOLUTE "${_tp_url}")
-        set(_tp_url "${arg_RECIPE_BASE}/${_tp_url}")
+    # ---- acquire (verified; source lane only -- the ecosystem lane has no
+    # source archive, its identity anchor is the pin island) ----
+    if(_tp_eco AND _tp_fetch_only)
+        message(FATAL_ERROR "polyorch_thirdparty_recipe: fetch_only is a source-lane concept (F8 wrapper); ecosystem provider '${_tp_provider}' has nothing to fetch -- remove fetch_only")
     endif()
-    polyorch_thirdparty_fetch(NAME "${_tp_name}" URL "${_tp_url}" URL_HASH "SHA256=${_tp_urlhash}"
-        PATCHES ${_tp_patches} PATCH_SHA256 ${_tp_patch_shas}
-        PATCH_COMMAND ${_tp_patch_cmd}
-        OUTPUT_DIR "${arg_WORK_DIR}"
-        SOURCE_DIR_OUT _tp_src ARCHIVE_SHA256_OUT _tp_arch_hash)
+    if(NOT _tp_eco AND (DEFINED arg_BINARY_CACHE OR DEFINED arg_BOOTSTRAP_TOOL))
+        message(FATAL_ERROR "polyorch_thirdparty_recipe: BINARY_CACHE/BOOTSTRAP_TOOL are ecosystem-lane knobs (vcpkg's own cache and tool); provider '${_tp_provider}' has nothing to bootstrap -- drop them or switch to provider \"vcpkg\"")
+    endif()
+    if(NOT _tp_eco)
+        if(NOT IS_ABSOLUTE "${_tp_url}")
+            set(_tp_url "${arg_RECIPE_BASE}/${_tp_url}")
+        endif()
+        polyorch_thirdparty_fetch(NAME "${_tp_name}" URL "${_tp_url}" URL_HASH "SHA256=${_tp_urlhash}"
+            PATCHES ${_tp_patches} PATCH_SHA256 ${_tp_patch_shas}
+            PATCH_COMMAND ${_tp_patch_cmd}
+            OUTPUT_DIR "${arg_WORK_DIR}"
+            SOURCE_DIR_OUT _tp_src ARCHIVE_SHA256_OUT _tp_arch_hash)
+    endif()
 
     if(_tp_fetch_only)
         if(arg_SOURCE_DIR_OUT)
@@ -939,37 +1165,49 @@ function(polyorch_thirdparty_recipe)
     endif()
 
     # ---- fingerprint (recipe itself is a key input, M1) ----
-    set(_tp_link "")
-    if("${_tp_json}" MATCHES "\"link_mode\"[ ]*:")
-        string(JSON _tp_link GET "${_tp_json}" link_mode)
+    # NOTE: two provider axes never share a variable again (P7a): the
+    # ACQUIRE axis rides the recipe JSON (source/vcpkg/conan); the BUILD
+    # dependency axis is the caller's DEPENDENCY_PROVIDER (none/system/pixi).
+    # The ecosystem lane has no source archive -- the pin hash is its
+    # artifact-identity anchor and rides ARCHIVE_SHA256 plus the explicit
+    # ECOSYSTEM_* fields (O-10/O-11 adjudications).
+    set(_tp_depprovider "${arg_DEPENDENCY_PROVIDER}")
+    if(_tp_depprovider STREQUAL "")
+        set(_tp_depprovider "none")
     endif()
-    # pixi provider inputs (P4): the lockfile is the reproducibility anchor --
-    # its hash rides the key (discipline 3), and the environment name is
-    # already carried by DEPENDENCY_PROVIDER + the injection itself.
-    set(_tp_provider "${arg_DEPENDENCY_PROVIDER}")
-    if(_tp_provider STREQUAL "")
-        set(_tp_provider "none")
+    if(_tp_eco)
+        set(_tp_arch_hash "${_tp_pin_hash}")
+        polyorch_thirdparty_fingerprint(_tp_key
+            ARCHIVE_SHA256 "${_tp_arch_hash}" BUILD_TYPE "${arg_BUILD_TYPE}"
+            VERSION "${_tp_version}" TRIPLET "${_tp_eco_triplet}" LINK_MODE "${_tp_link}"
+            RECIPE_SHA256 "${_tp_recipe_hash}" SCHEMA_VERSION "${_tp_schema}"
+            ECOSYSTEM_PROVIDER "${_tp_provider}" ECOSYSTEM_PIN_SHA256 "${_tp_pin_hash}"
+            ECOSYSTEM_TRIPLET "${_tp_eco_triplet}")
+    else()
+        # pixi provider inputs (P4): the lockfile is the reproducibility anchor --
+        # its hash rides the key (discipline 3), and the environment name is
+        # already carried by DEPENDENCY_PROVIDER + the injection itself.
+        set(_tp_pixi_lock "")
+        if(_tp_depprovider STREQUAL "pixi")
+            if(NOT arg_PIXI_ENVIRONMENT)
+                message(FATAL_ERROR "polyorch_thirdparty_recipe: DEPENDENCY_PROVIDER pixi requires PIXI_ENVIRONMENT")
+            endif()
+            if(NOT PolyOrch_PIXI_MANIFEST)
+                message(FATAL_ERROR "polyorch_thirdparty_recipe: DEPENDENCY_PROVIDER pixi requires the pixi face context (polyorch_pixi_setup / PolyOrch_PIXI_MANIFEST)")
+            endif()
+            cmake_path(GET PolyOrch_PIXI_MANIFEST PARENT_PATH _tp_pdir)
+            if(NOT EXISTS "${_tp_pdir}/pixi.lock")
+                message(FATAL_ERROR "polyorch_thirdparty_recipe: pixi provider without pixi.lock beside the manifest -- the lockfile hash is the key input (discipline 3); resolve it first")
+            endif()
+            file(SHA256 "${_tp_pdir}/pixi.lock" _tp_pixi_lock)
+        endif()
+        polyorch_thirdparty_fingerprint(_tp_key
+            ARCHIVE_SHA256 "${_tp_arch_hash}" BUILD_TYPE "${arg_BUILD_TYPE}"
+            VERSION "${_tp_version}" PROFILE "${arg_PROFILE}" TRIPLET "${arg_TRIPLET}" LINK_MODE "${_tp_link}"
+            OPTIONS ${_tp_opts} RECIPE_SHA256 "${_tp_recipe_hash}" SCHEMA_VERSION "${_tp_schema}"
+            DEPENDENCY_PROVIDER "${_tp_depprovider}" PIXI_LOCK_SHA256 "${_tp_pixi_lock}"
+            PIXI_ENVIRONMENT "${arg_PIXI_ENVIRONMENT}")
     endif()
-    set(_tp_pixi_lock "")
-    if(_tp_provider STREQUAL "pixi")
-        if(NOT arg_PIXI_ENVIRONMENT)
-            message(FATAL_ERROR "polyorch_thirdparty_recipe: DEPENDENCY_PROVIDER pixi requires PIXI_ENVIRONMENT")
-        endif()
-        if(NOT PolyOrch_PIXI_MANIFEST)
-            message(FATAL_ERROR "polyorch_thirdparty_recipe: DEPENDENCY_PROVIDER pixi requires the pixi face context (polyorch_pixi_setup / PolyOrch_PIXI_MANIFEST)")
-        endif()
-        cmake_path(GET PolyOrch_PIXI_MANIFEST PARENT_PATH _tp_pdir)
-        if(NOT EXISTS "${_tp_pdir}/pixi.lock")
-            message(FATAL_ERROR "polyorch_thirdparty_recipe: pixi provider without pixi.lock beside the manifest -- the lockfile hash is the key input (discipline 3); resolve it first")
-        endif()
-        file(SHA256 "${_tp_pdir}/pixi.lock" _tp_pixi_lock)
-    endif()
-    polyorch_thirdparty_fingerprint(_tp_key
-        ARCHIVE_SHA256 "${_tp_arch_hash}" BUILD_TYPE "${arg_BUILD_TYPE}"
-        VERSION "${_tp_version}" PROFILE "${arg_PROFILE}" TRIPLET "${arg_TRIPLET}" LINK_MODE "${_tp_link}"
-        OPTIONS ${_tp_opts} RECIPE_SHA256 "${_tp_recipe_hash}" SCHEMA_VERSION "${_tp_schema}"
-        DEPENDENCY_PROVIDER "${_tp_provider}" PIXI_LOCK_SHA256 "${_tp_pixi_lock}"
-        PIXI_ENVIRONMENT "${arg_PIXI_ENVIRONMENT}")
 
     # ---- layout + cache verdict (manifest identity, NOT existence -- the
     # QExt/CxxKit stamp check upgraded here; same key -> same content at the
@@ -997,7 +1235,14 @@ function(polyorch_thirdparty_recipe)
             set(_tp_pkgfmt "${arg_PACKAGE_FORMAT}")
         endif()
         if(arg_PACKAGES_DIR)
-            _polyorch_tp_package_name(_tp_pkgname "${_tp_name}" "${_tp_version}" "${arg_TRIPLET}" "${arg_PROFILE}" "${arg_BUILD_TYPE}" "${_tp_link}" "${_tp_key_SHORT12}" "${_tp_pkgfmt}")
+            # the pack face names packages by TRIPLET; the ecosystem lane
+            # pins its own supplier triplet (arg_TRIPLET stays empty there
+            # -- two names would mean cache lookups can never find the pack)
+            set(_tp_pkgtriplet "${arg_TRIPLET}")
+            if(_tp_eco)
+                set(_tp_pkgtriplet "${_tp_eco_triplet}")
+            endif()
+            _polyorch_tp_package_name(_tp_pkgname "${_tp_name}" "${_tp_version}" "${_tp_pkgtriplet}" "${arg_PROFILE}" "${arg_BUILD_TYPE}" "${_tp_link}" "${_tp_key_SHORT12}" "${_tp_pkgfmt}")
             set(_tp_pkgfile "${arg_PACKAGES_DIR}/${_tp_pkgname}")
             if(EXISTS "${_tp_pkgfile}")
                 set(_tp_sha_file "${_tp_pkgfile}.sha256")
@@ -1033,6 +1278,189 @@ function(polyorch_thirdparty_recipe)
             endif()
         endif()
         if(NOT _tp_pkg_hit)
+            if(_tp_eco)
+                # registry root: anchor-local, disposable (O-11=A discipline 3).
+                # Computed before the strict gate because the refusal text prints
+                # it as part of a copy-pasteable command.
+                set(_tp_root "${arg_VCPKG_ROOT_DIR}")
+                if(NOT _tp_root)
+                    set(_tp_root "${arg_WORK_DIR}/vcpkg-root")
+                endif()
+                # ---- ecosystem lane (P7a): strict-first (r6 adjudication, the
+                # CxxKit NO_FALLBACK philosophy) -- the lane only consumes
+                # PRE-BAKED artifacts; with none, it never silently falls
+                # back to source and never implicitly fetches the registry ----
+                if(NOT arg_GENERATE_ECOSYSTEM)
+                    _polyorch_tp_vcpkg_env("${arg_WORK_DIR}" _tp_strict_env ${_tp_bincache})
+                    string(JOIN " " _tp_strict_env_j ${_tp_strict_env})
+                    message(FATAL_ERROR
+"polyorch_thirdparty_recipe: ecosystem provider '${_tp_provider}' for '${_tp_name}' has no pre-baked artifact (package cache miss) -- strict-first (P7a): no auto-fallback to source, no implicit registry fetch.
+Generate once (the one network step); every later run is an offline cache hit:
+  re-run this same call with GENERATE_ECOSYSTEM ON -- the lane clones the registry at the pinned baseline, makes a tool available (VCPKG_PROGRAM, a vcpkg already in the root, or bootstrap into the anchor-local root; BOOTSTRAP_TOOL off refuses to download), installs a COPY of the pin island (the in-repo island is never written) and packs the result into PACKAGES_DIR
+Or drive the tool yourself with the lane's env:
+  ${CMAKE_COMMAND} -E env ${_tp_strict_env_j} <vcpkg> --vcpkg-root=${_tp_root} install --x-manifest-root=${_tp_pindir} --triplet=${_tp_eco_triplet}
+Or keep this library on provider \"source\" (edit the recipe).")
+                endif()
+                # ---- GENERATE_ECOSYSTEM: the one explicit network step ----
+                find_program(_tp_git NAMES git)
+                if(NOT _tp_git)
+                    message(FATAL_ERROR "polyorch_thirdparty_recipe: GENERATE_ECOSYSTEM needs git (the registry root is a checkout at the pinned baseline)")
+                endif()
+                if(NOT EXISTS "${_tp_root}/.git")
+                    execute_process(COMMAND "${_tp_git}" clone --filter=tree:0 --no-checkout
+                            https://github.com/microsoft/vcpkg.git "${_tp_root}"
+                        RESULT_VARIABLE _tp_rc OUTPUT_VARIABLE _tp_o ERROR_VARIABLE _tp_e)
+                    if(NOT _tp_rc EQUAL 0)
+                        message(FATAL_ERROR "polyorch_thirdparty_recipe: cloning the vcpkg registry (treeless) failed rc=${_tp_rc}: ${_tp_e}")
+                    endif()
+                endif()
+                # checkout the pinned baseline (a treeless clone fetches the
+                # missing commit on demand; two tries, then loud). NOTE: no
+                # --depth 1 -- CxxKit measured that a shallow clone cannot
+                # check out baseline trees ('failed to unpack tree object').
+                if(NOT "${_tp_island_json}" MATCHES "\"builtin-baseline\"[ ]*:")
+                    message(FATAL_ERROR "polyorch_thirdparty_recipe: pin island '${_tp_pindir}/vcpkg.json' carries no builtin-baseline -- an unpinned registry is exactly what O-10 refuses")
+                endif()
+                string(JSON _tp_baseline GET "${_tp_island_json}" builtin-baseline)
+                execute_process(COMMAND "${_tp_git}" -C "${_tp_root}" checkout "${_tp_baseline}"
+                    RESULT_VARIABLE _tp_rc OUTPUT_VARIABLE _tp_o ERROR_VARIABLE _tp_e)
+                if(NOT _tp_rc EQUAL 0)
+                    execute_process(COMMAND "${_tp_git}" -C "${_tp_root}" fetch origin "${_tp_baseline}"
+                        RESULT_VARIABLE _tp_rc OUTPUT_VARIABLE _tp_o ERROR_VARIABLE _tp_e)
+                    if(NOT _tp_rc EQUAL 0)
+                        message(FATAL_ERROR "polyorch_thirdparty_recipe: fetching baseline ${_tp_baseline} into the registry root failed rc=${_tp_rc}: ${_tp_e}")
+                    endif()
+                    execute_process(COMMAND "${_tp_git}" -C "${_tp_root}" checkout "${_tp_baseline}"
+                        RESULT_VARIABLE _tp_rc OUTPUT_VARIABLE _tp_o ERROR_VARIABLE _tp_e)
+                    if(NOT _tp_rc EQUAL 0)
+                        message(FATAL_ERROR "polyorch_thirdparty_recipe: checkout of baseline ${_tp_baseline} failed rc=${_tp_rc}: ${_tp_e}")
+                    endif()
+                endif()
+                # ---- tool, four rungs (PATH is never searched silently) ----
+                # 1 explicit call-site path; 2 a vcpkg already in the root (the
+                # user cloned+bootstrapped, or our own bootstrap below); 3 the
+                # anchor's tool island (the O4=A vendored form); 4 bootstrap
+                # INTO the root -- the release tag+sha the pinned baseline names
+                # makes the tool a derivation of the pin, so no new drift enters
+                # the picture; BOOTSTRAP_TOOL off stops at the refusal.
+                # Why the root and not anywhere: measured -- vcpkg derives its
+                # root from the executable's own directory and IGNORES
+                # VCPKG_ROOT when the two disagree, so an external tool writes
+                # its buildtrees next to itself (outside the anchor, often
+                # unwritable). --vcpkg-root is passed explicitly on every call.
+                set(_tp_vcpkg_exe "${arg_VCPKG_PROGRAM}")
+                if(NOT _tp_vcpkg_exe AND EXISTS "${_tp_root}/vcpkg")
+                    set(_tp_vcpkg_exe "${_tp_root}/vcpkg")
+                endif()
+                if(NOT _tp_vcpkg_exe)
+                    find_program(_tp_vcpkg_exe NAMES vcpkg
+                        PATHS "${arg_WORK_DIR}/tools/bin" "${arg_WORK_DIR}/bin"
+                        NO_DEFAULT_PATH)
+                endif()
+                if(NOT _tp_vcpkg_exe)
+                    if(NOT _tp_boot)
+                        message(FATAL_ERROR "polyorch_thirdparty_recipe: GENERATE_ECOSYSTEM for '${_tp_name}' found no vcpkg tool and BOOTSTRAP_TOOL is off (no download) -- pass VCPKG_PROGRAM <path>, place a vcpkg at ${_tp_root}/vcpkg or in <WORK_DIR>/tools/bin, or drop BOOTSTRAP_TOOL to let the lane bootstrap ${_tp_root}/bootstrap-vcpkg.sh")
+                    endif()
+                    set(_tp_bs "${_tp_root}/bootstrap-vcpkg.sh")
+                    if(WIN32)
+                        set(_tp_bs "${_tp_root}/bootstrap-vcpkg.bat")
+                    endif()
+                    if(NOT EXISTS "${_tp_bs}")
+                        message(FATAL_ERROR "polyorch_thirdparty_recipe: no vcpkg tool and no bootstrap script at ${_tp_bs} (registry root ${_tp_root} is not a vcpkg checkout at ${_tp_baseline})")
+                    endif()
+                    message(STATUS "polyorch thirdparty: bootstrapping the vcpkg tool into ${_tp_root} (release tag+sha named by baseline ${_tp_baseline})")
+                    execute_process(COMMAND "${CMAKE_COMMAND}" -E env "VCPKG_DISABLE_METRICS=1" "${_tp_bs}" -disableMetrics
+                        WORKING_DIRECTORY "${_tp_root}"
+                        RESULT_VARIABLE _tp_rc OUTPUT_VARIABLE _tp_o ERROR_VARIABLE _tp_e)
+                    if(NOT _tp_rc EQUAL 0 OR NOT EXISTS "${_tp_root}/vcpkg")
+                        message(FATAL_ERROR "polyorch_thirdparty_recipe: bootstrapping vcpkg in ${_tp_root} failed rc=${_tp_rc}:\n${_tp_o}${_tp_e}")
+                    endif()
+                    set(_tp_vcpkg_exe "${_tp_root}/vcpkg")
+                endif()
+                # static triplet variants are OURS to write (O-12=C): a tiny
+                # overlay triplet beside the anchor, never inside the root
+                set(_tp_overlay_args "")
+                if(_tp_eco_triplet MATCHES "^([a-z0-9]+)-(linux|osx)-static$")
+                    string(REGEX REPLACE "^([a-z0-9]+)-(linux|osx)-static$" "\\1" _tp_tri_arch "${_tp_eco_triplet}")
+                    string(REGEX REPLACE "^([a-z0-9]+)-(linux|osx)-static$" "\\2" _tp_tri_sys "${_tp_eco_triplet}")
+                    if(_tp_tri_sys STREQUAL "linux")
+                        set(_tp_tri_cmake_sys "Linux")
+                    else()
+                        set(_tp_tri_cmake_sys "Darwin")
+                    endif()
+                    file(WRITE "${arg_WORK_DIR}/triplets/${_tp_eco_triplet}.cmake"
+"# Generated by PolyOrch (P7a ecosystem lane) -- static-library overlay.
+set(VCPKG_TARGET_ARCHITECTURE ${_tp_tri_arch})
+set(VCPKG_CRT_LINKAGE dynamic)
+set(VCPKG_LIBRARY_LINKAGE static)
+set(VCPKG_CMAKE_SYSTEM_NAME ${_tp_tri_cmake_sys})
+set(VCPKG_BUILD_TYPE release)
+")
+                    set(_tp_overlay_args "--overlay-triplets=${arg_WORK_DIR}/triplets")
+                elseif(_tp_eco_triplet MATCHES "-static$")
+                    message(FATAL_ERROR "polyorch_thirdparty_recipe: triplet '${_tp_eco_triplet}' needs an overlay triplet this lane does not generate -- pass a TRIPLET the lane knows (x64/arm64 linux/osx) or extend the generator")
+                endif()
+                # ---- the island is a read-only input: install a copy ----
+                # measured: manifest-mode install writes vcpkg_installed/ INTO
+                # the manifest root, and that root is the in-repo pin island --
+                # zero-intrusion forbids polluting it.
+                set(_tp_pincopy "${arg_WORK_DIR}/${_tp_name}/pin")
+                file(REMOVE_RECURSE "${_tp_pincopy}")
+                file(MAKE_DIRECTORY "${_tp_pincopy}")
+                execute_process(COMMAND "${CMAKE_COMMAND}" -E copy_directory "${_tp_pindir}" "${_tp_pincopy}"
+                    RESULT_VARIABLE _tp_rc OUTPUT_VARIABLE _tp_o ERROR_VARIABLE _tp_e)
+                if(NOT _tp_rc EQUAL 0)
+                    message(FATAL_ERROR "polyorch_thirdparty_recipe: copying the pin island '${_tp_pindir}' into the anchor failed rc=${_tp_rc}: ${_tp_e}")
+                endif()
+                _polyorch_tp_vcpkg_env("${arg_WORK_DIR}" _tp_envlist ${_tp_bincache})
+                # install into the ephemeral root (never the verdict source)
+                execute_process(COMMAND "${CMAKE_COMMAND}" -E env
+                        --unset=CPATH --unset=C_INCLUDE_PATH --unset=CPLUS_INCLUDE_PATH
+                        --unset=LIBRARY_PATH --unset=COMPILER_PATH --unset=CONDA_PREFIX
+                        ${_tp_envlist}
+                        "${_tp_vcpkg_exe}" "--vcpkg-root=${_tp_root}" install
+                        "--x-manifest-root=${_tp_pincopy}"
+                        "--triplet=${_tp_eco_triplet}" ${_tp_overlay_args}
+                    WORKING_DIRECTORY "${_tp_root}"
+                    RESULT_VARIABLE _tp_rc OUTPUT_VARIABLE _tp_o ERROR_VARIABLE _tp_e)
+                if(NOT _tp_rc EQUAL 0)
+                    message(FATAL_ERROR "polyorch_thirdparty_recipe: vcpkg install for '${_tp_name}' (${_tp_eco_triplet}) failed rc=${_tp_rc}:\n${_tp_o}${_tp_e}")
+                endif()
+                # manifest mode already produced the flat prefix:
+                # <island copy>/vcpkg_installed/<triplet>/{include,lib,share}.
+                # No export --raw step: measured, it needs every port named
+                # explicitly (it exports zero packages otherwise) and it only
+                # repacks a tree this lane can consume directly.
+                set(_tp_exp "${_tp_pincopy}/vcpkg_installed/${_tp_eco_triplet}")
+                if(NOT EXISTS "${_tp_exp}")
+                    message(FATAL_ERROR "polyorch_thirdparty_recipe: vcpkg installed no '${_tp_eco_triplet}' tree under ${_tp_pincopy}/vcpkg_installed -- the generate did not produce the prefix (baseline ${_tp_baseline})")
+                endif()
+                # relocate gate (F5): ecosystem output earns no exemption --
+                # a pc/config pinning the generate host refuses to pack
+                _polyorch_tp_relocate_audit("${_tp_exp}" _tp_rel_ok _tp_rel_why)
+                if(NOT _tp_rel_ok)
+                    message(FATAL_ERROR "polyorch_thirdparty_recipe: ecosystem output for '${_tp_name}' fails the relocate gate -- ${_tp_rel_why} (relativize the file or keep the package local; no silent exemption)")
+                endif()
+                file(MAKE_DIRECTORY "${_tp_installdir}")
+                execute_process(COMMAND "${CMAKE_COMMAND}" -E copy_directory "${_tp_exp}" "${_tp_installdir}"
+                    RESULT_VARIABLE _tp_rc OUTPUT_VARIABLE _tp_o ERROR_VARIABLE _tp_e)
+                if(NOT _tp_rc EQUAL 0)
+                    message(FATAL_ERROR "polyorch_thirdparty_recipe: copying the generated prefix into ${_tp_installdir} failed rc=${_tp_rc}: ${_tp_e}")
+                endif()
+                polyorch_thirdparty_manifest_write(MANIFEST "${_tp_manifest}" KEY "${_tp_key}"
+                    NAME "${_tp_name}" VERSION "${_tp_version}" LICENSE "${_tp_license}"
+                    PROVIDER "${_tp_provider}" TRIPLET "${_tp_eco_triplet}"
+                    BUILD_TYPE "${arg_BUILD_TYPE}"
+                    LINK_MODE "${_tp_link}" ARCHIVE_SHA256 "${_tp_arch_hash}"
+                    RECIPE_SHA256 "${_tp_recipe_hash}" SCHEMA_VERSION "${_tp_schema}"
+                    ECOSYSTEM_PIN_SHA256 "${_tp_pin_hash}" ECOSYSTEM_TRIPLET "${_tp_eco_triplet}")
+                if(arg_PACKAGES_DIR)
+                    polyorch_thirdparty_package(NAME "${_tp_name}" INSTALL_DIR "${_tp_installdir}"
+                        PACKAGE_DIR "${arg_PACKAGES_DIR}" MANIFEST "${_tp_manifest}"
+                        FORMAT "${_tp_pkgfmt}" TRIPLET "${_tp_eco_triplet}" PACKAGE_OUT _tp_pkgfile)
+                endif()
+                message(STATUS "polyorch thirdparty: ${_tp_name} ecosystem generate (${_tp_provider}/${_tp_eco_triplet}) key=${_tp_key_SHORT12} -- packed into the cache")
+            else()
             # ---- build (explicit verb, H2) ----
             set(_tp_cmake_args "")
             foreach(_tp_o IN LISTS _tp_opts)
@@ -1054,7 +1482,7 @@ function(polyorch_thirdparty_recipe)
             # runtime independence; a pixi-prefixed RUNPATH marks the manifest
             # instead of silently shipping ----
             set(_tp_pr_flag "")
-            if(_tp_provider STREQUAL "pixi")
+            if(_tp_depprovider STREQUAL "pixi")
                 _polyorch_tp_pixi_subpaths("${arg_PIXI_ENVIRONMENT}" _tp_aprefix _tp_asubs _tp_apc)
                 _polyorch_tp_pixi_audit("${_tp_installdir}" "${_tp_aprefix}" _tp_needs _tp_adetail)
                 if(_tp_needs)
@@ -1072,13 +1500,14 @@ function(polyorch_thirdparty_recipe)
                 BUILD_TYPE "${arg_BUILD_TYPE}"
                 LINK_MODE "${_tp_link}" OPTIONS ${_tp_opts} ARCHIVE_SHA256 "${_tp_arch_hash}"
                 RECIPE_SHA256 "${_tp_recipe_hash}" SCHEMA_VERSION "${_tp_schema}"
-                DEPENDENCY_PROVIDER "${_tp_provider}" ${_tp_pr_flag})
+                DEPENDENCY_PROVIDER "${_tp_depprovider}" ${_tp_pr_flag})
 
             # ---- pack into the shared cache (P2; empty dir = no-op) ----
             if(arg_PACKAGES_DIR)
                 polyorch_thirdparty_package(NAME "${_tp_name}" INSTALL_DIR "${_tp_installdir}"
                     PACKAGE_DIR "${arg_PACKAGES_DIR}" MANIFEST "${_tp_manifest}"
                     FORMAT "${_tp_pkgfmt}" TRIPLET "${arg_TRIPLET}" PACKAGE_OUT _tp_pkgfile)
+            endif()
             endif()
         endif()
     endif()

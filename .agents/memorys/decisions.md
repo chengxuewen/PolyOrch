@@ -1130,3 +1130,86 @@ an older checkout must FATAL, not silently miss the face.
   profile-suffixed path (linux-desktop-pixi, no aliasing), and the import
   side reads it via MEDIASERVO_GUI_DEPS_PROVIDER. Default none keeps the P3
   layout byte-for-byte; `build example` and the F25 gate are untouched.
+
+## D50 addendum: P7a vcpkg ecosystem lane -- strict-first generate, four-rung tool, measured env (2026-11-04, sr8-round P7a, plan-driven)
+
+- What landed: `provider: "vcpkg"` moved from FATAL seam to a real lane.
+  Verdict order is now install-manifest -> package cache -> **ecosystem
+  generate** -> source build. The generate is the single network step and is
+  opt-in (`GENERATE_ECOSYSTEM`); with no pre-baked artifact the lane refuses
+  (strict-first, CxxKit's NO_FALLBACK philosophy) with an operator manual:
+  philosophy, the generate switch, a copy-pasteable command carrying the
+  lane's exact env, and the `provider "source"` off-ramp. Island pin (O-10),
+  supplier-derived triplet (O-12) and the O-13 patch gate were already
+  specified; the island content hash is the artifact-identity anchor and
+  rides ARCHIVE_SHA256 plus the explicit ECOSYSTEM_* fields.
+- FIVE measured facts overrode the design as written (all reproduced on this
+  host, control experiments A-E, same machine / same tool / same baseline):
+  1. **`VCPKG_FORCE_SYSTEM_BINARIES=1` is poison, not hygiene.** It converts
+     vcpkg's normal self-sufficiency (it downloads its own cmake/ninja,
+     tag+sha verified) into a hard host requirement: with it set,
+     `detect_compiler` dies on a box without ninja; without it the identical
+     install succeeds in 4.7 s. QExt, CxxKit and OpenCTK never set it
+     (grep across .refinfo: zero hits). Removed from the lane env.
+  2. **`VCPKG_DEFAULT_BINARY_CACHE` must point at an existing directory**
+     ("must be a directory"), so `_polyorch_tp_vcpkg_env` creates both
+     anchor directories itself -- also because the strict text prints those
+     very assignments and the command has to run as printed.
+  3. **vcpkg derives its root from the executable's own directory and
+     IGNORES `VCPKG_ROOT` when they disagree.** An externally supplied tool
+     therefore writes buildtrees next to itself -- outside the anchor and on
+     a read-only host, fatal. Every call now passes `--vcpkg-root` explicitly.
+  4. **Manifest mode writes `vcpkg_installed/` INTO the manifest root** --
+     which is the in-repo pin island. The lane installs a COPY of the island
+     under the anchor (`<WORK_DIR>/<name>/pin`); the in-repo island stays
+     untouched (zero intrusion), and the e2e asserts exactly that.
+  5. **`export --raw` needs every port named explicitly** (otherwise "an
+     export of zero packages") and merely repacks a tree the lane can consume
+     directly: manifest mode already produces the flat prefix
+     `<pin copy>/vcpkg_installed/<triplet>/{include,lib,share}`. The export
+     step is gone; the relocate gate scans the prefix as before (fmt ships
+     `prefix=${pcfiledir}/../..`, so the gate passes on real ecosystem output
+     rather than being exempted).
+- Fixture swap zlib -> fmt (measured): the zlib port ships no CMake CONFIG
+  (only `share/zlib/vcpkg-cmake-wrapper.cmake` plus the built-in FindZLIB
+  module), which F7=A -- consume the upstream's own config with
+  NO_DEFAULT_PATH -- cannot use. fmt at baseline `afa249f1` provides
+  `fmt-config.cmake`/`fmt-targets.cmake` (target `fmt::fmt`), pins at 11.0.2
+  through the island override, and is a static lib under our overlay triplet.
+  This corrects the plan text, which named zlib as the fixture.
+- Tool supply, four rungs (PATH is never searched silently): explicit
+  `VCPKG_PROGRAM` > a `vcpkg` already in the registry root > the anchor's
+  tool island (`<WORK_DIR>/tools/bin`) > **bootstrap into the root** (the
+  default; the baseline names the release tag+sha, so the tool is a
+  derivation of the pin and adds no new drift). `BOOTSTRAP_TOOL off` (or
+  `PolyOrch_VCPKG_NO_BOOTSTRAP`) stops at the refusal. Consequence: the e2e
+  needs nothing prepared on the host. O4=A stays the ruling -- the vendored
+  archive form (`pkg-deps/vcpkg-tool/recipe.json` through this same face) is
+  demoted to a CONDITIONAL entry for a truly offline runner, since rung 4
+  already closes the reproducibility concern that motivated it; the shallow
+  clone trap (CxxKit: `--depth 1` cannot check out baseline trees) is noted
+  where the clone happens.
+- Lane postures `BINARY_CACHE` / `BOOTSTRAP_TOOL` are call-site knobs ONLY,
+  never recipe JSON fields: the recipe hash is a key input (M1), and a pure
+  speed switch must not mint a fresh cache identity. Both are refused on a
+  source recipe (ecosystem-lane knobs). Default: no vcpkg binary cache
+  (`clear`), bootstrap allowed. Stale-hit safety belongs to vcpkg (its cache
+  entries carry the compiler hash + port version, so a compiler upgrade
+  misses); the cache lives in the anchor, is never keyed, and dies with it.
+- Tests: `t-thirdparty-provider-vcpkg` (14 child legs: strict full-element
+  refusal + the FORCE_SYSTEM_BINARIES negative, O-13 red x2 and the source
+  green leg that must sail past it, schema-pin-missing, island-missing,
+  license-drift, fetch-only/profile/dependency-provider/knob refusals, the two
+  triplet refusals; plus inline assertions on the five-key env, both
+  postures, directory creation, the triplet ladder, pin-hash sensitivity and
+  ECOSYSTEM_* keying), `t-thirdparty-recipe-seams` (provider leg rewritten to
+  the ecosystem shape, conan leg added for P7b), `t-thirdparty-provider-vcpkg-e2e`
+  (generate -> island zero-intrusion -> pack/sidecars -> offline reuse with
+  the registry root deleted -> changed-island strict refusal). Suite
+  96 pass / 8 pre-existing (rust family, untouched) / 38 skip; the e2e runs
+  green with no host preparation. The three thirdparty pixi/build/recipe
+  cases were repeated 3x to confirm the first run's extra red was pixi
+  cold-start flakiness in the pre-existing family, not this lane.
+- Not in this stroke: P7b (conan, still a FATAL seam), P7c (MediaServo
+  consumer face: `--ecosystem` CLI, dev smoke), the vendored tool archive,
+  and the conditional entry for patched ecosystem libraries (O-13).
