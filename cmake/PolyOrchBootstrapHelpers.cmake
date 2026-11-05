@@ -15,8 +15,11 @@
 # then succeeds for a structural reason, not luck: find_program searches
 # the cmake binary's OWN bin/ directory, so the pixi cmake finds its
 # sibling cargo even under a stripped desktop PATH (lead A/B measurement
-# 2026-10-26, B1). Settings contract reuses the VSCodeDebugHelpers managed
-# region (user content above the BEGIN marker is never rewritten; a
+# 2026-10-26, B1). Since D51 the written settings ALSO carry the explicit
+# rust injection contract (configureSettings) -- PATH is never prepended
+# (the A'' posture; consumer env constitutions such as F25 stay green).
+# Settings contract reuses the VSCodeDebugHelpers managed region
+# (user content above the BEGIN marker is never rewritten; a
 # markerless pre-existing file is parked beside as .polyorch-new).
 #
 # Trigger discipline: this face NEVER fires when the workspace configures
@@ -119,36 +122,59 @@ function(polyorch_bootstrap_hint)
         # at expansion and the separator lands in the written file (measured).
         set(_bh_rows "    ${_bh_row},\n")
         string(APPEND _bh_rows "    \"cmake.configureOnOpen\": true,\n")
-        # cmake.environment PATH prepend (D49 companion): configure-side
-        # find_program gets the sibling hit, but BUILD-stage cargo children
-        # (rustc, and bindgen's libclang probe) resolve via PATH/LIBCLANG_PATH
-        # -- the env block covers both faces from the IDE surface. The bin
-        # dir is derived from the already-computed relative candidate path
-        # (filename dropped), and LIBCLANG_PATH points at the env's lib/
-        # sibling of that bin dir (bindgen's probe target).
+        # Tool delivery (D49 companion, A'' revision 2026-11-05 / D51): the
+        # PATH prepend is GONE -- it collided with consumer environment
+        # constitutions (the F25 gate skips any band whose configure PATH
+        # contains .pixi/envs/, and a pixi default-env bin really does carry
+        # gcc/g++/pkg-config beside the cargo it meant to deliver). The
+        # prepend's two jobs moved to stronger mechanisms: (a) BUILD-stage
+        # cargo children were already covered by the per-command PATH prepend
+        # in _polyorch_rust_command (the D49 EXECUTION half -- discovery
+        # results are pinned into the build rules, not re-derived from
+        # ambient PATH); (b) configure-side discovery is now EXPLICIT: the
+        # injection contract (PolyOrch_RUST_{CARGO,RUSTC}_EXECUTABLE, the
+        # FindRust "Injection first" channel) rides cmake.configureSettings
+        # and bypasses find_program entirely. The keys are written ONLY when
+        # the sibling cargo/rustc actually exist beside the candidate cmake
+        # -- an absent sibling leaves the contract unset (discovery fallback:
+        # the pixi cmake searches its own bin/ first) and can never trip the
+        # contract's set-but-missing FATAL. LIBCLANG_PATH stays in the env
+        # block (bindgen's probe target; not an F25 predicate).
         get_filename_component(_bh_bindir "${_bh_cand}" DIRECTORY)
         file(RELATIVE_PATH _bh_bindir_rel "${CMAKE_SOURCE_DIR}" "${_bh_bindir}")
-        set(_bh_env_path "${_bh_bindir_rel}")
-        set(_bh_env_lib "${_bh_bindir_rel}/../lib")
+        set(_bh_inj_rows "")
+        # string(CONCAT, never a multi-element set(): expanding a LIST inside
+        # quotes inserts ';' separators between elements, and those land as
+        # leading-';' lines in the written file -- valid JSONC comments that
+        # silently disable the very rows being written (measured 2026-11-05:
+        # the 0.9.1 PATH/LIBCLANG rows shipped commented-out this way).
+        string(CONCAT _bh_rows_all
+            "    \"cmake.environment\": {\n"
+            "        \"LIBCLANG_PATH\": \"\${workspaceFolder}/${_bh_bindir_rel}/../lib\"\n"
+            "    },\n")
         if(_bh_bindir_rel MATCHES "^[.][.]")
             # out-of-workspace candidate: absolute forms (workspaceFolder
             # cannot express outside paths)
-            set(_bh_env_path "${_bh_bindir}")
-            set(_bh_env_lib "${_bh_bindir}/../lib")
-        endif()
-        set(_bh_dollar "$")
-        set(_bh_rows_all
-            "    \"cmake.environment\": {\n"
-            "        \"PATH\": \"\${workspaceFolder}/${_bh_env_path}:${_bh_dollar}{env:PATH}\",\n"
-            "        \"LIBCLANG_PATH\": \"\${workspaceFolder}/${_bh_env_lib}\"\n"
-            "    },\n")
-        if(_bh_bindir_rel MATCHES "^[.][.]")
-            set(_bh_rows_all
+            string(CONCAT _bh_rows_all
                 "    \"cmake.environment\": {\n"
-                "        \"PATH\": \"${_bh_env_path}:${_bh_dollar}{env:PATH}\",\n"
-                "        \"LIBCLANG_PATH\": \"${_bh_env_lib}\"\n"
+                "        \"LIBCLANG_PATH\": \"${_bh_bindir}/../lib\"\n"
                 "    },\n")
         endif()
+        if(EXISTS "${_bh_bindir}/cargo" AND EXISTS "${_bh_bindir}/rustc")
+            if(NOT _bh_bindir_rel MATCHES "^[.][.]")
+                set(_bh_inj_cargo "\${workspaceFolder}/${_bh_bindir_rel}/cargo")
+                set(_bh_inj_rustc "\${workspaceFolder}/${_bh_bindir_rel}/rustc")
+            else()
+                set(_bh_inj_cargo "${_bh_bindir}/cargo")
+                set(_bh_inj_rustc "${_bh_bindir}/rustc")
+            endif()
+            string(CONCAT _bh_inj_rows
+                "    \"cmake.configureSettings\": {\n"
+                "        \"PolyOrch_RUST_CARGO_EXECUTABLE\": \"${_bh_inj_cargo}\",\n"
+                "        \"PolyOrch_RUSTC_EXECUTABLE\": \"${_bh_inj_rustc}\"\n"
+                "    },\n")
+        endif()
+        string(APPEND _bh_rows "${_bh_inj_rows}")
         string(APPEND _bh_rows "${_bh_rows_all}")
         _polyorch_bootstrap_region_write("${_bh_file}"
             "${_bh_begin}" "${_bh_end}" "${_bh_rows}"
@@ -181,7 +207,8 @@ Finish in TWO steps:
      (or reload the VS Code window, then reconfigure).
   2. The reconfigure will run the toolchain cmake, which finds its
      sibling cargo automatically (a cmake binary always searches its
-     own bin/ directory first).
+     own bin/ directory first) -- or through the injected explicit
+     cargo/rustc paths the written settings now carry.
 No further action is needed after the reconfigure turns green.
 =====================================================================")
     elseif(NOT EXISTS "${BH_CANDIDATE_CMAKE}")

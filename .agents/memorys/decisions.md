@@ -1300,3 +1300,45 @@ an older checkout must FATAL, not silently miss the face.
   where `-pr:b` would split from `-pr:h`, P6), and a non-Linux tool island
   platform (adding one requires solving and committing the lock, not editing
   the platforms list).
+
+## D51: bootstrap tool delivery switches to the injection contract -- no PATH prepend (2026-11-05, user-adjudicated A'' one by one)
+
+- Problem: the D49 settings PATH prepend put the pixi default-env bin in front
+  of the IDE configure PATH. That bin physically carries gcc/g++/pkg-config
+  beside the cargo it meant to deliver (measured), so any consumer
+  environment constitution that refuses a pixi-laden PATH -- MediaServo's F25
+  skips the whole cxx band on `PATH ~ "\.pixi/envs/"` -- fired on every IDE
+  configure: the cxx example targets never appeared in the IDE.
+- Ruling (A'', user adjudication 2026-11-05; alternatives rejected one by
+  one: A shim-dir of curated symlinks -- one more mechanism; A' dedicated
+  minimal pixi env + F25 whitelist -- touches the constitution and reverses
+  the r4 C1 no-activation discipline; B F25 lane split -- re-litigates
+  PIT-199/204 for one entry point; C preset variant -- a second tree, not
+  "the same configure"; D vcpkg gui-deps migration -- misses the point, F25
+  gates the environment, not the dependency source).
+- Shape: the PATH row is deleted from the generated `cmake.environment`
+  (only LIBCLANG_PATH stays -- bindgen's probe target, not an F25
+  predicate). Tool discovery becomes EXPLICIT: when the candidate cmake has
+  sibling cargo AND rustc (EXISTS-probed), the block writes
+  `cmake.configureSettings` with `PolyOrch_RUST_CARGO_EXECUTABLE` /
+  `PolyOrch_RUSTC_EXECUTABLE` -- the FindRust "Injection first" channel,
+  which bypasses find_program entirely. Without siblings the keys stay
+  unwritten (discovery fallback = the pixi cmake own-bin search, B1) so the
+  contract's set-but-missing FATAL can never fire from a stale write.
+- Why zero job loss: the PATH prepend's build-stage duty (cargo children
+  resolving rustc) was ALREADY carried by the per-command PATH prepend in
+  `_polyorch_rust_command` (the D49 execution half, measured 2026-10-26);
+  configure-side discovery now rides the injection contract. The settings
+  row was pure downside for env-constituted consumers.
+- Tests: `t-bootstrap-hint` T1 gains the shape locks (no `"PATH"` row ever,
+  no configureSettings without siblings, LIBCLANG_PATH retained); new T1c
+  (siblings beside the candidate -> both injection keys in workspaceFolder
+  form); T1b out-of-workspace legs assert the absolute-form keys.
+- Impact: PolyOrch 0.9.1 -> 0.9.2; existing workspaces migrate by deleting
+  the generated settings.json (bootstrap rewrites it on the next failed
+  configure -- its own designed loop); MediaServo F25 stays untouched and
+  the IDE tree now yields all four example bands (cxx included) from ONE
+  configure.
+- Verify: bootstrap suite green (t-bootstrap-hint/park/system-shape);
+  full suite vs HEAD baseline zero-regression; live acceptance = parent
+  repo, clean PATH + injected keys -> cxx band appears.

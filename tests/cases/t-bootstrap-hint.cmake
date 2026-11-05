@@ -53,6 +53,45 @@ ck(NOT _c MATCHES "\"${_ws}")            # never an absolute workspace path
 ck(_all MATCHES "Delete Cache and Reconfigure")
 ck(_all MATCHES "bootstrap settings file has been written")
 ck(_all MATCHES "reload the VS Code window")
+# D51 shape locks: no PATH prepend ever (F25-compatible configure), no
+# injection keys without sibling binaries (degradation lock -- discovery
+# falls back to the cmake own-bin search), LIBCLANG_PATH retained.
+ck(NOT _c MATCHES "\"PATH\"")
+ck(NOT _c MATCHES "configureSettings")
+ck(_c MATCHES "LIBCLANG_PATH")
+# list-join regression lock (measured 2026-11-05): a multi-element set()
+# expanded inside quotes inserts ';' separators that land as JSONC comment
+# lines -- the 0.9.1 PATH/LIBCLANG rows shipped silently commented-out this
+# way. No ';' may ever sit in front of a quoted key in the written file.
+# ([;] not a bare ';': ck's ${ARGN} expansion would eat a leading-';' arg
+# and degrade the regex to '[ ]*"' -- a false match on every '" ': key.)
+ck(NOT _c MATCHES "[;][ ]*\"")
+
+# ---- T1c: sibling cargo/rustc beside the candidate -> the D51 injection
+# contract rides cmake.configureSettings (workspaceFolder form); the PATH
+# prepend stays gone regardless (the contract is explicit paths, not env).
+set(_ws3 "${_s}/wsroot3")
+file(MAKE_DIRECTORY "${_ws3}/.pixi/bin")
+file(WRITE "${_ws3}/.pixi/bin/cmake" "#!/bin/sh\n")
+file(WRITE "${_ws3}/.pixi/bin/cargo" "#!/bin/sh\n")
+file(WRITE "${_ws3}/.pixi/bin/rustc" "#!/bin/sh\n")
+file(WRITE "${_ws3}/CMakeLists.txt"
+"cmake_minimum_required(VERSION 3.25)\n"
+"project(bootws3 LANGUAGES NONE)\n"
+"list(APPEND CMAKE_MODULE_PATH \"${CMAKE_CURRENT_LIST_DIR}/../../cmake\")\n"
+"include(PolyOrchBootstrapHelpers)\n"
+"polyorch_bootstrap_hint(CANDIDATE_CMAKE \"\${CMAKE_SOURCE_DIR}/.pixi/bin/cmake\")\n")
+execute_process(COMMAND "${CMAKE_COMMAND}" -S "${_ws3}" -B "${_ws3}/b"
+    RESULT_VARIABLE _rc OUTPUT_VARIABLE _out3 ERROR_VARIABLE _err3)
+if(NOT _rc EQUAL 0)
+    message(FATAL_ERROR "T1c child configure failed rc=${_rc}:${_out3}${_err3}")
+endif()
+file(READ "${_ws3}/.vscode/settings.json" _c3)
+ck(_c3 MATCHES "\"PolyOrch_RUST_CARGO_EXECUTABLE\": \"\\$\\{workspaceFolder\\}/\.pixi/bin/cargo\"")
+ck(_c3 MATCHES "\"PolyOrch_RUSTC_EXECUTABLE\": \"\\$\\{workspaceFolder\\}/\.pixi/bin/rustc\"")
+ck(NOT _c3 MATCHES "\"PATH\"")
+ck(_c3 MATCHES "LIBCLANG_PATH")
+ck(NOT _c3 MATCHES "[;][ ]*\"")   # list-join lock: keys must be LIVE rows
 
 # ---- V2 offline twin: region update + user-content preservation ------------
 # A fake toolchain cmake OUTSIDE the workspace (script-mode _s is under /tmp,
@@ -77,6 +116,8 @@ string(RANDOM LENGTH 8 ALPHABET "abcdefghijklmnopqrstuvwxyz0123456789" _bh_rand)
 set(_bh_absroot "/tmp/polyorch-bh-${_bh_rand}")
 file(MAKE_DIRECTORY "${_bh_absroot}/bin")
 file(WRITE "${_bh_absroot}/bin/cmake" "#!/bin/sh\n")
+file(WRITE "${_bh_absroot}/bin/cargo" "#!/bin/sh\n")
+file(WRITE "${_bh_absroot}/bin/rustc" "#!/bin/sh\n")
 set(_ws1b "${_s}/wsroot1b")
 set(PolyOrch_VSCODE_DIR "${_ws1b}/.vscode")
 polyorch_bootstrap_hint(CANDIDATE_CMAKE "${_bh_absroot}/bin/cmake")
@@ -85,6 +126,7 @@ file(READ "${_ws1b}/.vscode/settings.json" _c1b)
 ck(_c1b MATCHES "cmake\\.cmakePath.*${_bh_absroot}/bin/cmake")
 ck(NOT _c1b MATCHES "workspaceFolder")
 ck(_c1b MATCHES "__POLYORCH_GENERATED_BEGIN__")
+ck(_c1b MATCHES "PolyOrch_RUST_CARGO_EXECUTABLE.*${_bh_absroot}/bin/cargo")
 file(REMOVE_RECURSE "${_bh_absroot}")
 
 # ---- V2: managed-region REPLACED; relocation updates the row in place ----
@@ -111,4 +153,4 @@ string(SUBSTRING "${_moved}" 0 "${_b}" _user)
 string(COMPARE EQUAL "${_user}" "{\n" _ueq)
 ck(_ueq)
 
-message(STATUS "t-bootstrap-hint: OK (workspaceFolder literal + markers + configureOnOpen + two-step guidance + region update)")
+message(STATUS "t-bootstrap-hint: OK (workspaceFolder literal + markers + configureOnOpen + two-step guidance + region update + D51 injection contract, no PATH prepend)")
