@@ -154,9 +154,13 @@ Covered by: the `t-thirdparty-*` family (`fingerprint`/`fetch`/`build`/`manifest
   `polyorch_path_join`, `polyorch_fetch_3rdparty`, `polyorch_add_subdirectory`
   and friends); internal plumbing, not part of the bridge contract.
 - `PolyOrchVSCodeDebugHelpers.cmake` -- the shared `.vscode` managed-region
-  machinery (single writer; rust + python rows merge into ONE launch region,
-  tasks.json carries rust-then-node rows with its marker frozen). Private helpers
-  (`_polyorch_vscode_region_write`, `_polyorch_vscode_debug_generate`); the
+  machinery (single writer; rust + python + native rows merge into ONE launch
+  region PER CONFIGURING TREE -- the BEGIN marker carries a tree id, the
+  SHA1-prefix of the binary dir, so two trees against one source tree never
+  erase each other's rows; cross-tree duplicate rows dedup skip-on-name;
+  tasks.json carries rust-then-node rows with its marker text frozen apart
+  from the tree id). Private helpers (`_polyorch_vscode_region_write`,
+  `_polyorch_vscode_dedup_rows`, `_polyorch_vscode_debug_generate`); the
   face-local row renderers stay in each face module.
 - `PolyOrchPlatformSupport.cmake` -- platform/triple/mkspec detection shared
   with the host (external rewrite in flight; see `AGENTS.md`).

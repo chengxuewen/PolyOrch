@@ -2006,15 +2006,19 @@ function(polyorch_rust_test)
     endif()
 endfunction()
 
-# polyorch_rust_run(TARGET <imported> [FOLDER <ide>])
+# polyorch_rust_run(TARGET <imported> [FOLDER <ide>] [WORKING_DIRECTORY <dir>])
 # Registers `run-<TARGET>` that executes the imported artifact directly --
 # deliberately not `cargo run`: the artifact path is already known, and one
 # less cargo invocation keeps the rule set free of build/cargo overlap
 # (ponytail: add cargo-run passthrough flags only when feature-gated runs
 # actually need them). If the matching <TARGET>-cargo mediator exists it is
 # wired as a dependency, so building run-<TARGET> builds the binary first.
+# WORKING_DIRECTORY runs the button in <dir> through the native
+# add_custom_target kwarg -- the house idiom of every run face here
+# (python :241, example-run :96, this face since the examples-ide round);
+# unset = the generator's build-directory default, command byte-unchanged.
 function(polyorch_rust_run)
-    set(_one TARGET FOLDER)
+    set(_one TARGET FOLDER WORKING_DIRECTORY)
     cmake_parse_arguments(PARSE_ARGV 0 R "GUI" "${_one}" "")
     if(R_UNPARSED_ARGUMENTS)
         message(FATAL_ERROR "polyorch_rust_run: unknown args: ${R_UNPARSED_ARGUMENTS}")
@@ -2052,16 +2056,25 @@ function(polyorch_rust_run)
     # host's :0 socket exists, and the direct exec died in winit). The
     # probe rides exec time; the emulator branch keeps its own display
     # semantics (a forced :0 would be wrong inside the emulator).
+    # WORKING_DIRECTORY guard, same shape as polyorch_example_run: unset
+    # must leave both add_custom_target calls byte-identical to the
+    # pre-kwarg shape (leg C discipline).
+    set(_wdir "")
+    if(R_WORKING_DIRECTORY)
+        set(_wdir WORKING_DIRECTORY "${R_WORKING_DIRECTORY}")
+    endif()
     if(R_GUI AND NOT _emu)
         _polyorch_gui_probe_script(_probe)
         add_custom_target("${R_TARGET}-run"
             COMMAND ${CMAKE_COMMAND} -E env sh -c "${_probe}" $<TARGET_FILE:${R_TARGET}>
+            ${_wdir}
             USES_TERMINAL
             VERBATIM
             COMMENT "run ${R_TARGET} (GUI display-probe chain)")
     else()
         add_custom_target("${R_TARGET}-run"
             COMMAND ${_emu} $<TARGET_FILE:${R_TARGET}>
+            ${_wdir}
             COMMENT "run $<TARGET_FILE:${R_TARGET}>")
     endif()
     # IDE parity with the build mediator: the run node carries the same
