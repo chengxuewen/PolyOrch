@@ -607,17 +607,17 @@ function(polyorch_rust_build)
     _polyorch_rust_command(_cmd SUBCOMMAND ${_argv}
         ENV "${_fwd}" "${_lnk}" "${_lp_entry}" "${_env_gx}" "${_rf_entry}")
 
-    set(_byproducts "")
     set(_implib_path "")
     if(_implib)
         # gnullvm: cargo emits the import library under deps/, not the
-        # profile root (corr:334-337) -- the BYPRODUCTS stamp follows the
-        # real source location so the rule stays honest there.
+        # profile root (corr:334-337) -- the path follows the real source
+        # location. Consumption is the IMPORTED_IMPLIB property below; the
+        # old BYPRODUCTS entry is gone with the off-the-books ruling (the
+        # host-layer comment above).
         set(_implib_path "${_dir}/${_implib}")
         if(_name_triple MATCHES "gnullvm$")
             set(_implib_path "${_dir}/deps/${_implib}")
         endif()
-        set(_byproducts BYPRODUCTS "${_implib_path}")
     endif()
     set(_depfiles "")
     if(B_MANIFEST)
@@ -642,18 +642,40 @@ function(polyorch_rust_build)
             ${_uterm}
             VERBATIM)
     else()
-        # Host layer: file-stamp granularity -- cargo's own fingerprint
+        # Host layer: build-tree STAMP granularity -- cargo's own fingerprint
         # decides whether an invocation recompiles; source files never enter
-        # DEPENDS. LOCKED shape (t-rust-artifact-paths).
-        add_custom_command(OUTPUT "${_artifact}" ${_byproducts}
+        # DEPENDS (artifact PATH contract locked by t-rust-artifact-paths).
+        # The rule's OUTPUT is a stamp INSIDE this build tree; the real cargo
+        # artifact stays OFF cmake's books entirely -- neither OUTPUT nor
+        # BYPRODUCTS. Why (measured 2026-11-05, IDE Clean against a SHARED
+        # --target-dir): custom-command OUTPUTs are exactly what `cmake
+        # --build --target clean` deletes, and the Makefile generator puts
+        # BYPRODUCTS on that same kill list (measured by t-rust-clean-
+        # preserves-artifacts' first draft), so either declaration let ONE
+        # tree's clean wipe the .so every other tree (and every configure-
+        # time SDK gate) relied on. With only a stamp on the books, clean
+        # removes the stamp and the next build re-runs cargo (fingerprint
+        # no-op) and re-stamps -- the artifact's lifecycle belongs to cargo
+        # alone (polyorch_rust_clean / cargo itself own restores; an
+        # artifact deleted OUTSIDE cmake while the stamp stands is NOT
+        # auto-restored by a plain build -- OUTPUT-granularity used to catch
+        # that). Implib rides the same rule: off the books (its old
+        # BYPRODUCTS entry only fed the same kill list). Side benefit:
+        # OUTPUT forbids generator expressions, so the old artifact-as-
+        # OUTPUT shape was unbuildable for multi-config hosts (${_dir}
+        # carries a $<CONFIG> mapping there); the stamp is plain.
+        set(_stamp "${CMAKE_CURRENT_BINARY_DIR}/.polyorch-rust-stamps/${_med}.stamp")
+        file(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/.polyorch-rust-stamps")
+        add_custom_command(OUTPUT "${_stamp}"
             COMMAND ${_cmd}
+            COMMAND "${CMAKE_COMMAND}" -E touch "${_stamp}"
             WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
             ${_depfiles}
             COMMENT "cargo build ${B_PACKAGE} (${_kind})"
             COMMAND_EXPAND_LISTS
             ${_uterm}
             VERBATIM)
-        add_custom_target("${_med}" DEPENDS "${_artifact}")
+        add_custom_target("${_med}" DEPENDS "${_stamp}")
     endif()
     # IDE source mount: list the crate's files under the mediator so IDE
     # project trees show (and open) the rust sources on the target. The list
