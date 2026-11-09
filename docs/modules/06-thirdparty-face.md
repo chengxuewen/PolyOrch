@@ -163,11 +163,17 @@ every one of them disagreed with what a reasonable reading of the docs assumed:
   Both ecosystem providers LANDED: `vcpkg` with P7a, `conan` with P7b (above).
 - `DEPENDENCY_PROVIDER sysroot` -> FATAL naming the cross/device batch (P6,
   O-5); none/system/pixi landed with P4.
-- The face is **zero-network** for source recipes: archives ship in-repo (or
-  on a local path); a missing URL is a FATAL, never a download. The ecosystem
-  lanes are the deliberate exception, and they are behind `GENERATE_ECOSYSTEM`
-  -- without that switch, a vcpkg or conan recipe with no cached artifact also
-  never touches the network.
+- The face is **zero-network by default** for source recipes: archives ship
+  in-repo (or on a local path), and without the B8 call-site knobs a missing
+  URL is a FATAL naming the missed exits, never a download. B8 adds ONE
+  controlled exception on the ecosystem lanes' own strict-first terms:
+  `LOCAL_ARCHIVE_DIR` names an override archive layer tried BEFORE the recipe
+  url (every non-default hit is STATUS-noted), and a recipe may declare
+  `url_online` -- the upstream byte-identical twin of `url`, admitted by the
+  SAME url_hash gate -- which the loader touches ONLY with `DOWNLOAD on` plus
+  an explicit `DOWNLOAD_CACHE_DIR` (hash-gated BEFORE the cache, cached as
+  `<name>-<url_hash>`, replayed from the cache with the network dead). The
+  ecosystem lanes remain behind `GENERATE_ECOSYSTEM`.
 
 ## Non-goals (pinned by the r4 review)
 
@@ -182,7 +188,11 @@ consume read-only and cross-team sharing needs an external trust anchor (M3).
 `t-thirdparty-fingerprint-basics` / `-required`, `t-thirdparty-fetch-basic` /
 `-hash-mismatch` / `-patch-mismatch`, `t-thirdparty-build-e2e` /
 `-halfgroup`, `t-thirdparty-manifest-license`, `t-thirdparty-import-h2`,
-`t-thirdparty-recipe-e2e` / `-seams`, `t-thirdparty-package-basic` /
+`t-thirdparty-recipe-e2e` / `-seams` / `-override` (override-dir resolution
+plus the nothing-anywhere refusal) / `-download` (cache + url_online fetch,
+the pre-cache hash gate, the dead-url cache replay) / `-download-refusals`
+(substituted bytes refused before the cache was touched; the DOWNLOAD-off
+strict refusal), `t-thirdparty-package-basic` /
 `-corrupt` / `-relocate`, `t-thirdparty-provider-pixi` (sub-path injection,
 child-env sanitization, the explicit-compiler negative, provider/lock/env
 keying) / `t-thirdparty-provider-seams` (sysroot + guard refusals, the

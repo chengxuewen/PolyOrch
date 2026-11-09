@@ -1301,6 +1301,40 @@ an older checkout must FATAL, not silently miss the face.
   platform (adding one requires solving and committing the lock, not editing
   the platforms list).
 
+## D50 addendum: B8 acquisition resolution -- override dir, controlled download, url_online (2026-11-09, plan-driven, parent-plan ruling 6 = option D)
+
+- Problem: P1 pinned the face to "zero-network, archives ship in-repo". The
+  MediaServo parent shell wants the archive layer OUT of the submodule
+  (3rdparty/gui-deps/ in the parent repo) and a fresh clone to still build
+  without committing ~19 MB of archives -- two different sources for the same
+  verified bytes, neither allowed to weaken the strict-first posture.
+- Decision: the source becomes a call-site decision layered OVER the recipe,
+  not a recipe field. Resolution order: `LOCAL_ARCHIVE_DIR` (override layer,
+  tried first, STATUS-noted) > the recipe url (today's semantics, silent, the
+  default) > the download cache (`DOWNLOAD_CACHE_DIR/<name>-<url_hash>`,
+  survives clean trees) > the network (ONLY with `DOWNLOAD on`; `url_online`
+  is the recipe-declared upstream twin of `url`) > FATAL naming the missed
+  exit. DOWNLOAD defaults to off; DOWNLOAD on without DOWNLOAD_CACHE_DIR is
+  refused (the cache is never derived from the build tree).
+- The url_hash gate is the ONLY identity: the same bytes from any lane pass
+  the same gate, land in the same stamp key (archive hash + patches), and
+  the download leg verifies BEFORE the cache entry is minted (substituted
+  bytes never get a cache file; fetch re-checks at extraction, covering
+  hand-placed cache files too). LOCAL_ARCHIVE_DIR/DOWNLOAD are call-site
+  knobs and never recipe JSON -- schema stays v1, no cache identity is
+  minted by a source switch (same discipline as BINARY_CACHE).
+- Measured: the upstream codeload TAG zip is byte-identical to the shipped
+  archives (the SDL release asset and the imgui commit-ref zip are NOT --
+  the codeload zip's top-level directory embeds the ref), so one url_hash
+  covers both sources. file:// keeps the whole leg testable offline.
+- Tests: `t-thirdparty-recipe-override` (+ the nothing-anywhere refusal),
+  `-download` (fetch -> cache -> dead-url replay proves the zero-network
+  second acquire behaviorally), `-download-refusals` (pre-cache hash refusal
+  + the DOWNLOAD-off strict refusal). docs 06-thirdparty-face: the
+  zero-network seam now reads "zero-network by default". Suite 98 pass /
+  10 pre-existing red / 40 skip (the +2 reds are pre-B8 environment drift,
+  proven by a stash run against the unchanged loader).
+
 ## D51: bootstrap tool delivery switches to the injection contract -- no PATH prepend (2026-11-05, user-adjudicated A'' one by one)
 
 - Problem: the D49 settings PATH prepend put the pixi default-env bin in front

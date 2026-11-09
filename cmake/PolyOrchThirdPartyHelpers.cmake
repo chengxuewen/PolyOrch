@@ -1239,6 +1239,7 @@ endmacro()
 #                                  switch is refused with a warning: conan's
 #                                  own cache is CONAN_HOME inside the anchor)
 #     [DEPENDENCY_PROVIDER none|system|pixi] [PIXI_ENVIRONMENT <e>]  (P4)
+#     [LOCAL_ARCHIVE_DIR <dir>] [DOWNLOAD <on|off>] [DOWNLOAD_CACHE_DIR <dir>]  (B8)
 #     [MAKE_PROGRAM <f>] [TRIPLET <t>]
 #     [CMAKE_ARGS <...>]   (call-site dynamic args: the provider compilers
 #                          are explicit per r4 C1 and never live in the JSON)
@@ -1247,11 +1248,38 @@ endmacro()
 #     [FIND_PACKAGE_NAME_OUT <var>] [ALIAS_OUT <var>]
 #     [COMPONENTS_OUT <var>] [TARGETS_OUT <var>])
 #
-# JSON carries static facts only (version/url/hashes/patches/profile option
-# tables/find_package/alias/license); dynamic decisions ("probe the system,
-# then pick a profile") stay at the consumer call site -- never in the
-# loader. Schema v1 required fields: schema_version(==1), name, version,
-# provider, license, url, url_hash; optional: patches[{path,sha256}],
+# Acquisition resolution (B8, source lane): the recipe pins WHAT to verify
+# (url_hash); WHERE the bytes come from is a call-site decision, tried in
+# order and every non-default hit is announced on STATUS:
+#   1. LOCAL_ARCHIVE_DIR/<archive filename> -- the override archive layer
+#      (a flat dir of archives named as the recipe's url filename;
+#      "artifact from override dir <dir>");
+#   2. the recipe's url resolved against RECIPE_BASE -- today's in-repo
+#      semantics, silent, and the DEFAULT when no B8 argument is passed;
+#   3. DOWNLOAD_CACHE_DIR/<name>-<url_hash> -- the download cache
+#      ("cached download <path>"; it survives clean build trees);
+#   4. the network, ONLY when DOWNLOAD on: url_online is fetched into
+#      <cache>.part, admitted by the SAME url_hash gate as any local
+#      archive, then atomically renamed into the cache
+#      ("downloaded from <url_online>");
+#   5. otherwise a FATAL that names the missed exit -- strict-first means
+#      no silent fallback and DOWNLOAD defaults to off.
+# All four sources converge on identical archive bytes and the SAME stamp
+# key (archive hash + patches), so artifacts acquired by different lanes
+# are interchangeable and a source change never rebuilds anything.
+# LOCAL_ARCHIVE_DIR/DOWNLOAD are call-site knobs ONLY -- never recipe JSON,
+# because the recipe hash is a key input and a source switch must not mint
+# a cache identity (same discipline as BINARY_CACHE/BOOTSTRAP_TOOL).
+# DOWNLOAD on requires DOWNLOAD_CACHE_DIR: the cache must be anchored
+# explicitly, never derived from the build tree.
+#
+# JSON carries static facts only (version/url/url_online/hashes/patches/
+# profile option tables/find_package/alias/license); dynamic decisions
+# ("probe the system, then pick a profile") stay at the consumer call site
+# -- never in the loader. Schema v1 required fields: schema_version(==1),
+# name, version, provider, license, url, url_hash; optional: url_online
+# (B8: the network twin of url -- an absolute https URL with identical
+# bytes, so one url_hash gate covers both), patches[{path,sha256}],
 # patch_command[<argv...>] (relative path elements resolve against the recipe
 # base; the command runs with CWD = the extracted source tree), fetch_only
 # (F8 source-wrapper recipes: acquire + patch, then return the source dir --
@@ -1260,7 +1288,7 @@ endmacro()
 # (this loader returns the wiring).
 function(polyorch_thirdparty_recipe)
     cmake_parse_arguments(arg "GENERATE_ECOSYSTEM"
-        "RECIPE;RECIPE_BASE;WORK_DIR;BUILD_TYPE;PROFILE;TRIPLET;GENERATOR;PARALLEL;PACKAGES_DIR;PACKAGE_FORMAT;MAKE_PROGRAM;DEPENDENCY_PROVIDER;PIXI_ENVIRONMENT;VCPKG_PROGRAM;VCPKG_ROOT_DIR;CONAN_PROGRAM;BINARY_CACHE;BOOTSTRAP_TOOL;SOURCE_DIR_OUT;INSTALL_DIR_OUT;FINGERPRINT_OUT;MANIFEST_OUT;PACKAGE_OUT;FIND_PACKAGE_NAME_OUT;ALIAS_OUT;COMPONENTS_OUT;TARGETS_OUT"
+        "RECIPE;RECIPE_BASE;WORK_DIR;BUILD_TYPE;PROFILE;TRIPLET;GENERATOR;PARALLEL;PACKAGES_DIR;PACKAGE_FORMAT;MAKE_PROGRAM;DEPENDENCY_PROVIDER;PIXI_ENVIRONMENT;VCPKG_PROGRAM;VCPKG_ROOT_DIR;CONAN_PROGRAM;BINARY_CACHE;BOOTSTRAP_TOOL;LOCAL_ARCHIVE_DIR;DOWNLOAD;DOWNLOAD_CACHE_DIR;SOURCE_DIR_OUT;INSTALL_DIR_OUT;FINGERPRINT_OUT;MANIFEST_OUT;PACKAGE_OUT;FIND_PACKAGE_NAME_OUT;ALIAS_OUT;COMPONENTS_OUT;TARGETS_OUT"
         "CMAKE_ARGS" ${ARGN})
     if(NOT arg_RECIPE OR NOT arg_WORK_DIR OR NOT arg_BUILD_TYPE)
         message(FATAL_ERROR "polyorch_thirdparty_recipe: RECIPE, WORK_DIR and BUILD_TYPE are required (BUILD_TYPE explicit: O-3)")
@@ -1301,6 +1329,7 @@ function(polyorch_thirdparty_recipe)
     set(_tp_eco_triplet "")
     set(_tp_url "")
     set(_tp_urlhash "")
+    set(_tp_url_online "")
     if(_tp_provider STREQUAL "source")
         foreach(_tp_f IN ITEMS url url_hash)
             if(NOT "${_tp_json}" MATCHES "\"${_tp_f}\"[ ]*:")
@@ -1309,6 +1338,9 @@ function(polyorch_thirdparty_recipe)
         endforeach()
         string(JSON _tp_url GET "${_tp_json}" url)
         string(JSON _tp_urlhash GET "${_tp_json}" url_hash)
+        if("${_tp_json}" MATCHES "\"url_online\"[ ]*:")
+            string(JSON _tp_url_online GET "${_tp_json}" url_online)
+        endif()
     elseif(_tp_provider STREQUAL "vcpkg")
         set(_tp_eco TRUE)
         foreach(_tp_f IN ITEMS pin_dir)
@@ -1519,10 +1551,77 @@ function(polyorch_thirdparty_recipe)
         message(FATAL_ERROR "polyorch_thirdparty_recipe: BINARY_CACHE/BOOTSTRAP_TOOL are ecosystem-lane knobs (vcpkg's own cache and tool); provider '${_tp_provider}' has nothing to bootstrap -- drop them or switch to provider \"vcpkg\"")
     endif()
     if(NOT _tp_eco)
+        # B8 argument validation first -- fail before any resolution work.
+        if(DEFINED arg_DOWNLOAD AND NOT "${arg_DOWNLOAD}" MATCHES "^(on|off)$")
+            message(FATAL_ERROR "polyorch_thirdparty_recipe: DOWNLOAD='${arg_DOWNLOAD}' is not on|off")
+        endif()
+        if("${arg_DOWNLOAD}" STREQUAL "on" AND NOT arg_DOWNLOAD_CACHE_DIR)
+            message(FATAL_ERROR "polyorch_thirdparty_recipe: DOWNLOAD on requires DOWNLOAD_CACHE_DIR -- the download cache must be anchored explicitly, never derived from the build tree")
+        endif()
         if(NOT IS_ABSOLUTE "${_tp_url}")
             set(_tp_url "${arg_RECIPE_BASE}/${_tp_url}")
         endif()
-        polyorch_thirdparty_fetch(NAME "${_tp_name}" URL "${_tp_url}" URL_HASH "SHA256=${_tp_urlhash}"
+        # ---- acquisition resolution (B8) ----
+        # override archive > resolved recipe url (silent, the default) >
+        # download cache > url_online network fetch > FATAL naming the
+        # missed exit. Every non-default hit lands in _tp_fetch_url with a
+        # STATUS note; the plain recipe-url hit stays silent so today's
+        # logs do not change when no B8 argument is passed.
+        set(_tp_fetch_url "")
+        set(_tp_fetch_note "")
+        if(arg_LOCAL_ARCHIVE_DIR)
+            cmake_path(GET _tp_url FILENAME _tp_arch_file)
+            if(EXISTS "${arg_LOCAL_ARCHIVE_DIR}/${_tp_arch_file}")
+                set(_tp_fetch_url "${arg_LOCAL_ARCHIVE_DIR}/${_tp_arch_file}")
+                set(_tp_fetch_note "artifact from override dir ${arg_LOCAL_ARCHIVE_DIR}")
+            endif()
+        endif()
+        if(NOT _tp_fetch_url AND EXISTS "${_tp_url}")
+            set(_tp_fetch_url "${_tp_url}")
+        endif()
+        string(TOLOWER "${_tp_urlhash}" _tp_cache_key)
+        set(_tp_cached "${arg_DOWNLOAD_CACHE_DIR}/${_tp_name}-${_tp_cache_key}")
+        if(NOT _tp_fetch_url AND "${arg_DOWNLOAD}" STREQUAL "on" AND EXISTS "${_tp_cached}")
+            set(_tp_fetch_url "${_tp_cached}")
+            set(_tp_fetch_note "cached download ${_tp_cached}")
+        endif()
+        if(NOT _tp_fetch_url AND NOT _tp_url_online)
+            message(FATAL_ERROR "polyorch_thirdparty_recipe: no archive for '${_tp_name}': url '${_tp_url}' does not exist and there is no LOCAL_ARCHIVE_DIR override, no cached download and no url_online -- ship the archive at the recipe path, point LOCAL_ARCHIVE_DIR at an override dir, or declare url_online and pass DOWNLOAD on DOWNLOAD_CACHE_DIR <dir>")
+        endif()
+        if(NOT _tp_fetch_url AND NOT "${arg_DOWNLOAD}" STREQUAL "on")
+            message(FATAL_ERROR "polyorch_thirdparty_recipe: no archive for '${_tp_name}': url '${_tp_url}' does not exist, but the recipe declares url_online ${_tp_url_online} -- strict-first keeps the network off by default; pass DOWNLOAD on DOWNLOAD_CACHE_DIR <dir> for the one controlled fetch")
+        endif()
+        if(NOT _tp_fetch_url)
+            if(NOT EXISTS "${arg_DOWNLOAD_CACHE_DIR}")
+                file(MAKE_DIRECTORY "${arg_DOWNLOAD_CACHE_DIR}")
+            endif()
+            set(_tp_part "${_tp_cached}.part")
+            message(STATUS "polyorch thirdparty: ${_tp_name} downloading ${_tp_url_online}")
+            file(DOWNLOAD "${_tp_url_online}" "${_tp_part}" STATUS _tp_dl TLS_VERIFY ON)
+            list(GET _tp_dl 0 _tp_dl_code)
+            if(NOT _tp_dl_code EQUAL 0)
+                list(GET _tp_dl 1 _tp_dl_msg)
+                file(REMOVE "${_tp_part}")
+                message(FATAL_ERROR "polyorch_thirdparty_recipe: download of ${_tp_url_online} failed: ${_tp_dl_msg} (no partial bytes are ever kept)")
+            endif()
+            # The url_hash gate runs BEFORE the cache: substituted bytes never
+            # get a cache entry (fetch re-checks at extraction time -- this
+            # gate protects the cache layer, the verb's own gate protects the
+            # tree and also covers hand-placed cache files).
+            file(SHA256 "${_tp_part}" _tp_dl_hash)
+            string(TOLOWER "${_tp_dl_hash}" _tp_dl_hash)
+            if(NOT _tp_dl_hash STREQUAL _tp_cache_key)
+                file(REMOVE "${_tp_part}")
+                message(FATAL_ERROR "polyorch_thirdparty_recipe: downloaded bytes do not match url_hash for '${_tp_name}' (expected ${_tp_cache_key}, got ${_tp_dl_hash}) -- refused before the cache was touched")
+            endif()
+            file(RENAME "${_tp_part}" "${_tp_cached}")
+            set(_tp_fetch_url "${_tp_cached}")
+            set(_tp_fetch_note "downloaded from ${_tp_url_online}")
+        endif()
+        if(_tp_fetch_note)
+            message(STATUS "polyorch thirdparty: ${_tp_name} ${_tp_fetch_note}")
+        endif()
+        polyorch_thirdparty_fetch(NAME "${_tp_name}" URL "${_tp_fetch_url}" URL_HASH "SHA256=${_tp_urlhash}"
             PATCHES ${_tp_patches} PATCH_SHA256 ${_tp_patch_shas}
             PATCH_COMMAND ${_tp_patch_cmd}
             OUTPUT_DIR "${arg_WORK_DIR}"
