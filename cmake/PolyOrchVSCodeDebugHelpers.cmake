@@ -154,9 +154,42 @@ endfunction()
 # CodeLLDB rows (the rust rows' shape, program-first): the task builds
 # the target ITSELF (native add_executable has no -build mediator --
 # the face grammar is per-face, not copied from rust).
+# _polyorch_vscode_ws_path(IN OUT)
+#
+# Rewrite a path into the ${workspaceFolder} literal when it lives INSIDE the source tree, and
+# leave it absolute when it does not. This is the rule the bootstrap face already applies to
+# cmake.cmakePath / LIBCLANG_PATH and the injected cargo+rustc rows (PolyOrchBootstrapHelpers.cmake):
+# file(RELATIVE_PATH) from CMAKE_SOURCE_DIR, and a result starting with ".." means outside the
+# workspace -- no workspace variable can express that, and writing one anyway points at air.
+# Wired today by the native and rust faces (their rows land in a committed .vscode/launch.json: an
+# absolute path there is a machine-specific prefix plus a username inside a public repository,
+# and a row that silently breaks on every other clone). The python and node faces share the
+# helper but keep asserting the absolute form in their own cases; wiring them is a separate
+# contract change, not an incidental one.
+function(_polyorch_vscode_ws_path IN OUT)
+    set(_in "${IN}")
+    if(_in STREQUAL "")
+        set(${OUT} "" PARENT_SCOPE)
+        return()
+    endif()
+    file(RELATIVE_PATH _rel "${CMAKE_SOURCE_DIR}" "${_in}")
+    # bracket class on purpose: if() consumes one escape level, so the common
+    # "^\.\." spelling reaches the regex as "^.." (any two chars) and matches every
+    # path -- which would silently disable this branch (measured, not theorised).
+    if(_rel STREQUAL "")
+        set(${OUT} "\${workspaceFolder}" PARENT_SCOPE)
+    elseif(_rel MATCHES "^[.][.]")
+        set(${OUT} "${_in}" PARENT_SCOPE)      # outside the workspace: absolute is the truth
+    else()
+        set(${OUT} "\${workspaceFolder}/${_rel}" PARENT_SCOPE)
+    endif()
+endfunction()
+
+
 function(_polyorch_native_vscode_rows SPECS LAUNCH_OUT TASKS_OUT)
     set(_L "")
     set(_K "")
+    _polyorch_vscode_ws_path("${CMAKE_BINARY_DIR}" _bldws)
     foreach(_row ${SPECS})
         string(REPLACE "|" ";" _f "${_row}")
         list(GET _f 0 _h)
@@ -164,6 +197,10 @@ function(_polyorch_native_vscode_rows SPECS LAUNCH_OUT TASKS_OUT)
         list(GET _f 2 _cwd)
         list(GET _f 3 _seg)
         list(GET _f 4 _argsj)
+        # Workspace-relative inside the source tree, absolute outside it (shared rule:
+        # _polyorch_vscode_ws_path in PolyOrchVSCodeDebugHelpers.cmake).
+        _polyorch_vscode_ws_path("${_prog}" _prog)
+        _polyorch_vscode_ws_path("${_cwd}" _cwd)
         set(_nm "PolyOrch: ${_h} (${_seg})")
         set(_ja "")
         if(_argsj)
@@ -189,7 +226,7 @@ function(_polyorch_native_vscode_rows SPECS LAUNCH_OUT TASKS_OUT)
 "            \"label\": \"${_nm}\",\n"
 "            \"type\": \"shell\",\n"
 "            \"command\": \"cmake\",\n"
-"            \"args\": [\"--build\", \"${CMAKE_BINARY_DIR}\", \"--target\", \"${_h}\"],\n"
+"            \"args\": [\"--build\", \"${_bldws}\", \"--target\", \"${_h}\"],\n"
 "            \"problemMatcher\": []\n"
 "        },\n")
     endforeach()

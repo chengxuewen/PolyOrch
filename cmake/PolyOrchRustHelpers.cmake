@@ -3746,12 +3746,17 @@ endfunction()
 function(_polyorch_rust_vscode_rows SPECS LAUNCH_OUT TASKS_OUT)
     set(_L "")
     set(_K "")
+    _polyorch_vscode_ws_path("${CMAKE_BINARY_DIR}" _bldws)
     foreach(_row ${SPECS})
         string(REPLACE "|" ";" _f "${_row}")
         list(GET _f 0 _h)
         list(GET _f 1 _art)
         list(GET _f 2 _cwd)
         list(GET _f 3 _seg)
+        # Workspace-relative inside the source tree, absolute outside it (shared rule:
+        # _polyorch_vscode_ws_path in PolyOrchVSCodeDebugHelpers.cmake).
+        _polyorch_vscode_ws_path("${_art}" _art)
+        _polyorch_vscode_ws_path("${_cwd}" _cwd)
         set(_nm "PolyOrch: ${_h} (${_seg})")
         string(APPEND _L
 "        {\n"
@@ -3767,7 +3772,7 @@ function(_polyorch_rust_vscode_rows SPECS LAUNCH_OUT TASKS_OUT)
 "            \"label\": \"${_nm}\",\n"
 "            \"type\": \"shell\",\n"
 "            \"command\": \"cmake\",\n"
-"            \"args\": [\"--build\", \"${CMAKE_BINARY_DIR}\", \"--target\", \"${_h}-build\"],\n"
+"            \"args\": [\"--build\", \"${_bldws}\", \"--target\", \"${_h}-build\"],\n"
 "            \"problemMatcher\": []\n"
 "        },\n")
     endforeach()
