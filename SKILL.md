@@ -28,7 +28,7 @@ Two groups: the ten authored for this repository, and a vendored third-party set
 | `think-before-act` | Meta-constraint | Investigate before acting; present options for approval |
 | `adjudication-walkthrough` | Meta-constraint | Walk design adjudications ONE at a time, plain text, seven-part template |
 | `skill-router` | Meta-constraint | Analyze intent and recommend a skill set |
-| `ecosystem-scan` | Meta-constraint | Audit `.agents/` and scan for adoptable skills |
+| `repo-audit` | Meta-constraint | Audit `.agents/` and scan for adoptable skills |
 | `lesson-review` | Memory | Batch session review; write lessons into `.agents/memorys/` |
 | `book-to-skill` | Documentation | Convert books and documents into structured skills |
 | `doc-audit` | Documentation | Audit the documents and `.agents/` for consistency, decision liveness, and gaps |
